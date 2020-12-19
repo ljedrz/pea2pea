@@ -2,20 +2,27 @@ use crate::config::*;
 use crate::connection::{Connection, ConnectionReader};
 use crate::peer_stats::PeerStats;
 
+use once_cell::sync::OnceCell;
 use parking_lot::RwLock;
-use tokio::net::{TcpListener, TcpStream};
+use tokio::{
+    net::{TcpListener, TcpStream},
+    sync::{mpsc::Sender, Mutex},
+};
 use tracing::*;
 
 use std::{
     collections::hash_map::{Entry, HashMap},
     io,
     net::{IpAddr, Ipv4Addr, SocketAddr},
-    sync::Arc,
+    sync::{atomic::{AtomicUsize, Ordering}, Arc},
 };
+
+static SEQUENTIAL_NODE_ID: AtomicUsize = AtomicUsize::new(0);
 
 pub struct Node {
     pub config: NodeConfig,
     pub local_addr: SocketAddr,
+    pub incoming_requests: OnceCell<Option<Sender<(Vec<u8>, SocketAddr)>>>,
     connecting: RwLock<HashMap<SocketAddr, Arc<Mutex<Connection>>>>,
     connected: RwLock<HashMap<SocketAddr, Arc<Mutex<Connection>>>>,
     known_peers: RwLock<HashMap<SocketAddr, PeerStats>>,
@@ -24,7 +31,11 @@ pub struct Node {
 impl Node {
     pub async fn new(config: Option<NodeConfig>) -> io::Result<Arc<Self>> {
         let local_ip = IpAddr::V4(Ipv4Addr::LOCALHOST);
-        let config = config.unwrap_or_default();
+        let mut config = config.unwrap_or_default();
+
+        if config.name.is_none() {
+            config.name = Some(SEQUENTIAL_NODE_ID.fetch_add(1, Ordering::SeqCst).to_string());
+        }
 
         let desired_listener = if let Some(port) = config.desired_listening_port {
             let desired_local_addr = SocketAddr::new(local_ip, port);
@@ -54,6 +65,7 @@ impl Node {
         let node = Arc::new(Self {
             config,
             local_addr,
+            incoming_requests: Default::default(),
             connecting: Default::default(),
             connected: Default::default(),
             known_peers: Default::default(),
@@ -70,9 +82,14 @@ impl Node {
             }
         });
 
-        info!("the node is ready; listening on {}", local_addr);
+        info!("node \"{}\" is ready; listening on {}", node.name(), local_addr);
 
         Ok(node)
+    }
+
+    pub fn name(&self) -> &str {
+        // safe; can be set as None in NodeConfig, but receives a default value on Node creation
+        self.config.name.as_deref().unwrap()
     }
 
     fn adapt_stream(self: &Arc<Self>, stream: TcpStream, addr: SocketAddr) {
@@ -85,13 +102,21 @@ impl Node {
             debug!("spawned a task reading messages from {}", addr);
             loop {
                 match connection_reader.read_message().await {
-                    Ok(msg_len) => {
-                        info!("received a message of {}B from {}", msg_len, addr);
+                    Ok(msg) => {
+                        info!("received a {}B message from {}", msg.len(), addr);
+
                         node.known_peers
                             .write()
                             .get_mut(&addr)
                             .unwrap()
-                            .got_message(msg_len);
+                            .got_message(msg.len());
+
+                        if let Some(Some(ref incoming_requests)) = node.incoming_requests.get() {
+                            if let Err(e) = incoming_requests.send((msg, addr)).await {
+                                error!("can't register an incoming message");
+                                // TODO: how to proceed?
+                            }
+                        }
                     }
                     Err(e) => error!("can't read message: {}", e),
                 }
@@ -122,6 +147,15 @@ impl Node {
         }
         debug!("connecting to {}", addr);
 
+        match self.known_peers.write().entry(addr) {
+            Entry::Vacant(e) => {
+                e.insert(Default::default());
+            }
+            Entry::Occupied(mut e) => {
+                e.get_mut().new_connection();
+            }
+        }
+
         let stream = TcpStream::connect(addr).await?;
         self.adapt_stream(stream, addr);
 
@@ -142,6 +176,30 @@ impl Node {
         }
 
         disconnected
+    }
+
+    pub async fn send_direct_message(
+        &self,
+        target: SocketAddr,
+        post_handshake: bool,
+        message: Vec<u8>,
+    ) -> io::Result<()> {
+        let mut conn = if !post_handshake {
+            self.connecting.read().get(&target).cloned()
+        } else {
+            self.connected.read().get(&target).cloned()
+        };
+
+        if let Some(ref mut conn) = conn {
+            conn.lock().await.send_message(message).await
+        } else {
+            error!(
+                "not connect{} to {}; discarding the message",
+                if post_handshake { "ed" } else { "ing" },
+                target
+            );
+            Ok(())
+        }
     }
 
     fn perform_handshake(&self) -> io::Result<()> {
