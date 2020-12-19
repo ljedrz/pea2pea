@@ -1,0 +1,18 @@
+[package]
+name = "pea2pea"
+version = "0.1.0"
+authors = ["ljedrz <ljedrz@gmail.com>"]
+edition = "2018"
+
+[lib]
+crate-type = ["lib"]
+
+[dependencies]
+parking_lot = "0.11"
+tokio = { version = "0.3", features = ["io-util", "macros", "net", "parking_lot", "rt-multi-thread", "sync"] }
+tracing = { version = "0.1", features = ["attributes"] }
+tracing-futures = { version = "0.2.3" }
+
+[dev-dependencies]
+tokio = { version = "0.3", features = ["time"] }
+tracing-subscriber = { version = "0.2", features = ["ansi", "chrono", "env-filter", "fmt", "parking_lot", "smallvec"] }
