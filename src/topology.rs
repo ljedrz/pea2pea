@@ -1,6 +1,6 @@
 use crate::{Node, NodeConfig};
 
-use std::{io, sync::Arc};
+use std::{collections::HashSet, io, sync::Arc};
 
 /// The way in which nodes are connected to each other; to be used with spawn_nodes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -41,10 +41,13 @@ pub async fn spawn_nodes(count: usize, topology: Topology) -> io::Result<Vec<Arc
             }
         }
         Topology::Mesh => {
+            let mut connected_pairs = HashSet::with_capacity((count - 1) * 2);
             for i in 0..count {
                 for (j, peer) in nodes.iter().enumerate() {
                     if i != j {
-                        nodes[i].initiate_connection(peer.local_addr).await?;
+                        if connected_pairs.insert((i, j)) && connected_pairs.insert((j, i)) {
+                            nodes[i].initiate_connection(peer.local_addr).await?;
+                        }
                     }
                 }
             }
