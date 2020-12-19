@@ -17,15 +17,13 @@ pub enum Topology {
     Star,
 }
 
-pub async fn spawn_nodes(
-    config: Option<NodeConfig>,
-    count: usize,
-    topology: Topology,
-) -> io::Result<Vec<Arc<Node>>> {
+pub async fn spawn_nodes(count: usize, topology: Topology) -> io::Result<Vec<Arc<Node>>> {
     let mut nodes = Vec::with_capacity(count);
 
     for i in 0..count {
-        let node = Node::new(Some(i.to_string()), config.clone(), None, true).await?;
+        let mut config = NodeConfig::default();
+        config.name = Some(i.to_string());
+        let node = Node::new(Some(config)).await?;
         nodes.push(node);
     }
 

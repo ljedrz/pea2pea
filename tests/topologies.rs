@@ -8,7 +8,7 @@ const N: usize = 5;
 
 #[tokio::test]
 async fn topology_line_conn_counts() {
-    let nodes = spawn_nodes(None, N, Topology::Line).await.unwrap();
+    let nodes = spawn_nodes(N, Topology::Line).await.unwrap();
     sleep(Duration::from_millis(200)).await;
 
     for (i, node) in nodes.iter().enumerate() {
@@ -22,7 +22,7 @@ async fn topology_line_conn_counts() {
 
 #[tokio::test]
 async fn topology_ring_conn_counts() {
-    let nodes = spawn_nodes(None, N, Topology::Ring).await.unwrap();
+    let nodes = spawn_nodes(N, Topology::Ring).await.unwrap();
     sleep(Duration::from_millis(200)).await;
 
     for node in &nodes {
@@ -32,7 +32,7 @@ async fn topology_ring_conn_counts() {
 
 #[tokio::test]
 async fn topology_mesh_conn_counts() {
-    let nodes = spawn_nodes(None, N, Topology::Mesh).await.unwrap();
+    let nodes = spawn_nodes(N, Topology::Mesh).await.unwrap();
     sleep(Duration::from_millis(200)).await;
 
     for node in &nodes {
@@ -42,7 +42,7 @@ async fn topology_mesh_conn_counts() {
 
 #[tokio::test]
 async fn topology_star_conn_counts() {
-    let nodes = spawn_nodes(None, N, Topology::Star).await.unwrap();
+    let nodes = spawn_nodes(N, Topology::Star).await.unwrap();
     sleep(Duration::from_millis(200)).await;
 
     for (i, node) in nodes.iter().enumerate() {

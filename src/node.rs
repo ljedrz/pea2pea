@@ -14,7 +14,6 @@ use std::{
 };
 
 pub struct Node {
-    name: Option<String>,
     config: Arc<NodeConfig>,
     local_addr: SocketAddr,
     connecting: RwLock<HashMap<SocketAddr, Connection>>,
@@ -23,18 +22,14 @@ pub struct Node {
 }
 
 impl Node {
-    pub async fn new(
-        name: Option<String>,
-        config: Option<NodeConfig>,
-        desired_listening_port: Option<u16>,
-        allow_random_port: bool,
-    ) -> io::Result<Arc<Self>> {
+    pub async fn new(config: Option<NodeConfig>) -> io::Result<Arc<Self>> {
         let local_ip = IpAddr::V4(Ipv4Addr::LOCALHOST);
+        let config = config.unwrap_or_default();
 
-        let desired_listener = if let Some(port) = desired_listening_port {
+        let desired_listener = if let Some(port) = config.desired_listening_port {
             let desired_local_addr = SocketAddr::new(local_ip, port);
             TcpListener::bind(desired_local_addr).await
-        } else if allow_random_port {
+        } else if config.allow_random_port {
             let random_available_addr = SocketAddr::new(local_ip, 0);
             TcpListener::bind(random_available_addr).await
         } else {
@@ -44,7 +39,7 @@ impl Node {
         let listener = match desired_listener {
             Ok(listener) => listener,
             Err(e) => {
-                if allow_random_port {
+                if config.allow_random_port {
                     warn!("trying any port, the desired one is unavailable: {}", e);
                     let random_available_addr = SocketAddr::new(local_ip, 0);
                     TcpListener::bind(random_available_addr).await?
@@ -57,8 +52,7 @@ impl Node {
         let local_addr = listener.local_addr()?;
 
         let node = Arc::new(Self {
-            name,
-            config: Arc::new(config.unwrap_or_default()),
+            config: Arc::new(config),
             local_addr,
             connecting: Default::default(),
             connected: Default::default(),

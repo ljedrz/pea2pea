@@ -45,7 +45,7 @@ impl ConnectionReader {
             .read_exact(&mut self.buffer[..msg_len_size])
             .await?;
         let msg_len = read_msg_len!(
-            self.config.byte_order,
+            self.config.message_byte_order,
             msg_len_size,
             &self.buffer[..msg_len_size]
         );
