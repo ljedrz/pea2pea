@@ -1,4 +1,4 @@
-use crate::{config::NodeConfig, node::Node};
+use crate::{Node, NodeConfig};
 
 use std::{io, sync::Arc};
 
@@ -31,12 +31,12 @@ pub async fn spawn_nodes(count: usize, topology: Topology) -> io::Result<Vec<Arc
         Topology::Line | Topology::Ring => {
             for i in 0..(count - 1) {
                 nodes[i]
-                    .initiate_connection(nodes[i + 1].local_addr())
+                    .initiate_connection(nodes[i + 1].local_addr)
                     .await?;
             }
             if topology == Topology::Ring {
                 nodes[count - 1]
-                    .initiate_connection(nodes[0].local_addr())
+                    .initiate_connection(nodes[0].local_addr)
                     .await?;
             }
         }
@@ -44,14 +44,14 @@ pub async fn spawn_nodes(count: usize, topology: Topology) -> io::Result<Vec<Arc
             for i in 0..count {
                 for (j, peer) in nodes.iter().enumerate() {
                     if i != j {
-                        nodes[i].initiate_connection(peer.local_addr()).await?;
+                        nodes[i].initiate_connection(peer.local_addr).await?;
                     }
                 }
             }
         }
         Topology::Star => {
             for node in nodes.iter().skip(1) {
-                nodes[0].initiate_connection(node.local_addr()).await?;
+                nodes[0].initiate_connection(node.local_addr).await?;
             }
         }
         Topology::None => {}

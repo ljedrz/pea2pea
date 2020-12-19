@@ -14,10 +14,10 @@ use std::{
 };
 
 pub struct Node {
-    config: Arc<NodeConfig>,
-    local_addr: SocketAddr,
-    connecting: RwLock<HashMap<SocketAddr, Connection>>,
-    connected: RwLock<HashMap<SocketAddr, Connection>>,
+    pub config: NodeConfig,
+    pub local_addr: SocketAddr,
+    connecting: RwLock<HashMap<SocketAddr, Arc<Mutex<Connection>>>>,
+    connected: RwLock<HashMap<SocketAddr, Arc<Mutex<Connection>>>>,
     known_peers: RwLock<HashMap<SocketAddr, Peer>>,
 }
 
@@ -52,7 +52,7 @@ impl Node {
         let local_addr = listener.local_addr()?;
 
         let node = Arc::new(Self {
-            config: Arc::new(config),
+            config,
             local_addr,
             connecting: Default::default(),
             connected: Default::default(),
@@ -75,14 +75,10 @@ impl Node {
         Ok(node)
     }
 
-    pub fn local_addr(&self) -> SocketAddr {
-        self.local_addr
-    }
-
     fn adapt_stream(self: &Arc<Self>, stream: TcpStream, addr: SocketAddr) {
         let (reader, writer) = stream.into_split();
 
-        let mut connection_reader = ConnectionReader::new(reader, Arc::clone(&self.config));
+        let mut connection_reader = ConnectionReader::new(reader, Arc::clone(&self));
 
         let node = Arc::clone(&self);
         let reader_task = tokio::spawn(async move {
@@ -102,7 +98,7 @@ impl Node {
             }
         });
 
-        let connection = Connection::new(reader_task, writer);
+        let connection = Connection::new(reader_task, writer, Arc::clone(&self));
         self.connecting.write().insert(addr, connection);
     }
 

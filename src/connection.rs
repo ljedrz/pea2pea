@@ -1,4 +1,5 @@
-use crate::config::{ByteOrder::*, NodeConfig};
+use crate::config::ByteOrder::*;
+use crate::{Node, NodeConfig};
 
 use tokio::{
     io::AsyncReadExt,
@@ -9,7 +10,7 @@ use tokio::{
 use std::{convert::TryInto, io, sync::Arc};
 
 pub(crate) struct ConnectionReader {
-    config: Arc<NodeConfig>,
+    node: Arc<Node>,
     buffer: Vec<u8>,
     reader: OwnedReadHalf,
 }
@@ -31,21 +32,25 @@ macro_rules! read_msg_len {
 }
 
 impl ConnectionReader {
-    pub(crate) fn new(reader: OwnedReadHalf, config: Arc<NodeConfig>) -> Self {
+    pub(crate) fn new(reader: OwnedReadHalf, node: Arc<Node>) -> Self {
         Self {
-            buffer: vec![0; config.conn_read_buffer_size],
-            config,
+            buffer: vec![0; node.config.conn_read_buffer_size],
+            node,
             reader,
         }
     }
 
+    fn config(&self) -> &NodeConfig {
+        &self.node.config
+    }
+
     pub(crate) async fn read_message(&mut self) -> io::Result<usize> {
-        let msg_len_size = self.config.message_length_size as usize;
+        let msg_len_size = self.config().message_length_size as usize;
         self.reader
             .read_exact(&mut self.buffer[..msg_len_size])
             .await?;
         let msg_len = read_msg_len!(
-            self.config.message_byte_order,
+            self.config().message_byte_order,
             msg_len_size,
             &self.buffer[..msg_len_size]
         );
@@ -64,15 +69,25 @@ impl ConnectionReader {
 }
 
 pub(crate) struct Connection {
+    node: Arc<Node>,
     reader_task: JoinHandle<()>,
     writer: OwnedWriteHalf,
 }
 
 impl Connection {
-    pub(crate) fn new(reader_task: JoinHandle<()>, writer: OwnedWriteHalf) -> Self {
-        Self {
+    pub(crate) fn new(
+        reader_task: JoinHandle<()>,
+        writer: OwnedWriteHalf,
+        node: Arc<Node>,
+    ) -> Arc<Mutex<Self>> {
+        Arc::new(Mutex::new(Self {
+            node,
             reader_task,
             writer,
-        }
+        }))
+    }
+
+    fn config(&self) -> &NodeConfig {
+        &self.node.config
     }
 }
