@@ -111,6 +111,7 @@ impl Node {
     }
 
     fn adapt_stream(self: &Arc<Self>, stream: TcpStream, addr: SocketAddr) {
+        debug!(parent: self.span(), "connecting to {}", addr);
         let (reader, writer) = stream.into_split();
 
         let mut connection_reader = ConnectionReader::new(reader, Arc::clone(&self));
@@ -123,7 +124,7 @@ impl Node {
                     Ok(msg) => {
                         info!(parent: node.span(), "received a {}B message from {}", msg.len(), addr);
 
-                        node.known_peers.register_message(addr, msg.len());
+                        node.known_peers.register_incoming_message(addr, msg.len());
 
                         if let Some(Some(ref incoming_requests)) = node.incoming_requests.get() {
                             if let Err(e) = incoming_requests.send((msg, addr)).await {
@@ -157,7 +158,6 @@ impl Node {
             warn!(parent: self.span(), "already connecting/connected to {}", addr);
             return Ok(());
         }
-        debug!(parent: self.span(), "connecting to {}", addr);
 
         self.known_peers.add(addr);
         let stream = TcpStream::connect(addr).await?;
@@ -178,18 +178,23 @@ impl Node {
         disconnected
     }
 
-    pub async fn send_direct_message(
-        &self,
-        target: SocketAddr,
-        message: Vec<u8>,
-    ) -> io::Result<()> {
-        let ret = self.connections.send_direct_message(target, message).await;
+    pub async fn send_direct_message(&self, addr: SocketAddr, message: Vec<u8>) -> io::Result<()> {
+        let ret = self.connections.send_direct_message(addr, message).await;
 
         if let Err(ref e) = ret {
-            error!(parent: self.span(), "couldn't send a direct message to {}: {}", target, e);
+            error!(parent: self.span(), "couldn't send a direct message to {}: {}", addr, e);
         }
 
         ret
+    }
+
+    pub async fn send_broadcast(&self, message: Vec<u8>) {
+        for (addr, conn) in self.connections.handshaken_connections().iter() {
+            // FIXME: it would be nice not to clone the message
+            if let Err(e) = conn.lock().await.send_message(message.clone()).await {
+                error!(parent: self.span(), "couldn't send a broadcast to {}: {}", addr, e);
+            }
+        }
     }
 
     pub fn is_connected(&self, addr: SocketAddr) -> bool {
@@ -206,5 +211,17 @@ impl Node {
 
     pub fn is_handshaken(&self, addr: SocketAddr) -> bool {
         self.connections.is_handshaken(addr)
+    }
+
+    pub fn num_messages_received(&self) -> usize {
+        self.known_peers.num_messages_received()
+    }
+
+    // to be used in tests only, at least until the handshake protocol is introduced (which should make it redundant)
+    #[doc(hidden)]
+    pub fn mark_as_handshaken(&self, addr: SocketAddr) {
+        if let Err(e) = self.connections.mark_as_handshaken(addr) {
+            error!(parent: self.span(), "can't mark {} as handshaken: {}", addr, e);
+        }
     }
 }

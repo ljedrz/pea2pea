@@ -5,12 +5,12 @@ use crate::connection::Connection;
 
 use std::{collections::HashMap, io, net::SocketAddr, sync::Arc};
 
-type LockedConnectionMap = RwLock<HashMap<SocketAddr, Arc<Mutex<Connection>>>>;
+type ConnectionMap = HashMap<SocketAddr, Arc<Mutex<Connection>>>;
 
 #[derive(Default)]
 pub(crate) struct Connections {
-    pub(crate) handshaking: LockedConnectionMap,
-    pub(crate) handshaken: LockedConnectionMap,
+    pub(crate) handshaking: RwLock<ConnectionMap>,
+    pub(crate) handshaken: RwLock<ConnectionMap>,
 }
 
 impl Connections {
@@ -36,6 +36,23 @@ impl Connections {
 
     pub(crate) fn num_connected(&self) -> usize {
         self.handshaking.read().len() + self.handshaken.read().len()
+    }
+
+    pub(crate) fn handshaken_connections(&self) -> Vec<(SocketAddr, Arc<Mutex<Connection>>)> {
+        self.handshaken
+            .read()
+            .iter()
+            .map(|(addr, conn)| (*addr, Arc::clone(conn)))
+            .collect()
+    }
+
+    pub(crate) fn mark_as_handshaken(&self, addr: SocketAddr) -> io::Result<()> {
+        if let Some(conn) = self.handshaking.write().remove(&addr) {
+            self.handshaken.write().insert(addr, conn);
+            Ok(())
+        } else {
+            Err(io::ErrorKind::NotConnected.into())
+        }
     }
 
     pub(crate) async fn send_direct_message(

@@ -10,12 +10,24 @@ impl KnownPeers {
         self.0.write().entry(addr).or_default().new_connection();
     }
 
-    pub(crate) fn register_message(&self, from: SocketAddr, len: usize) {
-        self.0.write().get_mut(&from).unwrap().got_message(len);
+    pub(crate) fn register_incoming_message(&self, from: SocketAddr, len: usize) {
+        self.0
+            .write()
+            .get_mut(&from)
+            .unwrap()
+            .register_incoming_message(len);
     }
 
     pub(crate) fn register_failure(&self, from: SocketAddr) {
         self.0.write().get_mut(&from).unwrap().register_failure();
+    }
+
+    pub(crate) fn num_messages_received(&self) -> usize {
+        self.0
+            .read()
+            .values()
+            .map(|peer_stats| peer_stats.msgs_received)
+            .sum()
     }
 }
 
@@ -24,7 +36,7 @@ pub(crate) struct PeerStats {
     times_connected: usize, // TODO: can be NonZeroUsize
     first_seen: Instant,
     last_seen: Instant,
-    msg_count: usize,
+    msgs_received: usize,
     bytes_received: u64,
     failures: u8,
 }
@@ -37,7 +49,7 @@ impl Default for PeerStats {
             times_connected: 1,
             first_seen: now,
             last_seen: now,
-            msg_count: 0,
+            msgs_received: 0,
             bytes_received: 0,
             failures: 0,
         }
@@ -50,9 +62,9 @@ impl PeerStats {
         self.times_connected += 1;
     }
 
-    pub(crate) fn got_message(&mut self, msg_len: usize) {
+    pub(crate) fn register_incoming_message(&mut self, msg_len: usize) {
         self.last_seen = Instant::now();
-        self.msg_count += 1;
+        self.msgs_received += 1;
         self.bytes_received += msg_len as u64;
     }
 

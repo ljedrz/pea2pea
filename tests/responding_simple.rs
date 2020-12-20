@@ -4,7 +4,7 @@ use tracing::*;
 
 use pea2pea::{Node, NodeConfig, ResponseProtocol};
 
-use std::{collections::HashSet, io, net::SocketAddr, sync::Arc, time::Duration};
+use std::{collections::HashSet, io, net::SocketAddr, ops::Deref, sync::Arc, time::Duration};
 
 #[derive(PartialEq, Eq, Hash, Debug, Clone, Copy)]
 enum TestMessage {
@@ -18,7 +18,7 @@ struct EchoNode {
     echoed: Arc<Mutex<HashSet<TestMessage>>>,
 }
 
-impl std::ops::Deref for EchoNode {
+impl Deref for EchoNode {
     type Target = Node;
 
     fn deref(&self) -> &Self::Target {
@@ -33,7 +33,7 @@ impl ResponseProtocol for EchoNode {
         let (sender, mut receiver) = channel(4);
         self.node.incoming_requests.set(Some(sender)).unwrap();
 
-        let node = Arc::clone(&self);
+        let node = Arc::clone(self);
         tokio::spawn(async move {
             loop {
                 if let Some((request, source)) = receiver.recv().await {
