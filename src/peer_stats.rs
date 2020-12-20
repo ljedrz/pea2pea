@@ -1,5 +1,6 @@
 use std::time::Instant;
 
+#[derive(Debug)]
 pub(crate) struct PeerStats {
     times_connected: usize, // TODO: can be NonZeroUsize
     first_seen: Instant,

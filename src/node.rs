@@ -113,7 +113,7 @@ impl Node {
 
                         if let Some(Some(ref incoming_requests)) = node.incoming_requests.get() {
                             if let Err(e) = incoming_requests.send((msg, addr)).await {
-                                error!("can't register an incoming message");
+                                error!("can't register an incoming message: {}", e);
                                 // TODO: how to proceed?
                             }
                         }
@@ -200,10 +200,6 @@ impl Node {
             );
             Ok(())
         }
-    }
-
-    fn perform_handshake(&self) -> io::Result<()> {
-        unimplemented!()
     }
 
     pub fn is_connecting(&self, addr: SocketAddr) -> bool {

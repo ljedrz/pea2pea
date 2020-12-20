@@ -8,15 +8,15 @@ pub trait ResponseProtocol {
 
     fn parse_message(&self, buffer: &[u8]) -> Option<Self::Message>;
 
-    fn validate_message(&self, message: &Self::Message) -> bool {
+    fn validate_message(&self, _message: &Self::Message) -> bool {
         // accept the message by default
         true
     }
 
     fn process_message(
         self: &Arc<Self>,
-        message: Self::Message,
-        source: SocketAddr,
+        _message: Self::Message,
+        _source: SocketAddr,
     ) -> io::Result<()> {
         // don't do anything by default
         Ok(())

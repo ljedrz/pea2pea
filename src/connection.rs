@@ -71,19 +71,19 @@ impl ConnectionReader {
 
 pub(crate) struct Connection {
     node: Arc<Node>,
-    reader_task: JoinHandle<()>,
+    _reader_task: JoinHandle<()>,
     writer: OwnedWriteHalf,
 }
 
 impl Connection {
     pub(crate) fn new(
-        reader_task: JoinHandle<()>,
+        _reader_task: JoinHandle<()>,
         writer: OwnedWriteHalf,
         node: Arc<Node>,
     ) -> Arc<Mutex<Self>> {
         Arc::new(Mutex::new(Self {
             node,
-            reader_task,
+            _reader_task,
             writer,
         }))
     }
@@ -102,7 +102,7 @@ impl Connection {
             );
         }
 
-        let len_bytes = match (
+        match (
             self.config().message_byte_order,
             self.config().message_length_size,
         ) {
