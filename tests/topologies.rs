@@ -13,9 +13,9 @@ async fn topology_line_conn_counts() {
 
     for (i, node) in nodes.iter().enumerate() {
         if i == 0 || i == N - 1 {
-            assert_eq!(node.num_connecting(), 1);
+            assert_eq!(node.num_connected(), 1);
         } else {
-            assert_eq!(node.num_connecting(), 2);
+            assert_eq!(node.num_connected(), 2);
         }
     }
 }
@@ -26,7 +26,7 @@ async fn topology_ring_conn_counts() {
     sleep(Duration::from_millis(200)).await;
 
     for node in &nodes {
-        assert_eq!(node.num_connecting(), 2);
+        assert_eq!(node.num_connected(), 2);
     }
 }
 
@@ -36,7 +36,7 @@ async fn topology_mesh_conn_counts() {
     sleep(Duration::from_millis(200)).await;
 
     for node in &nodes {
-        assert_eq!(node.num_connecting(), N - 1);
+        assert_eq!(node.num_connected(), N - 1);
     }
 }
 
@@ -47,9 +47,9 @@ async fn topology_star_conn_counts() {
 
     for (i, node) in nodes.iter().enumerate() {
         if i == 0 {
-            assert_eq!(node.num_connecting(), N - 1);
+            assert_eq!(node.num_connected(), N - 1);
         } else {
-            assert_eq!(node.num_connecting(), 1);
+            assert_eq!(node.num_connected(), 1);
         }
     }
 }

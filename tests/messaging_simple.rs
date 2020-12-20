@@ -1,6 +1,5 @@
-
 use parking_lot::Mutex;
-use tokio::{time::sleep, sync::mpsc::channel};
+use tokio::{sync::mpsc::channel, time::sleep};
 use tracing::*;
 
 use pea2pea::{Node, ResponseProtocol};
@@ -77,7 +76,7 @@ impl ResponseProtocol for EchoNode {
 
             let node = Arc::clone(self);
             tokio::spawn(async move {
-                node.send_direct_message(source_addr, false, vec![message as u8])
+                node.send_direct_message(source_addr, vec![message as u8])
                     .await
                     .unwrap();
             });
@@ -101,11 +100,23 @@ async fn request_handling_echo() {
     });
     echo_node.enable_response_protocol();
 
-    generic_node.initiate_connection(echo_node.local_addr).await.unwrap();
+    generic_node
+        .initiate_connection(echo_node.local_addr)
+        .await
+        .unwrap();
 
-    generic_node.send_direct_message(echo_node.local_addr, false, vec![TestMessage::Herp as u8]).await.unwrap();
-    generic_node.send_direct_message(echo_node.local_addr, false, vec![TestMessage::Derp as u8]).await.unwrap();
-    generic_node.send_direct_message(echo_node.local_addr, false, vec![TestMessage::Herp as u8]).await.unwrap();
+    generic_node
+        .send_direct_message(echo_node.local_addr, vec![TestMessage::Herp as u8])
+        .await
+        .unwrap();
+    generic_node
+        .send_direct_message(echo_node.local_addr, vec![TestMessage::Derp as u8])
+        .await
+        .unwrap();
+    generic_node
+        .send_direct_message(echo_node.local_addr, vec![TestMessage::Herp as u8])
+        .await
+        .unwrap();
 
     sleep(Duration::from_millis(200)).await;
 }

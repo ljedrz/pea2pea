@@ -15,7 +15,10 @@ use std::{
     collections::hash_map::{Entry, HashMap},
     io,
     net::{IpAddr, Ipv4Addr, SocketAddr},
-    sync::{atomic::{AtomicUsize, Ordering}, Arc},
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
 };
 
 static SEQUENTIAL_NODE_ID: AtomicUsize = AtomicUsize::new(0);
@@ -34,7 +37,11 @@ impl Node {
         let mut config = config.unwrap_or_default();
 
         if config.name.is_none() {
-            config.name = Some(SEQUENTIAL_NODE_ID.fetch_add(1, Ordering::SeqCst).to_string());
+            config.name = Some(
+                SEQUENTIAL_NODE_ID
+                    .fetch_add(1, Ordering::SeqCst)
+                    .to_string(),
+            );
         }
 
         let desired_listener = if let Some(port) = config.desired_listening_port {
@@ -81,7 +88,11 @@ impl Node {
             }
         });
 
-        info!("node \"{}\" is ready; listening on {}", node.name(), local_addr);
+        info!(
+            "node \"{}\" is ready; listening on {}",
+            node.name(),
+            local_addr
+        );
 
         Ok(node)
     }
@@ -123,7 +134,10 @@ impl Node {
         });
 
         let connection = Connection::new(reader_task, writer, Arc::clone(&self));
-        self.connections.handshaking.write().insert(addr, connection);
+        self.connections
+            .handshaking
+            .write()
+            .insert(addr, connection);
     }
 
     fn accept_connection(self: Arc<Self>, stream: TcpStream, addr: SocketAddr) {
@@ -140,7 +154,7 @@ impl Node {
     }
 
     pub async fn initiate_connection(self: &Arc<Self>, addr: SocketAddr) -> io::Result<()> {
-        if self.is_handshaking(addr) || self.is_handshaken(addr) {
+        if self.connections.is_connected(addr) {
             warn!("already connecting/connected to {}", addr);
             return Ok(());
         }
@@ -162,11 +176,7 @@ impl Node {
     }
 
     pub fn disconnect(&self, addr: SocketAddr) -> bool {
-        let disconnected = if self.connections.handshaking.write().remove(&addr).is_none() {
-            self.connections.handshaken.write().remove(&addr).is_some()
-        } else {
-            true
-        };
+        let disconnected = self.connections.disconnect(addr);
 
         if disconnected {
             debug!("disconnected from {}", addr);
@@ -180,40 +190,24 @@ impl Node {
     pub async fn send_direct_message(
         &self,
         target: SocketAddr,
-        handshaken: bool,
         message: Vec<u8>,
     ) -> io::Result<()> {
-        let mut conn = if !handshaken {
-            self.connections.handshaking.read().get(&target).cloned()
-        } else {
-            self.connections.handshaken.read().get(&target).cloned()
-        };
+        self.connections.send_direct_message(target, message).await
+    }
 
-        if let Some(ref mut conn) = conn {
-            conn.lock().await.send_message(message).await
-        } else {
-            error!(
-                "not connect{} to {}; discarding the message",
-                if handshaken { "ed" } else { "ing" },
-                target
-            );
-            Ok(())
-        }
+    pub fn is_connected(&self, addr: SocketAddr) -> bool {
+        self.connections.is_connected(addr)
+    }
+
+    pub fn num_connected(&self) -> usize {
+        self.connections.num_connected()
     }
 
     pub fn is_handshaking(&self, addr: SocketAddr) -> bool {
-        self.connections.handshaking.read().contains_key(&addr)
+        self.connections.is_handshaking(addr)
     }
 
     pub fn is_handshaken(&self, addr: SocketAddr) -> bool {
-        self.connections.handshaken.read().contains_key(&addr)
-    }
-
-    pub fn num_handshaking(&self) -> usize {
-        self.connections.handshaking.read().len()
-    }
-
-    pub fn num_handshaken(&self) -> usize {
-        self.connections.handshaken.read().len()
+        self.connections.is_handshaken(addr)
     }
 }

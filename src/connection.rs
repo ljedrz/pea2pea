@@ -1,5 +1,5 @@
-use crate::{Node, NodeConfig};
 use crate::config::ByteOrder::*;
+use crate::{Node, NodeConfig};
 
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
@@ -107,12 +107,36 @@ impl Connection {
             self.config().message_length_size,
         ) {
             (_, 1) => self.writer.write(&[message.len() as u8]).await?,
-            (BE, 2) => self.writer.write(&(message.len() as u16).to_be_bytes()).await?,
-            (LE, 2) => self.writer.write(&(message.len() as u16).to_le_bytes()).await?,
-            (BE, 4) => self.writer.write(&(message.len() as u32).to_be_bytes()).await?,
-            (LE, 4) => self.writer.write(&(message.len() as u32).to_le_bytes()).await?,
-            (BE, 8) => self.writer.write(&(message.len() as u64).to_be_bytes()).await?,
-            (LE, 8) => self.writer.write(&(message.len() as u64).to_le_bytes()).await?,
+            (BE, 2) => {
+                self.writer
+                    .write(&(message.len() as u16).to_be_bytes())
+                    .await?
+            }
+            (LE, 2) => {
+                self.writer
+                    .write(&(message.len() as u16).to_le_bytes())
+                    .await?
+            }
+            (BE, 4) => {
+                self.writer
+                    .write(&(message.len() as u32).to_be_bytes())
+                    .await?
+            }
+            (LE, 4) => {
+                self.writer
+                    .write(&(message.len() as u32).to_le_bytes())
+                    .await?
+            }
+            (BE, 8) => {
+                self.writer
+                    .write(&(message.len() as u64).to_be_bytes())
+                    .await?
+            }
+            (LE, 8) => {
+                self.writer
+                    .write(&(message.len() as u64).to_le_bytes())
+                    .await?
+            }
             _ => unimplemented!(),
         };
 

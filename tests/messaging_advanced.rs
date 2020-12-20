@@ -1,4 +1,4 @@
-#![allow(dead_code)]
+#![allow(warnings)]
 
 // WIP
 
@@ -59,6 +59,7 @@ impl ResponseProtocol for AdvancedNode {
                     if let Some(msg) = node.parse_message(&request) {
                         if node.validate_message(&msg) {
                             if let Err(e) = node.process_message(msg, source) {
+                                error!("failed to process an incoming message: {}", e);
                                 // TODO: drop on fatal IO errors
                             }
                         } else {
@@ -116,9 +117,7 @@ impl ResponseProtocol for AdvancedNode {
 
                 let node = Arc::clone(self);
                 tokio::spawn(async move {
-                    node.send_direct_message(source_addr, false, buffer)
-                        .await
-                        .unwrap();
+                    node.send_direct_message(source_addr, buffer).await.unwrap();
                 });
 
                 Ok(())
@@ -132,5 +131,5 @@ impl ResponseProtocol for AdvancedNode {
 #[ignore]
 #[tokio::test]
 async fn request_handling() {
-    let node = Node::new(None).await.unwrap();
+    let _node = Node::new(None).await.unwrap();
 }
