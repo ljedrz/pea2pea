@@ -1,11 +1,11 @@
 use parking_lot::RwLock;
-use tokio::sync::Mutex;
+use tokio::task::JoinHandle;
 
 use crate::connection::Connection;
 
 use std::{collections::HashMap, io, net::SocketAddr, sync::Arc};
 
-type ConnectionMap = HashMap<SocketAddr, Arc<Mutex<Connection>>>;
+type ConnectionMap = HashMap<SocketAddr, Arc<Connection>>;
 
 #[derive(Default)]
 pub(crate) struct Connections {
@@ -38,7 +38,7 @@ impl Connections {
         self.handshaking.read().len() + self.handshaken.read().len()
     }
 
-    pub(crate) fn handshaken_connections(&self) -> Vec<(SocketAddr, Arc<Mutex<Connection>>)> {
+    pub(crate) fn handshaken_connections(&self) -> Vec<(SocketAddr, Arc<Connection>)> {
         self.handshaken
             .read()
             .iter()
@@ -46,8 +46,15 @@ impl Connections {
             .collect()
     }
 
-    pub(crate) fn mark_as_handshaken(&self, addr: SocketAddr) -> io::Result<()> {
+    pub(crate) async fn mark_as_handshaken(
+        &self,
+        addr: SocketAddr,
+        reader_task: Option<JoinHandle<()>>,
+    ) -> io::Result<()> {
         if let Some(conn) = self.handshaking.write().remove(&addr) {
+            if reader_task.is_some() {
+                conn.reader_task.set(reader_task).unwrap();
+            }
             self.handshaken.write().insert(addr, conn);
             Ok(())
         } else {
@@ -62,14 +69,14 @@ impl Connections {
     ) -> io::Result<()> {
         let conn = self.handshaken.read().get(&target).cloned();
 
-        let mut conn = if conn.is_some() {
+        let conn = if conn.is_some() {
             conn
         } else {
             self.handshaking.read().get(&target).cloned()
         };
 
-        if let Some(ref mut conn) = conn {
-            conn.lock().await.send_message(message).await
+        if let Some(ref conn) = conn {
+            conn.send_message(message).await
         } else {
             Err(io::ErrorKind::NotConnected.into())
         }

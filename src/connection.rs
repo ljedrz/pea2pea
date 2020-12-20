@@ -1,6 +1,7 @@
 use crate::config::ByteOrder::*;
 use crate::{Node, NodeConfig};
 
+use once_cell::sync::OnceCell;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::tcp::{OwnedReadHalf, OwnedWriteHalf},
@@ -10,7 +11,13 @@ use tokio::{
 
 use std::{convert::TryInto, io, sync::Arc};
 
-pub(crate) struct ConnectionReader {
+pub(crate) enum ConnectionSide {
+    Initiator,
+    Responder,
+}
+
+// FIXME: the pub is not ideal
+pub struct ConnectionReader {
     node: Arc<Node>,
     buffer: Vec<u8>,
     reader: OwnedReadHalf,
@@ -45,7 +52,8 @@ impl ConnectionReader {
         &self.node.config
     }
 
-    pub(crate) async fn read_message(&mut self) -> io::Result<Vec<u8>> {
+    // FIXME: this pub is not ideal
+    pub async fn read_message(&mut self) -> io::Result<Vec<u8>> {
         let msg_len_size = self.config().message_length_size as usize;
         self.reader
             .read_exact(&mut self.buffer[..msg_len_size])
@@ -71,28 +79,24 @@ impl ConnectionReader {
 
 pub(crate) struct Connection {
     node: Arc<Node>,
-    _reader_task: JoinHandle<()>,
-    writer: OwnedWriteHalf,
+    pub(crate) reader_task: OnceCell<Option<JoinHandle<()>>>,
+    writer: Mutex<OwnedWriteHalf>,
 }
 
 impl Connection {
-    pub(crate) fn new(
-        _reader_task: JoinHandle<()>,
-        writer: OwnedWriteHalf,
-        node: Arc<Node>,
-    ) -> Arc<Mutex<Self>> {
-        Arc::new(Mutex::new(Self {
+    pub(crate) fn new(writer: OwnedWriteHalf, node: Arc<Node>) -> Self {
+        Self {
             node,
-            _reader_task,
-            writer,
-        }))
+            reader_task: Default::default(),
+            writer: Mutex::new(writer),
+        }
     }
 
     fn config(&self) -> &NodeConfig {
         &self.node.config
     }
 
-    pub(crate) async fn send_message(&mut self, message: Vec<u8>) -> io::Result<()> {
+    pub(crate) async fn send_message(&self, message: Vec<u8>) -> io::Result<()> {
         if message.len() > self.config().message_length_size as usize * 8 {
             // TODO: retun a nice io::Error instead
             panic!(
@@ -102,45 +106,23 @@ impl Connection {
             );
         }
 
+        let mut writer = self.writer.lock().await;
+
         match (
             self.config().message_byte_order,
             self.config().message_length_size,
         ) {
-            (_, 1) => self.writer.write(&[message.len() as u8]).await?,
-            (BE, 2) => {
-                self.writer
-                    .write(&(message.len() as u16).to_be_bytes())
-                    .await?
-            }
-            (LE, 2) => {
-                self.writer
-                    .write(&(message.len() as u16).to_le_bytes())
-                    .await?
-            }
-            (BE, 4) => {
-                self.writer
-                    .write(&(message.len() as u32).to_be_bytes())
-                    .await?
-            }
-            (LE, 4) => {
-                self.writer
-                    .write(&(message.len() as u32).to_le_bytes())
-                    .await?
-            }
-            (BE, 8) => {
-                self.writer
-                    .write(&(message.len() as u64).to_be_bytes())
-                    .await?
-            }
-            (LE, 8) => {
-                self.writer
-                    .write(&(message.len() as u64).to_le_bytes())
-                    .await?
-            }
+            (_, 1) => writer.write(&[message.len() as u8]).await?,
+            (BE, 2) => writer.write(&(message.len() as u16).to_be_bytes()).await?,
+            (LE, 2) => writer.write(&(message.len() as u16).to_le_bytes()).await?,
+            (BE, 4) => writer.write(&(message.len() as u32).to_be_bytes()).await?,
+            (LE, 4) => writer.write(&(message.len() as u32).to_le_bytes()).await?,
+            (BE, 8) => writer.write(&(message.len() as u64).to_be_bytes()).await?,
+            (LE, 8) => writer.write(&(message.len() as u64).to_le_bytes()).await?,
             _ => unimplemented!(),
         };
 
-        self.writer.write(&message).await?;
-        self.writer.flush().await
+        writer.write(&message).await?;
+        writer.flush().await
     }
 }

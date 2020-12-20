@@ -1,7 +1,8 @@
 use crate::config::*;
-use crate::connection::{Connection, ConnectionReader};
+use crate::connection::{Connection, ConnectionReader, ConnectionSide};
 use crate::connections::Connections;
 use crate::known_peers::KnownPeers;
+use crate::protocols::HandshakeClosures;
 
 use once_cell::sync::OnceCell;
 use tokio::{
@@ -26,6 +27,7 @@ pub struct Node {
     pub config: NodeConfig,
     pub local_addr: SocketAddr,
     pub incoming_requests: OnceCell<Option<Sender<(Vec<u8>, SocketAddr)>>>,
+    pub handshake_closures: OnceCell<Option<HandshakeClosures>>,
     connections: Connections,
     known_peers: KnownPeers,
 }
@@ -75,6 +77,7 @@ impl Node {
             config,
             local_addr,
             incoming_requests: Default::default(),
+            handshake_closures: Default::default(),
             connections: Default::default(),
             known_peers: Default::default(),
         });
@@ -84,7 +87,11 @@ impl Node {
             debug!(parent: node_clone.span(), "spawned a listening task");
             loop {
                 match listener.accept().await {
-                    Ok((stream, addr)) => Arc::clone(&node_clone).accept_connection(stream, addr),
+                    Ok((stream, addr)) => {
+                        Arc::clone(&node_clone)
+                            .accept_connection(stream, addr)
+                            .await
+                    }
                     Err(e) => {
                         error!(parent: node_clone.span(), "couldn't accept a connection: {}", e);
                     }
@@ -110,11 +117,46 @@ impl Node {
         self.span.clone()
     }
 
-    fn adapt_stream(self: &Arc<Self>, stream: TcpStream, addr: SocketAddr) {
+    async fn adapt_stream(
+        self: &Arc<Self>,
+        stream: TcpStream,
+        addr: SocketAddr,
+        side: ConnectionSide,
+    ) {
         debug!(parent: self.span(), "connecting to {}", addr);
         let (reader, writer) = stream.into_split();
 
-        let mut connection_reader = ConnectionReader::new(reader, Arc::clone(&self));
+        let connection_reader = ConnectionReader::new(reader, Arc::clone(&self));
+        let connection = Arc::new(Connection::new(writer, Arc::clone(&self)));
+
+        self.connections
+            .handshaking
+            .write()
+            .insert(addr, connection);
+
+        let node = Arc::clone(&self);
+        let mut connection_reader =
+            if let Some(Some(ref handshake_closures)) = self.handshake_closures.get() {
+                let handshake_task = match side {
+                    ConnectionSide::Initiator => {
+                        (handshake_closures.initiator)(node, addr, connection_reader)
+                    }
+                    ConnectionSide::Responder => {
+                        (handshake_closures.responder)(node, addr, connection_reader)
+                    }
+                };
+
+                match handshake_task.await {
+                    Ok(conn_reader) => conn_reader,
+                    Err(e) => {
+                        error!(parent: self.span(), "handshake with {} failed: {}", addr, e);
+                        return;
+                        // TODO: cleanup, probably return some Result instead
+                    }
+                }
+            } else {
+                connection_reader
+            };
 
         let node = Arc::clone(&self);
         let reader_task = tokio::spawn(async move {
@@ -141,16 +183,21 @@ impl Node {
             }
         });
 
-        let connection = Connection::new(reader_task, writer, Arc::clone(&self));
-        self.connections
-            .handshaking
-            .write()
-            .insert(addr, connection);
+        if let Err(e) = self
+            .connections
+            .mark_as_handshaken(addr, Some(reader_task))
+            .await
+        {
+            error!(parent: self.span(), "can't mark {} as handshaken: {}", addr, e);
+        } else {
+            debug!(parent: self.span(), "marked {} as handshaken", addr);
+        }
     }
 
-    fn accept_connection(self: Arc<Self>, stream: TcpStream, addr: SocketAddr) {
+    async fn accept_connection(self: Arc<Self>, stream: TcpStream, addr: SocketAddr) {
         self.known_peers.add(addr);
-        self.adapt_stream(stream, addr);
+        self.adapt_stream(stream, addr, ConnectionSide::Responder)
+            .await;
     }
 
     pub async fn initiate_connection(self: &Arc<Self>, addr: SocketAddr) -> io::Result<()> {
@@ -161,7 +208,8 @@ impl Node {
 
         self.known_peers.add(addr);
         let stream = TcpStream::connect(addr).await?;
-        self.adapt_stream(stream, addr);
+        self.adapt_stream(stream, addr, ConnectionSide::Initiator)
+            .await;
 
         Ok(())
     }
@@ -191,7 +239,7 @@ impl Node {
     pub async fn send_broadcast(&self, message: Vec<u8>) {
         for (addr, conn) in self.connections.handshaken_connections().iter() {
             // FIXME: it would be nice not to clone the message
-            if let Err(e) = conn.lock().await.send_message(message.clone()).await {
+            if let Err(e) = conn.send_message(message.clone()).await {
                 error!(parent: self.span(), "couldn't send a broadcast to {}: {}", addr, e);
             }
         }
@@ -217,11 +265,7 @@ impl Node {
         self.known_peers.num_messages_received()
     }
 
-    // to be used in tests only, at least until the handshake protocol is introduced (which should make it redundant)
-    #[doc(hidden)]
-    pub fn mark_as_handshaken(&self, addr: SocketAddr) {
-        if let Err(e) = self.connections.mark_as_handshaken(addr) {
-            error!(parent: self.span(), "can't mark {} as handshaken: {}", addr, e);
-        }
+    pub async fn mark_as_handshaken(&self, addr: SocketAddr) -> io::Result<()> {
+        self.connections.mark_as_handshaken(addr, None).await
     }
 }

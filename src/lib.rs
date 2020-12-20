@@ -7,6 +7,7 @@ mod protocols;
 mod topology;
 
 pub use config::NodeConfig;
+pub use connection::ConnectionReader;
 pub use node::Node;
-pub use protocols::{BroadcastProtocol, ResponseProtocol};
+pub use protocols::{BroadcastProtocol, HandshakeClosures, HandshakeProtocol, ResponseProtocol};
 pub use topology::{spawn_nodes, Topology};

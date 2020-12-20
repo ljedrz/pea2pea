@@ -50,7 +50,6 @@ async fn chatty_node_broadcasts() {
         .initiate_connection(generic_node.local_addr)
         .await
         .unwrap();
-    chatty_node.mark_as_handshaken(generic_node.local_addr);
     chatty_node.enable_broadcast_protocol();
 
     sleep(Duration::from_millis(100)).await;
