@@ -1,5 +1,5 @@
-use crate::config::ByteOrder::*;
 use crate::{Node, NodeConfig};
+use crate::config::ByteOrder::*;
 
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},

@@ -1,12 +1,13 @@
 use crate::config::*;
 use crate::connection::{Connection, ConnectionReader};
+use crate::connections::Connections;
 use crate::peer_stats::PeerStats;
 
 use once_cell::sync::OnceCell;
 use parking_lot::RwLock;
 use tokio::{
     net::{TcpListener, TcpStream},
-    sync::{mpsc::Sender, Mutex},
+    sync::mpsc::Sender,
 };
 use tracing::*;
 
@@ -23,8 +24,7 @@ pub struct Node {
     pub config: NodeConfig,
     pub local_addr: SocketAddr,
     pub incoming_requests: OnceCell<Option<Sender<(Vec<u8>, SocketAddr)>>>,
-    connecting: RwLock<HashMap<SocketAddr, Arc<Mutex<Connection>>>>,
-    connected: RwLock<HashMap<SocketAddr, Arc<Mutex<Connection>>>>,
+    connections: Connections,
     known_peers: RwLock<HashMap<SocketAddr, PeerStats>>,
 }
 
@@ -66,8 +66,7 @@ impl Node {
             config,
             local_addr,
             incoming_requests: Default::default(),
-            connecting: Default::default(),
-            connected: Default::default(),
+            connections: Default::default(),
             known_peers: Default::default(),
         });
 
@@ -124,7 +123,7 @@ impl Node {
         });
 
         let connection = Connection::new(reader_task, writer, Arc::clone(&self));
-        self.connecting.write().insert(addr, connection);
+        self.connections.handshaking.write().insert(addr, connection);
     }
 
     fn accept_connection(self: Arc<Self>, stream: TcpStream, addr: SocketAddr) {
@@ -141,7 +140,7 @@ impl Node {
     }
 
     pub async fn initiate_connection(self: &Arc<Self>, addr: SocketAddr) -> io::Result<()> {
-        if self.is_connecting(addr) || self.is_connected(addr) {
+        if self.is_handshaking(addr) || self.is_handshaken(addr) {
             warn!("already connecting/connected to {}", addr);
             return Ok(());
         }
@@ -163,8 +162,8 @@ impl Node {
     }
 
     pub fn disconnect(&self, addr: SocketAddr) -> bool {
-        let disconnected = if self.connecting.write().remove(&addr).is_none() {
-            self.connected.write().remove(&addr).is_some()
+        let disconnected = if self.connections.handshaking.write().remove(&addr).is_none() {
+            self.connections.handshaken.write().remove(&addr).is_some()
         } else {
             true
         };
@@ -181,13 +180,13 @@ impl Node {
     pub async fn send_direct_message(
         &self,
         target: SocketAddr,
-        post_handshake: bool,
+        handshaken: bool,
         message: Vec<u8>,
     ) -> io::Result<()> {
-        let mut conn = if !post_handshake {
-            self.connecting.read().get(&target).cloned()
+        let mut conn = if !handshaken {
+            self.connections.handshaking.read().get(&target).cloned()
         } else {
-            self.connected.read().get(&target).cloned()
+            self.connections.handshaken.read().get(&target).cloned()
         };
 
         if let Some(ref mut conn) = conn {
@@ -195,26 +194,26 @@ impl Node {
         } else {
             error!(
                 "not connect{} to {}; discarding the message",
-                if post_handshake { "ed" } else { "ing" },
+                if handshaken { "ed" } else { "ing" },
                 target
             );
             Ok(())
         }
     }
 
-    pub fn is_connecting(&self, addr: SocketAddr) -> bool {
-        self.connecting.read().contains_key(&addr)
+    pub fn is_handshaking(&self, addr: SocketAddr) -> bool {
+        self.connections.handshaking.read().contains_key(&addr)
     }
 
-    pub fn is_connected(&self, addr: SocketAddr) -> bool {
-        self.connected.read().contains_key(&addr)
+    pub fn is_handshaken(&self, addr: SocketAddr) -> bool {
+        self.connections.handshaken.read().contains_key(&addr)
     }
 
-    pub fn num_connecting(&self) -> usize {
-        self.connecting.read().len()
+    pub fn num_handshaking(&self) -> usize {
+        self.connections.handshaking.read().len()
     }
 
-    pub fn num_connected(&self) -> usize {
-        self.connected.read().len()
+    pub fn num_handshaken(&self) -> usize {
+        self.connections.handshaken.read().len()
     }
 }

@@ -1,5 +1,6 @@
 mod config;
 mod connection;
+mod connections;
 mod messaging;
 mod node;
 mod peer_stats;
