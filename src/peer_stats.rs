@@ -1,6 +1,6 @@
 use std::time::Instant;
 
-pub(crate) struct Peer {
+pub(crate) struct PeerStats {
     times_connected: usize, // TODO: can be NonZeroUsize
     first_seen: Instant,
     last_seen: Instant,
@@ -9,8 +9,8 @@ pub(crate) struct Peer {
     failures: u8,
 }
 
-impl Peer {
-    pub(crate) fn new() -> Self {
+impl Default for PeerStats {
+    fn default() -> Self {
         let now = Instant::now();
 
         Self {
@@ -22,7 +22,9 @@ impl Peer {
             failures: 0,
         }
     }
+}
 
+impl PeerStats {
     pub(crate) fn new_connection(&mut self) {
         self.times_connected += 1;
         self.last_seen = Instant::now();

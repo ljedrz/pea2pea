@@ -1,6 +1,6 @@
 use crate::config::*;
 use crate::connection::{Connection, ConnectionReader};
-use crate::peer::Peer;
+use crate::peer_stats::PeerStats;
 
 use parking_lot::RwLock;
 use tokio::net::{TcpListener, TcpStream};
@@ -18,7 +18,7 @@ pub struct Node {
     pub local_addr: SocketAddr,
     connecting: RwLock<HashMap<SocketAddr, Arc<Mutex<Connection>>>>,
     connected: RwLock<HashMap<SocketAddr, Arc<Mutex<Connection>>>>,
-    known_peers: RwLock<HashMap<SocketAddr, Peer>>,
+    known_peers: RwLock<HashMap<SocketAddr, PeerStats>>,
 }
 
 impl Node {
@@ -105,7 +105,7 @@ impl Node {
     fn accept_connection(self: Arc<Self>, stream: TcpStream, addr: SocketAddr) {
         match self.known_peers.write().entry(addr) {
             Entry::Vacant(e) => {
-                e.insert(Peer::new());
+                e.insert(Default::default());
             }
             Entry::Occupied(mut e) => {
                 e.get_mut().new_connection();

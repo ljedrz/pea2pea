@@ -1,7 +1,7 @@
 mod config;
 mod connection;
 mod node;
-mod peer;
+mod peer_stats;
 mod topology;
 
 pub use config::NodeConfig;

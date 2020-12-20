@@ -9,4 +9,5 @@ async fn start_and_cancel_connecting() {
     sleep(Duration::from_millis(200)).await;
 
     assert!(nodes[0].disconnect(nodes[1].local_addr));
+    assert!(!nodes[0].is_connecting(nodes[1].local_addr));
 }
