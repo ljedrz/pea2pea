@@ -1,10 +1,9 @@
 use crate::config::*;
 use crate::connection::{Connection, ConnectionReader};
 use crate::connections::Connections;
-use crate::peer_stats::PeerStats;
+use crate::known_peers::KnownPeers;
 
 use once_cell::sync::OnceCell;
-use parking_lot::RwLock;
 use tokio::{
     net::{TcpListener, TcpStream},
     sync::mpsc::Sender,
@@ -12,7 +11,6 @@ use tokio::{
 use tracing::*;
 
 use std::{
-    collections::hash_map::{Entry, HashMap},
     io,
     net::{IpAddr, Ipv4Addr, SocketAddr},
     sync::{
@@ -28,7 +26,7 @@ pub struct Node {
     pub local_addr: SocketAddr,
     pub incoming_requests: OnceCell<Option<Sender<(Vec<u8>, SocketAddr)>>>,
     connections: Connections,
-    known_peers: RwLock<HashMap<SocketAddr, PeerStats>>,
+    known_peers: KnownPeers,
 }
 
 impl Node {
@@ -115,11 +113,7 @@ impl Node {
                     Ok(msg) => {
                         info!("received a {}B message from {}", msg.len(), addr);
 
-                        node.known_peers
-                            .write()
-                            .get_mut(&addr)
-                            .unwrap()
-                            .got_message(msg.len());
+                        node.known_peers.register_message(addr, msg.len());
 
                         if let Some(Some(ref incoming_requests)) = node.incoming_requests.get() {
                             if let Err(e) = incoming_requests.send((msg, addr)).await {
@@ -128,7 +122,10 @@ impl Node {
                             }
                         }
                     }
-                    Err(e) => error!("can't read message: {}", e),
+                    Err(e) => {
+                        node.known_peers.register_failure(addr);
+                        error!("can't read message: {}", e);
+                    }
                 }
             }
         });
@@ -141,15 +138,7 @@ impl Node {
     }
 
     fn accept_connection(self: Arc<Self>, stream: TcpStream, addr: SocketAddr) {
-        match self.known_peers.write().entry(addr) {
-            Entry::Vacant(e) => {
-                e.insert(Default::default());
-            }
-            Entry::Occupied(mut e) => {
-                e.get_mut().new_connection();
-            }
-        }
-
+        self.known_peers.add(addr);
         self.adapt_stream(stream, addr);
     }
 
@@ -160,15 +149,7 @@ impl Node {
         }
         debug!("connecting to {}", addr);
 
-        match self.known_peers.write().entry(addr) {
-            Entry::Vacant(e) => {
-                e.insert(Default::default());
-            }
-            Entry::Occupied(mut e) => {
-                e.get_mut().new_connection();
-            }
-        }
-
+        self.known_peers.add(addr);
         let stream = TcpStream::connect(addr).await?;
         self.adapt_stream(stream, addr);
 

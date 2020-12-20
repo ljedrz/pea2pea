@@ -1,4 +1,23 @@
-use std::time::Instant;
+use parking_lot::RwLock;
+
+use std::{collections::HashMap, net::SocketAddr, time::Instant};
+
+#[derive(Default)]
+pub(crate) struct KnownPeers(RwLock<HashMap<SocketAddr, PeerStats>>);
+
+impl KnownPeers {
+    pub(crate) fn add(&self, addr: SocketAddr) {
+        self.0.write().entry(addr).or_default().new_connection();
+    }
+
+    pub(crate) fn register_message(&self, from: SocketAddr, len: usize) {
+        self.0.write().get_mut(&from).unwrap().got_message(len);
+    }
+
+    pub(crate) fn register_failure(&self, from: SocketAddr) {
+        self.0.write().get_mut(&from).unwrap().register_failure();
+    }
+}
 
 #[derive(Debug)]
 pub(crate) struct PeerStats {
@@ -27,13 +46,18 @@ impl Default for PeerStats {
 
 impl PeerStats {
     pub(crate) fn new_connection(&mut self) {
-        self.times_connected += 1;
         self.last_seen = Instant::now();
+        self.times_connected += 1;
     }
 
     pub(crate) fn got_message(&mut self, msg_len: usize) {
+        self.last_seen = Instant::now();
         self.msg_count += 1;
         self.bytes_received += msg_len as u64;
+    }
+
+    pub(crate) fn register_failure(&mut self) {
         self.last_seen = Instant::now();
+        self.failures += 1;
     }
 }

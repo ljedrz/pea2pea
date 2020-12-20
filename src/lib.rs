@@ -1,9 +1,9 @@
 mod config;
 mod connection;
 mod connections;
+mod known_peers;
 mod messaging;
 mod node;
-mod peer_stats;
 mod topology;
 
 pub use config::NodeConfig;
