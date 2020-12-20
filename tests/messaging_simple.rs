@@ -2,7 +2,7 @@ use parking_lot::Mutex;
 use tokio::{sync::mpsc::channel, time::sleep};
 use tracing::*;
 
-use pea2pea::{Node, ResponseProtocol};
+use pea2pea::{Node, NodeConfig, ResponseProtocol};
 
 use std::{collections::HashSet, io, net::SocketAddr, sync::Arc, time::Duration};
 
@@ -40,13 +40,13 @@ impl ResponseProtocol for EchoNode {
                     if let Some(msg) = node.parse_message(&request) {
                         if node.validate_message(&msg) {
                             if let Err(e) = node.process_message(msg, source) {
-                                error!("failed to handle an incoming message: {}", e);
+                                error!(parent: node.span(), "failed to handle an incoming message: {}", e);
                             }
                         } else {
-                            error!("failed to validate an incoming message");
+                            error!(parent: node.span(), "failed to validate an incoming message");
                         }
                     } else {
-                        error!("can't parse an incoming message");
+                        error!(parent: node.span(), "can't parse an incoming message");
                     }
                 }
             }
@@ -70,9 +70,9 @@ impl ResponseProtocol for EchoNode {
         message: TestMessage,
         source_addr: SocketAddr,
     ) -> io::Result<()> {
-        info!("got a {:?} from {}", message, source_addr);
+        info!(parent: self.span(), "got a {:?} from {}", message, source_addr);
         if self.echoed.lock().insert(message) {
-            info!("it was new! echoing it");
+            info!(parent: self.span(), "it was new! echoing it");
 
             let node = Arc::clone(self);
             tokio::spawn(async move {
@@ -81,7 +81,7 @@ impl ResponseProtocol for EchoNode {
                     .unwrap();
             });
         } else {
-            debug!("I've already seen {:?}! not echoing", message);
+            debug!(parent: self.span(), "I've already seen {:?}! not echoing", message);
         }
 
         Ok(())
@@ -92,10 +92,14 @@ impl ResponseProtocol for EchoNode {
 async fn request_handling_echo() {
     tracing_subscriber::fmt::init();
 
-    let generic_node = Node::new(None).await.unwrap();
+    let mut generic_node_config = NodeConfig::default();
+    generic_node_config.name = Some("generic".into());
+    let generic_node = Node::new(Some(generic_node_config)).await.unwrap();
 
+    let mut echo_node_config = NodeConfig::default();
+    echo_node_config.name = Some("echo".into());
     let echo_node = Arc::new(EchoNode {
-        node: Node::new(None).await.unwrap(),
+        node: Node::new(Some(echo_node_config)).await.unwrap(),
         echoed: Default::default(),
     });
     echo_node.enable_response_protocol();

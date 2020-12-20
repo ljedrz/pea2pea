@@ -1,6 +1,5 @@
 use parking_lot::RwLock;
 use tokio::sync::Mutex;
-use tracing::*;
 
 use crate::connection::Connection;
 
@@ -55,8 +54,7 @@ impl Connections {
         if let Some(ref mut conn) = conn {
             conn.lock().await.send_message(message).await
         } else {
-            error!("not connected to {}; discarding the message", target);
-            Ok(())
+            Err(io::ErrorKind::NotConnected.into())
         }
     }
 }

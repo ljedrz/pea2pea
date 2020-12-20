@@ -22,6 +22,7 @@ use std::{
 static SEQUENTIAL_NODE_ID: AtomicUsize = AtomicUsize::new(0);
 
 pub struct Node {
+    span: Span,
     pub config: NodeConfig,
     pub local_addr: SocketAddr,
     pub incoming_requests: OnceCell<Option<Sender<(Vec<u8>, SocketAddr)>>>,
@@ -42,6 +43,8 @@ impl Node {
             );
         }
 
+        let span = trace_span!("node", name = config.name.as_deref().unwrap());
+
         let desired_listener = if let Some(port) = config.desired_listening_port {
             let desired_local_addr = SocketAddr::new(local_ip, port);
             TcpListener::bind(desired_local_addr).await
@@ -56,11 +59,11 @@ impl Node {
             Ok(listener) => listener,
             Err(e) => {
                 if config.allow_random_port {
-                    warn!("trying any port, the desired one is unavailable: {}", e);
+                    warn!(parent: span.clone(), "trying any port, the desired one is unavailable: {}", e);
                     let random_available_addr = SocketAddr::new(local_ip, 0);
                     TcpListener::bind(random_available_addr).await?
                 } else {
-                    error!("the desired port is unavailable: {}", e);
+                    error!(parent: span.clone(), "the desired port is unavailable: {}", e);
                     return Err(e);
                 }
             }
@@ -68,6 +71,7 @@ impl Node {
         let local_addr = listener.local_addr()?;
 
         let node = Arc::new(Self {
+            span,
             config,
             local_addr,
             incoming_requests: Default::default(),
@@ -77,18 +81,20 @@ impl Node {
 
         let node_clone = Arc::clone(&node);
         tokio::spawn(async move {
-            debug!("spawned a listening task");
+            debug!(parent: node_clone.span(), "spawned a listening task");
             loop {
                 match listener.accept().await {
                     Ok((stream, addr)) => Arc::clone(&node_clone).accept_connection(stream, addr),
-                    Err(e) => error!("couldn't accept a connection: {}", e),
+                    Err(e) => {
+                        error!(parent: node_clone.span(), "couldn't accept a connection: {}", e);
+                    }
                 }
             }
         });
 
         info!(
-            "node \"{}\" is ready; listening on {}",
-            node.name(),
+            parent: node.span(),
+            "the node is ready; listening on {}",
             local_addr
         );
 
@@ -100,6 +106,10 @@ impl Node {
         self.config.name.as_deref().unwrap()
     }
 
+    pub fn span(&self) -> Span {
+        self.span.clone()
+    }
+
     fn adapt_stream(self: &Arc<Self>, stream: TcpStream, addr: SocketAddr) {
         let (reader, writer) = stream.into_split();
 
@@ -107,24 +117,24 @@ impl Node {
 
         let node = Arc::clone(&self);
         let reader_task = tokio::spawn(async move {
-            debug!("spawned a task reading messages from {}", addr);
+            debug!(parent: node.span(), "spawned a task reading messages from {}", addr);
             loop {
                 match connection_reader.read_message().await {
                     Ok(msg) => {
-                        info!("received a {}B message from {}", msg.len(), addr);
+                        info!(parent: node.span(), "received a {}B message from {}", msg.len(), addr);
 
                         node.known_peers.register_message(addr, msg.len());
 
                         if let Some(Some(ref incoming_requests)) = node.incoming_requests.get() {
                             if let Err(e) = incoming_requests.send((msg, addr)).await {
-                                error!("can't register an incoming message: {}", e);
+                                error!(parent: node.span(), "can't register an incoming message: {}", e);
                                 // TODO: how to proceed?
                             }
                         }
                     }
                     Err(e) => {
                         node.known_peers.register_failure(addr);
-                        error!("can't read message: {}", e);
+                        error!(parent: node.span(), "can't read message: {}", e);
                     }
                 }
             }
@@ -144,10 +154,10 @@ impl Node {
 
     pub async fn initiate_connection(self: &Arc<Self>, addr: SocketAddr) -> io::Result<()> {
         if self.connections.is_connected(addr) {
-            warn!("already connecting/connected to {}", addr);
+            warn!(parent: self.span(), "already connecting/connected to {}", addr);
             return Ok(());
         }
-        debug!("connecting to {}", addr);
+        debug!(parent: self.span(), "connecting to {}", addr);
 
         self.known_peers.add(addr);
         let stream = TcpStream::connect(addr).await?;
@@ -160,9 +170,9 @@ impl Node {
         let disconnected = self.connections.disconnect(addr);
 
         if disconnected {
-            debug!("disconnected from {}", addr);
+            info!(parent: self.span(), "disconnected from {}", addr);
         } else {
-            warn!("wasn't connected to {}", addr);
+            warn!(parent: self.span(), "wasn't connected to {}", addr);
         }
 
         disconnected
@@ -173,7 +183,13 @@ impl Node {
         target: SocketAddr,
         message: Vec<u8>,
     ) -> io::Result<()> {
-        self.connections.send_direct_message(target, message).await
+        let ret = self.connections.send_direct_message(target, message).await;
+
+        if let Err(ref e) = ret {
+            error!(parent: self.span(), "couldn't send a direct message to {}: {}", target, e);
+        }
+
+        ret
     }
 
     pub fn is_connected(&self, addr: SocketAddr) -> bool {
