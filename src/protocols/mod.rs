@@ -1,11 +1,9 @@
 mod broadcasting;
 mod handshaking;
-mod reading;
-mod responding;
-mod writing;
+mod messaging;
+mod packeting;
 
 pub use broadcasting::BroadcastProtocol;
 pub use handshaking::{HandshakeClosures, HandshakeProtocol};
-pub use reading::{ReadProtocol, ReadingClosure};
-pub use responding::ResponseProtocol;
-pub use writing::{WriteProtocol, WritingClosure};
+pub use messaging::{MessagingClosure, MessagingProtocol};
+pub use packeting::{PacketingClosure, PacketingProtocol};

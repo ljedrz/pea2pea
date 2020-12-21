@@ -10,7 +10,7 @@ pub use config::NodeConfig;
 pub use connection::{Connection, ConnectionReader};
 pub use node::{ContainsNode, Node};
 pub use protocols::{
-    BroadcastProtocol, HandshakeClosures, HandshakeProtocol, ReadProtocol, ReadingClosure,
-    ResponseProtocol, WriteProtocol, WritingClosure,
+    BroadcastProtocol, HandshakeClosures, HandshakeProtocol, MessagingClosure, MessagingProtocol,
+    PacketingClosure, PacketingProtocol,
 };
 pub use topology::{spawn_nodes, Topology};

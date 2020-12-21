@@ -1,17 +1,40 @@
 use crate::{ConnectionReader, ContainsNode};
 
 use async_trait::async_trait;
-use tokio::task::JoinHandle;
+use tokio::{sync::mpsc::channel, task::JoinHandle};
 use tracing::*;
 
-use std::{io, net::SocketAddr};
+use std::{io, net::SocketAddr, sync::Arc};
 
 #[async_trait]
-pub trait ReadProtocol: ContainsNode {
-    fn enable_reading_protocol(&self)
+pub trait MessagingProtocol: ContainsNode {
+    type Message;
+
+    fn enable_messaging_protocol(self: &Arc<Self>)
     where
-        Self: Send + Sync,
+        Self: Send + Sync + 'static,
     {
+        let (sender, mut receiver) = channel(1024); // TODO: specify in NodeConfig
+        self.node().set_incoming_requests(sender);
+
+        let self_clone = Arc::clone(self);
+        tokio::spawn(async move {
+            let node = self_clone.node();
+            loop {
+                if let Some((request, source)) = receiver.recv().await {
+                    if let Some(msg) = self_clone.parse_message(&request) {
+                        self_clone.process_message(&msg);
+
+                        if let Err(e) = self_clone.respond_to_message(msg, source) {
+                            error!(parent: node.span(), "failed to handle an incoming message: {}", e);
+                        }
+                    } else {
+                        error!(parent: node.span(), "can't parse an incoming message");
+                    }
+                }
+            }
+        });
+
         let reading_closure = |mut connection_reader: ConnectionReader,
                                addr: SocketAddr|
          -> JoinHandle<()> {
@@ -41,11 +64,26 @@ pub trait ReadProtocol: ContainsNode {
             })
         };
 
-        self.node().set_reading_closure(Box::new(reading_closure));
+        self.node().set_messaging_closure(Box::new(reading_closure));
     }
 
     async fn read_message(conn_reader: &mut ConnectionReader) -> io::Result<Vec<u8>>;
+
+    fn parse_message(&self, buffer: &[u8]) -> Option<Self::Message>;
+
+    fn process_message(&self, _message: &Self::Message) {
+        // do nothing by default
+    }
+
+    fn respond_to_message(
+        self: &Arc<Self>,
+        _message: Self::Message,
+        _source: SocketAddr,
+    ) -> io::Result<()> {
+        // don't do anything by default
+        Ok(())
+    }
 }
 
-pub type ReadingClosure =
+pub type MessagingClosure =
     Box<dyn Fn(ConnectionReader, SocketAddr) -> JoinHandle<()> + Send + Sync + 'static>;

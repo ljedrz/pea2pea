@@ -2,7 +2,7 @@ use crate::config::*;
 use crate::connection::{Connection, ConnectionReader, ConnectionSide};
 use crate::connections::Connections;
 use crate::known_peers::KnownPeers;
-use crate::protocols::{HandshakeClosures, ReadingClosure, WritingClosure};
+use crate::protocols::{HandshakeClosures, MessagingClosure, PacketingClosure};
 
 use once_cell::sync::OnceCell;
 use tokio::{
@@ -32,8 +32,8 @@ pub struct Node {
     span: Span,
     pub config: NodeConfig,
     pub local_addr: SocketAddr,
-    reading_closure: OnceCell<Option<ReadingClosure>>,
-    writing_closure: OnceCell<Option<WritingClosure>>,
+    messaging_closure: OnceCell<Option<MessagingClosure>>,
+    packeting_closure: OnceCell<Option<PacketingClosure>>,
     incoming_requests: OnceCell<Option<IncomingRequests>>,
     handshake_closures: OnceCell<Option<HandshakeClosures>>,
     connections: Connections,
@@ -85,8 +85,8 @@ impl Node {
             config,
             local_addr,
             incoming_requests: Default::default(),
-            reading_closure: Default::default(),
-            writing_closure: Default::default(),
+            messaging_closure: Default::default(),
+            packeting_closure: Default::default(),
             handshake_closures: Default::default(),
             connections: Default::default(),
             known_peers: Default::default(),
@@ -166,8 +166,8 @@ impl Node {
             connection_reader
         };
 
-        let reader_task = if let Some(ref reading_closure) = self.reading_closure() {
-            Some(reading_closure(connection_reader, addr))
+        let reader_task = if let Some(ref messaging_closure) = self.messaging_closure() {
+            Some(messaging_closure(connection_reader, addr))
         } else {
             None
         };
@@ -268,12 +268,16 @@ impl Node {
             .and_then(|inner| inner.as_ref())
     }
 
-    pub fn reading_closure(&self) -> Option<&ReadingClosure> {
-        self.reading_closure.get().and_then(|inner| inner.as_ref())
+    pub fn messaging_closure(&self) -> Option<&MessagingClosure> {
+        self.messaging_closure
+            .get()
+            .and_then(|inner| inner.as_ref())
     }
 
-    pub fn writing_closure(&self) -> Option<&WritingClosure> {
-        self.writing_closure.get().and_then(|inner| inner.as_ref())
+    pub fn packeting_closure(&self) -> Option<&PacketingClosure> {
+        self.packeting_closure
+            .get()
+            .and_then(|inner| inner.as_ref())
     }
 
     pub fn handshake_closures(&self) -> Option<&HandshakeClosures> {
@@ -288,15 +292,15 @@ impl Node {
             .expect("the incoming_requests field was set more than once!");
     }
 
-    pub fn set_reading_closure(&self, closure: ReadingClosure) {
-        if self.reading_closure.set(Some(closure)).is_err() {
-            panic!("the reading_closure field was set more than once!");
+    pub fn set_messaging_closure(&self, closure: MessagingClosure) {
+        if self.messaging_closure.set(Some(closure)).is_err() {
+            panic!("the messaging_closure field was set more than once!");
         }
     }
 
-    pub fn set_writing_closure(&self, closure: WritingClosure) {
-        if self.writing_closure.set(Some(closure)).is_err() {
-            panic!("the writing_closure field was set more than once!");
+    pub fn set_packeting_closure(&self, closure: PacketingClosure) {
+        if self.packeting_closure.set(Some(closure)).is_err() {
+            panic!("the packeting_closure field was set more than once!");
         }
     }
 

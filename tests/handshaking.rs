@@ -3,8 +3,8 @@ use tracing::*;
 
 mod common;
 use pea2pea::{
-    Connection, ConnectionReader, ContainsNode, HandshakeClosures, HandshakeProtocol, Node,
-    NodeConfig, ReadProtocol, WriteProtocol,
+    Connection, ConnectionReader, ContainsNode, HandshakeClosures, HandshakeProtocol,
+    MessagingProtocol, Node, NodeConfig, PacketingProtocol,
 };
 
 use parking_lot::RwLock;
@@ -42,8 +42,8 @@ impl ContainsNode for SecureishNode {
     }
 }
 
-impl_read_protocol!(SecureishNode);
-impl WriteProtocol for SecureishNode {}
+impl_messaging_protocol!(SecureishNode);
+impl PacketingProtocol for SecureishNode {}
 
 impl HandshakeProtocol for SecureishNode {
     fn enable_handshake_protocol(&self) {
@@ -162,8 +162,8 @@ async fn simple_handshake() {
 
     // not required for the handshake; it's enabled only so that its relationship with the
     // handshake protocol can be tested too; it should kick in only after the handshake
-    initiator_node.enable_reading_protocol();
-    responder_node.enable_reading_protocol();
+    initiator_node.enable_messaging_protocol();
+    responder_node.enable_messaging_protocol();
 
     initiator_node.enable_handshake_protocol();
     responder_node.enable_handshake_protocol();

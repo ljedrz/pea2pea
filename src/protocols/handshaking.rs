@@ -1,10 +1,10 @@
-use crate::{Connection, ConnectionReader, WriteProtocol};
+use crate::{Connection, ConnectionReader, PacketingProtocol};
 
 use tokio::task::JoinHandle;
 
 use std::{net::SocketAddr, sync::Arc};
 
-pub trait HandshakeProtocol: WriteProtocol {
+pub trait HandshakeProtocol: PacketingProtocol {
     // prepare the Node to produce and handle handshakes
     fn enable_handshake_protocol(&self);
 }

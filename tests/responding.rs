@@ -1,10 +1,10 @@
 use parking_lot::Mutex;
-use tokio::{io::AsyncReadExt, sync::mpsc::channel, time::sleep};
+use tokio::{io::AsyncReadExt, time::sleep};
 use tracing::*;
 
 mod common;
 use pea2pea::{
-    ConnectionReader, ContainsNode, Node, NodeConfig, ReadProtocol, ResponseProtocol, WriteProtocol,
+    ConnectionReader, ContainsNode, MessagingProtocol, Node, NodeConfig, PacketingProtocol,
 };
 
 use std::{
@@ -38,32 +38,28 @@ impl ContainsNode for EchoNode {
     }
 }
 
-impl_read_protocol!(EchoNode);
-impl WriteProtocol for EchoNode {}
+impl PacketingProtocol for EchoNode {}
 
-impl ResponseProtocol for EchoNode {
+#[async_trait::async_trait]
+impl MessagingProtocol for EchoNode {
     type Message = TestMessage;
 
-    fn enable_response_protocol(self: &Arc<Self>) {
-        let (sender, mut receiver) = channel(4);
-        self.node().set_incoming_requests(sender);
+    async fn read_message(connection_reader: &mut ConnectionReader) -> std::io::Result<Vec<u8>> {
+        // expecting the test messages to be prefixed with their length encoded as a LE u16
+        let msg_len_size: usize = 2;
 
-        let node = Arc::clone(self);
-        tokio::spawn(async move {
-            loop {
-                if let Some((request, source)) = receiver.recv().await {
-                    if let Some(msg) = node.parse_message(&request) {
-                        node.process_message(&msg);
+        let buffer = &mut connection_reader.buffer;
+        connection_reader
+            .reader
+            .read_exact(&mut buffer[..msg_len_size])
+            .await?;
+        let msg_len = u16::from_le_bytes(buffer[..msg_len_size].try_into().unwrap()) as usize;
+        connection_reader
+            .reader
+            .read_exact(&mut buffer[..msg_len])
+            .await?;
 
-                        if let Err(e) = node.respond_to_message(msg, source) {
-                            error!(parent: node.span(), "failed to handle an incoming message: {}", e);
-                        }
-                    } else {
-                        error!(parent: node.span(), "can't parse an incoming message");
-                    }
-                }
-            }
-        });
+        Ok(buffer[..msg_len].to_vec())
     }
 
     fn parse_message(&self, buffer: &[u8]) -> Option<Self::Message> {
@@ -80,7 +76,7 @@ impl ResponseProtocol for EchoNode {
 
     fn respond_to_message(
         self: &Arc<Self>,
-        message: TestMessage,
+        message: Self::Message,
         source_addr: SocketAddr,
     ) -> io::Result<()> {
         info!(parent: self.span(), "got a {:?} from {}", message, source_addr);
@@ -114,7 +110,7 @@ async fn request_handling_echo() {
         message_with_u16_len
     });
 
-    shout_node.enable_writing_protocol(writing_closure.clone());
+    shout_node.enable_packeting_protocol(writing_closure.clone());
 
     let mut echo_node_config = NodeConfig::default();
     echo_node_config.name = Some("echo".into());
@@ -123,9 +119,8 @@ async fn request_handling_echo() {
         echoed: Default::default(),
     });
 
-    echo_node.enable_reading_protocol();
-    echo_node.enable_writing_protocol(writing_closure);
-    echo_node.enable_response_protocol();
+    echo_node.enable_messaging_protocol();
+    echo_node.enable_packeting_protocol(writing_closure);
 
     shout_node
         .initiate_connection(echo_node.local_addr)

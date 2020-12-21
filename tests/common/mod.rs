@@ -1,6 +1,8 @@
 use tokio::io::AsyncReadExt;
 
-use pea2pea::{ConnectionReader, ContainsNode, Node, NodeConfig, ReadProtocol, WriteProtocol};
+use pea2pea::{
+    ConnectionReader, ContainsNode, MessagingProtocol, Node, NodeConfig, PacketingProtocol,
+};
 
 use std::{convert::TryInto, ops::Deref, sync::Arc};
 
@@ -8,10 +10,10 @@ pub struct RwNode(Arc<Node>);
 
 impl RwNode {
     #[allow(dead_code)]
-    pub async fn new() -> Self {
+    pub async fn new() -> Arc<Self> {
         let mut config = NodeConfig::default();
         config.name = Some("reader".into());
-        Self(Node::new(Some(config)).await.unwrap())
+        Arc::new(Self(Node::new(Some(config)).await.unwrap()))
     }
 }
 
@@ -30,10 +32,12 @@ impl ContainsNode for RwNode {
 }
 
 #[macro_export]
-macro_rules! impl_read_protocol {
+macro_rules! impl_messaging_protocol {
     ($target: ty) => {
         #[async_trait::async_trait]
-        impl ReadProtocol for $target {
+        impl MessagingProtocol for $target {
+            type Message = ();
+
             async fn read_message(
                 connection_reader: &mut ConnectionReader,
             ) -> std::io::Result<Vec<u8>> {
@@ -54,10 +58,14 @@ macro_rules! impl_read_protocol {
 
                 Ok(buffer[..msg_len].to_vec())
             }
+
+            fn parse_message(&self, _: &[u8]) -> Option<Self::Message> {
+                Some(())
+            }
         }
     };
 }
 
-impl_read_protocol!(RwNode);
+impl_messaging_protocol!(RwNode);
 
-impl WriteProtocol for RwNode {}
+impl PacketingProtocol for RwNode {}

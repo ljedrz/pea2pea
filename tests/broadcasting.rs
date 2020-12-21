@@ -2,7 +2,9 @@ use tokio::time::sleep;
 use tracing::*;
 
 mod common;
-use pea2pea::{BroadcastProtocol, ContainsNode, Node, NodeConfig, ReadProtocol, WriteProtocol};
+use pea2pea::{
+    BroadcastProtocol, ContainsNode, MessagingProtocol, Node, NodeConfig, PacketingProtocol,
+};
 
 use std::{ops::Deref, sync::Arc, time::Duration};
 
@@ -23,7 +25,7 @@ impl ContainsNode for ChattyNode {
     }
 }
 
-impl WriteProtocol for ChattyNode {}
+impl PacketingProtocol for ChattyNode {}
 
 impl BroadcastProtocol for ChattyNode {
     const INTERVAL_MS: u64 = 100;
@@ -46,7 +48,7 @@ async fn chatty_node_broadcasts() {
     tracing_subscriber::fmt::init();
 
     let reader_node = common::RwNode::new().await;
-    reader_node.enable_reading_protocol();
+    reader_node.enable_messaging_protocol();
 
     let mut chatty_node_config = NodeConfig::default();
     chatty_node_config.name = Some("chatty".into());
@@ -60,7 +62,7 @@ async fn chatty_node_broadcasts() {
         message_with_u16_len
     });
 
-    chatty_node.enable_writing_protocol(writing_closure);
+    chatty_node.enable_packeting_protocol(writing_closure);
 
     chatty_node
         .0

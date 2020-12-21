@@ -64,11 +64,11 @@ impl Connection {
     }
 
     pub(crate) async fn send_message(&self, message: Vec<u8>) -> io::Result<()> {
-        if let Some(writing_closure) = self.node.writing_closure() {
-            let message = writing_closure(&message);
+        if let Some(packeting_closure) = self.node.packeting_closure() {
+            let message = packeting_closure(&message);
             self.write_bytes(&message).await
         } else {
-            error!(parent: self.node.span(), "can't send messages! WriteProtocol is not enabled");
+            error!(parent: self.node.span(), "can't send messages: PacketingProtocol is not enabled");
             Err(ErrorKind::Other.into())
         }
     }
