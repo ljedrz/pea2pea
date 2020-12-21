@@ -53,12 +53,10 @@ impl ResponseProtocol for EchoNode {
             loop {
                 if let Some((request, source)) = receiver.recv().await {
                     if let Some(msg) = node.parse_message(&request) {
-                        if node.validate_message(&msg) {
-                            if let Err(e) = node.process_message(msg, source) {
-                                error!(parent: node.span(), "failed to handle an incoming message: {}", e);
-                            }
-                        } else {
-                            error!(parent: node.span(), "failed to validate an incoming message");
+                        node.process_message(&msg);
+
+                        if let Err(e) = node.respond_to_message(msg, source) {
+                            error!(parent: node.span(), "failed to handle an incoming message: {}", e);
                         }
                     } else {
                         error!(parent: node.span(), "can't parse an incoming message");
@@ -80,7 +78,7 @@ impl ResponseProtocol for EchoNode {
         }
     }
 
-    fn process_message(
+    fn respond_to_message(
         self: &Arc<Self>,
         message: TestMessage,
         source_addr: SocketAddr,

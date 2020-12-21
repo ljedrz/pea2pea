@@ -10,12 +10,11 @@ pub trait ResponseProtocol: ReadProtocol + WriteProtocol {
 
     fn parse_message(&self, buffer: &[u8]) -> Option<Self::Message>;
 
-    fn validate_message(&self, _message: &Self::Message) -> bool {
-        // accept the message by default
-        true
+    fn process_message(&self, _message: &Self::Message) {
+        // do nothing by default
     }
 
-    fn process_message(
+    fn respond_to_message(
         self: &Arc<Self>,
         _message: Self::Message,
         _source: SocketAddr,

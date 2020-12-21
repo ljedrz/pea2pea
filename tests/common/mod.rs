@@ -7,6 +7,7 @@ use std::{convert::TryInto, ops::Deref, sync::Arc};
 pub struct RwNode(Arc<Node>);
 
 impl RwNode {
+    #[allow(dead_code)]
     pub async fn new() -> Self {
         let mut config = NodeConfig::default();
         config.name = Some("reader".into());
