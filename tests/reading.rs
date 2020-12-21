@@ -3,7 +3,7 @@ use parking_lot::RwLock;
 use tokio::{io::AsyncReadExt, task::JoinHandle, time::sleep};
 use tracing::*;
 
-use pea2pea::{ConnectionReader, Node, NodeConfig, ReadProtocol};
+use pea2pea::{ConnectionReader, ContainsNode, Node, NodeConfig, ReadProtocol};
 
 use std::{
     convert::TryInto,
@@ -33,6 +33,12 @@ impl Deref for ArchivistNode {
     }
 }
 
+impl ContainsNode for ArchivistNode {
+    fn node(&self) -> &Node {
+        &self.node
+    }
+}
+
 #[async_trait]
 impl ReadProtocol for ArchivistNode {
     async fn read_message(connection_reader: &mut ConnectionReader) -> io::Result<Vec<u8>> {
@@ -48,9 +54,5 @@ impl ReadProtocol for ArchivistNode {
             .await?;
 
         Ok(buffer[..msg_len].to_vec())
-    }
-
-    fn node(&self) -> &Node {
-        &self.node
     }
 }

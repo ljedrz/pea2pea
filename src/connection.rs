@@ -8,8 +8,12 @@ use tokio::{
     sync::Mutex,
     task::JoinHandle,
 };
+use tracing::*;
 
-use std::{io, sync::Arc};
+use std::{
+    io::{self, ErrorKind},
+    sync::Arc,
+};
 
 pub(crate) enum ConnectionSide {
     Initiator,
@@ -33,7 +37,7 @@ impl ConnectionReader {
     }
 }
 
-pub(crate) struct Connection {
+pub struct Connection {
     node: Arc<Node>,
     pub(crate) reader_task: OnceCell<Option<JoinHandle<()>>>,
     writer: Mutex<OwnedWriteHalf>,
@@ -53,32 +57,14 @@ impl Connection {
     }
 
     pub(crate) async fn send_message(&self, message: Vec<u8>) -> io::Result<()> {
-        if message.len() > self.config().message_length_size as usize * 8 {
-            // TODO: retun a nice io::Error instead
-            panic!(
-                "outbound message exceeded maximum message length: {} > {}",
-                message.len(),
-                self.config().message_length_size * 8,
-            );
+        if let Some(writing_closure) = self.node.writing_closure() {
+            let message = writing_closure(&message);
+            let mut writer = self.writer.lock().await;
+            writer.write(&message).await?;
+            writer.flush().await
+        } else {
+            error!(parent: self.node.span(), "can't send messages! WriteProtocol is not enabled");
+            Err(ErrorKind::Other.into())
         }
-
-        let mut writer = self.writer.lock().await;
-
-        match (
-            self.config().message_byte_order,
-            self.config().message_length_size,
-        ) {
-            (_, 1) => writer.write(&[message.len() as u8]).await?,
-            (BE, 2) => writer.write(&(message.len() as u16).to_be_bytes()).await?,
-            (LE, 2) => writer.write(&(message.len() as u16).to_le_bytes()).await?,
-            (BE, 4) => writer.write(&(message.len() as u32).to_be_bytes()).await?,
-            (LE, 4) => writer.write(&(message.len() as u32).to_le_bytes()).await?,
-            (BE, 8) => writer.write(&(message.len() as u64).to_be_bytes()).await?,
-            (LE, 8) => writer.write(&(message.len() as u64).to_le_bytes()).await?,
-            _ => unimplemented!(),
-        };
-
-        writer.write(&message).await?;
-        writer.flush().await
     }
 }

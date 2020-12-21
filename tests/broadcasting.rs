@@ -1,7 +1,7 @@
 use tokio::time::sleep;
 use tracing::*;
 
-use pea2pea::{BroadcastProtocol, Node, NodeConfig, ReadProtocol};
+use pea2pea::{BroadcastProtocol, ContainsNode, Node, NodeConfig, ReadProtocol, WriteProtocol};
 
 use std::{ops::Deref, sync::Arc, time::Duration};
 
@@ -15,6 +15,14 @@ impl Deref for ChattyNode {
         &self.0
     }
 }
+
+impl ContainsNode for ChattyNode {
+    fn node(&self) -> &Node {
+        &self.0
+    }
+}
+
+impl WriteProtocol for ChattyNode {}
 
 impl BroadcastProtocol for ChattyNode {
     const INTERVAL_MS: u64 = 100;
@@ -44,6 +52,15 @@ async fn chatty_node_broadcasts() {
     chatty_node_config.name = Some("chatty".into());
     let chatty_node = Node::new(Some(chatty_node_config)).await.unwrap();
     let chatty_node = Arc::new(ChattyNode(chatty_node));
+
+    let writing_closure = Box::new(|message: &[u8]| -> Vec<u8> {
+        let mut message_with_u16_len = Vec::with_capacity(message.len() + 2);
+        message_with_u16_len.extend_from_slice(&(message.len() as u16).to_le_bytes());
+        message_with_u16_len.extend_from_slice(message);
+        message_with_u16_len
+    });
+
+    chatty_node.enable_writing_protocol(writing_closure);
 
     // FIXME
     // generic_node.enable_reading_protocol();

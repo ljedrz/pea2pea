@@ -2,7 +2,7 @@ use crate::config::*;
 use crate::connection::{Connection, ConnectionReader, ConnectionSide};
 use crate::connections::Connections;
 use crate::known_peers::KnownPeers;
-use crate::protocols::{HandshakeClosures, ReadingClosure};
+use crate::protocols::{HandshakeClosures, ReadingClosure, WritingClosure};
 
 use once_cell::sync::OnceCell;
 use tokio::{
@@ -24,11 +24,16 @@ static SEQUENTIAL_NODE_ID: AtomicUsize = AtomicUsize::new(0);
 
 type IncomingRequests = Sender<(Vec<u8>, SocketAddr)>;
 
+pub trait ContainsNode {
+    fn node(&self) -> &Node;
+}
+
 pub struct Node {
     span: Span,
     pub config: NodeConfig,
     pub local_addr: SocketAddr,
     reading_closure: OnceCell<Option<ReadingClosure>>,
+    writing_closure: OnceCell<Option<WritingClosure>>,
     incoming_requests: OnceCell<Option<IncomingRequests>>,
     handshake_closures: OnceCell<Option<HandshakeClosures>>,
     connections: Connections,
@@ -81,6 +86,7 @@ impl Node {
             local_addr,
             incoming_requests: Default::default(),
             reading_closure: Default::default(),
+            writing_closure: Default::default(),
             handshake_closures: Default::default(),
             connections: Default::default(),
             known_peers: Default::default(),
@@ -261,6 +267,10 @@ impl Node {
         self.reading_closure.get().and_then(|inner| inner.as_ref())
     }
 
+    pub fn writing_closure(&self) -> Option<&WritingClosure> {
+        self.writing_closure.get().and_then(|inner| inner.as_ref())
+    }
+
     pub fn handshake_closures(&self) -> Option<&HandshakeClosures> {
         self.handshake_closures
             .get()
@@ -276,6 +286,12 @@ impl Node {
     pub fn set_reading_closure(&self, closure: ReadingClosure) {
         if self.reading_closure.set(Some(closure)).is_err() {
             panic!("the reading_closure field was set more than once!");
+        }
+    }
+
+    pub fn set_writing_closure(&self, closure: WritingClosure) {
+        if self.writing_closure.set(Some(closure)).is_err() {
+            panic!("the writing_closure field was set more than once!");
         }
     }
 

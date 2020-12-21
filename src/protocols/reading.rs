@@ -1,4 +1,4 @@
-use crate::{ConnectionReader, Node};
+use crate::{ConnectionReader, ContainsNode, Node};
 
 use async_trait::async_trait;
 use tokio::task::JoinHandle;
@@ -7,7 +7,7 @@ use tracing::*;
 use std::{io, net::SocketAddr};
 
 #[async_trait]
-pub trait ReadProtocol {
+pub trait ReadProtocol: ContainsNode {
     fn enable_reading_protocol(&self)
     where
         Self: Send + Sync,
@@ -43,8 +43,6 @@ pub trait ReadProtocol {
 
         self.node().set_reading_closure(Box::new(reading_closure));
     }
-
-    fn node(&self) -> &Node;
 
     async fn read_message(conn_reader: &mut ConnectionReader) -> io::Result<Vec<u8>>;
 }

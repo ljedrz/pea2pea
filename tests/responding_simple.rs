@@ -2,7 +2,9 @@ use parking_lot::Mutex;
 use tokio::{io::AsyncReadExt, sync::mpsc::channel, time::sleep};
 use tracing::*;
 
-use pea2pea::{ConnectionReader, Node, NodeConfig, ReadProtocol, ResponseProtocol};
+use pea2pea::{
+    ConnectionReader, ContainsNode, Node, NodeConfig, ReadProtocol, ResponseProtocol, WriteProtocol,
+};
 
 use std::{
     collections::HashSet, convert::TryInto, io, net::SocketAddr, ops::Deref, sync::Arc,
@@ -25,6 +27,14 @@ impl Deref for GenericNode {
     }
 }
 
+impl ContainsNode for GenericNode {
+    fn node(&self) -> &Node {
+        &self.0
+    }
+}
+
+impl WriteProtocol for GenericNode {}
+
 #[derive(Clone)]
 struct EchoNode {
     node: Arc<Node>,
@@ -41,10 +51,6 @@ impl Deref for EchoNode {
 
 #[async_trait::async_trait]
 impl ReadProtocol for GenericNode {
-    fn node(&self) -> &Node {
-        &self.0
-    }
-
     async fn read_message(connection_reader: &mut ConnectionReader) -> io::Result<Vec<u8>> {
         let buffer = &mut connection_reader.buffer;
         connection_reader
@@ -61,12 +67,14 @@ impl ReadProtocol for GenericNode {
     }
 }
 
-#[async_trait::async_trait]
-impl ReadProtocol for EchoNode {
+impl ContainsNode for EchoNode {
     fn node(&self) -> &Node {
         &self.node
     }
+}
 
+#[async_trait::async_trait]
+impl ReadProtocol for EchoNode {
     // FIXME: dedup impl
     async fn read_message(connection_reader: &mut ConnectionReader) -> io::Result<Vec<u8>> {
         let buffer = &mut connection_reader.buffer;
@@ -83,6 +91,8 @@ impl ReadProtocol for EchoNode {
         Ok(buffer[..msg_len].to_vec())
     }
 }
+
+impl WriteProtocol for EchoNode {}
 
 impl ResponseProtocol for EchoNode {
     type Message = TestMessage;
@@ -162,8 +172,17 @@ async fn request_handling_echo() {
         echoed: Default::default(),
     });
 
+    let writing_closure = Box::new(|message: &[u8]| -> Vec<u8> {
+        let mut message_with_u16_len = Vec::with_capacity(message.len() + 2);
+        message_with_u16_len.extend_from_slice(&(message.len() as u16).to_le_bytes());
+        message_with_u16_len.extend_from_slice(message);
+        message_with_u16_len
+    });
+
     generic_node.enable_reading_protocol();
+    generic_node.enable_writing_protocol(writing_closure.clone());
     echo_node.enable_reading_protocol();
+    echo_node.enable_writing_protocol(writing_closure);
     echo_node.enable_response_protocol();
 
     generic_node
