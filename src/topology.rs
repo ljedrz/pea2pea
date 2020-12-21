@@ -70,7 +70,7 @@ mod tests {
     use std::time::Duration;
 
     // the number of nodes spawned for each topology test
-    const N: usize = 5;
+    const N: usize = 10;
 
     #[tokio::test]
     async fn topology_line_conn_counts() {
