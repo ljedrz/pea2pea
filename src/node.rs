@@ -142,17 +142,17 @@ impl Node {
         self.connections
             .handshaking
             .write()
-            .insert(addr, connection);
+            .insert(addr, Arc::clone(&connection));
 
         let node = Arc::clone(&self);
         let connection_reader =
             if let Some(Some(ref handshake_closures)) = self.handshake_closures.get() {
                 let handshake_task = match side {
                     ConnectionSide::Initiator => {
-                        (handshake_closures.initiator)(node, addr, connection_reader)
+                        (handshake_closures.initiator)(addr, connection_reader, connection)
                     }
                     ConnectionSide::Responder => {
-                        (handshake_closures.responder)(node, addr, connection_reader)
+                        (handshake_closures.responder)(addr, connection_reader, connection)
                     }
                 };
 
@@ -231,6 +231,14 @@ impl Node {
                 error!(parent: self.span(), "couldn't send a broadcast to {}: {}", addr, e);
             }
         }
+    }
+
+    pub fn register_received_message(&self, from: SocketAddr, len: usize) {
+        self.known_peers.register_received_message(from, len)
+    }
+
+    pub fn register_failure(&self, from: SocketAddr) {
+        self.known_peers.register_failure(from)
     }
 
     pub fn is_connected(&self, addr: SocketAddr) -> bool {

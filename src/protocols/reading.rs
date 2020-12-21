@@ -23,7 +23,7 @@ pub trait ReadProtocol: ContainsNode {
                         Ok(msg) => {
                             info!(parent: node.span(), "received a message from {}", addr);
 
-                            // node.known_peers.register_incoming_message(addr, msg.len());
+                            node.register_received_message(addr, msg.len());
 
                             if let Some(ref incoming_requests) = node.incoming_requests() {
                                 if let Err(e) = incoming_requests.send((msg, addr)).await {
@@ -33,7 +33,7 @@ pub trait ReadProtocol: ContainsNode {
                             }
                         }
                         Err(e) => {
-                            // node.known_peers.register_failure(addr);
+                            node.register_failure(addr);
                             error!(parent: node.span(), "can't read message: {}", e);
                         }
                     }

@@ -2,6 +2,7 @@ use parking_lot::Mutex;
 use tokio::{io::AsyncReadExt, sync::mpsc::channel, time::sleep};
 use tracing::*;
 
+mod common;
 use pea2pea::{
     ConnectionReader, ContainsNode, Node, NodeConfig, ReadProtocol, ResponseProtocol, WriteProtocol,
 };
@@ -17,24 +18,6 @@ enum TestMessage {
     Derp,
 }
 
-struct GenericNode(Arc<Node>);
-
-impl Deref for GenericNode {
-    type Target = Arc<Node>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl ContainsNode for GenericNode {
-    fn node(&self) -> &Node {
-        &self.0
-    }
-}
-
-impl WriteProtocol for GenericNode {}
-
 #[derive(Clone)]
 struct EchoNode {
     node: Arc<Node>,
@@ -49,49 +32,13 @@ impl Deref for EchoNode {
     }
 }
 
-#[async_trait::async_trait]
-impl ReadProtocol for GenericNode {
-    async fn read_message(connection_reader: &mut ConnectionReader) -> io::Result<Vec<u8>> {
-        let buffer = &mut connection_reader.buffer;
-        connection_reader
-            .reader
-            .read_exact(&mut buffer[..2])
-            .await?;
-        let msg_len = u16::from_le_bytes(buffer[..2].try_into().unwrap()) as usize;
-        connection_reader
-            .reader
-            .read_exact(&mut buffer[..msg_len])
-            .await?;
-
-        Ok(buffer[..msg_len].to_vec())
-    }
-}
-
 impl ContainsNode for EchoNode {
     fn node(&self) -> &Node {
         &self.node
     }
 }
 
-#[async_trait::async_trait]
-impl ReadProtocol for EchoNode {
-    // FIXME: dedup impl
-    async fn read_message(connection_reader: &mut ConnectionReader) -> io::Result<Vec<u8>> {
-        let buffer = &mut connection_reader.buffer;
-        connection_reader
-            .reader
-            .read_exact(&mut buffer[..2])
-            .await?;
-        let msg_len = u16::from_le_bytes(buffer[..2].try_into().unwrap()) as usize;
-        connection_reader
-            .reader
-            .read_exact(&mut buffer[..msg_len])
-            .await?;
-
-        Ok(buffer[..msg_len].to_vec())
-    }
-}
-
+impl_read_protocol!(EchoNode);
 impl WriteProtocol for EchoNode {}
 
 impl ResponseProtocol for EchoNode {
@@ -160,17 +107,7 @@ impl ResponseProtocol for EchoNode {
 async fn request_handling_echo() {
     tracing_subscriber::fmt::init();
 
-    let mut generic_node_config = NodeConfig::default();
-    generic_node_config.name = Some("generic".into());
-    let generic_node = Node::new(Some(generic_node_config)).await.unwrap();
-    let generic_node = Arc::new(GenericNode(generic_node));
-
-    let mut echo_node_config = NodeConfig::default();
-    echo_node_config.name = Some("echo".into());
-    let echo_node = Arc::new(EchoNode {
-        node: Node::new(Some(echo_node_config)).await.unwrap(),
-        echoed: Default::default(),
-    });
+    let shout_node = common::RwNode::new().await;
 
     let writing_closure = Box::new(|message: &[u8]| -> Vec<u8> {
         let mut message_with_u16_len = Vec::with_capacity(message.len() + 2);
@@ -179,26 +116,33 @@ async fn request_handling_echo() {
         message_with_u16_len
     });
 
-    generic_node.enable_reading_protocol();
-    generic_node.enable_writing_protocol(writing_closure.clone());
+    shout_node.enable_writing_protocol(writing_closure.clone());
+
+    let mut echo_node_config = NodeConfig::default();
+    echo_node_config.name = Some("echo".into());
+    let echo_node = Arc::new(EchoNode {
+        node: Node::new(Some(echo_node_config)).await.unwrap(),
+        echoed: Default::default(),
+    });
+
     echo_node.enable_reading_protocol();
     echo_node.enable_writing_protocol(writing_closure);
     echo_node.enable_response_protocol();
 
-    generic_node
+    shout_node
         .initiate_connection(echo_node.local_addr)
         .await
         .unwrap();
 
-    generic_node
+    shout_node
         .send_direct_message(echo_node.local_addr, vec![TestMessage::Herp as u8])
         .await
         .unwrap();
-    generic_node
+    shout_node
         .send_direct_message(echo_node.local_addr, vec![TestMessage::Derp as u8])
         .await
         .unwrap();
-    generic_node
+    shout_node
         .send_direct_message(echo_node.local_addr, vec![TestMessage::Herp as u8])
         .await
         .unwrap();

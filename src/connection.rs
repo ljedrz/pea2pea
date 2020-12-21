@@ -1,9 +1,8 @@
-use crate::config::ByteOrder::*;
 use crate::{Node, NodeConfig};
 
 use once_cell::sync::OnceCell;
 use tokio::{
-    io::AsyncWriteExt,
+    io::{AsyncReadExt, AsyncWriteExt},
     net::tcp::{OwnedReadHalf, OwnedWriteHalf},
     sync::Mutex,
     task::JoinHandle,
@@ -35,6 +34,18 @@ impl ConnectionReader {
             reader,
         }
     }
+
+    // FIXME: this pub is not ideal
+    pub async fn read_bytes(&mut self, num: usize) -> io::Result<usize> {
+        let buffer = &mut self.buffer;
+
+        if num > buffer.len() {
+            error!(parent: self.node.span(), "can' read {}B from the stream; the buffer is too small ({}B)", num, buffer.len());
+            return Err(ErrorKind::Other.into());
+        }
+
+        self.reader.read_exact(&mut buffer[..num]).await
+    }
 }
 
 pub struct Connection {
@@ -52,19 +63,20 @@ impl Connection {
         }
     }
 
-    fn config(&self) -> &NodeConfig {
-        &self.node.config
-    }
-
     pub(crate) async fn send_message(&self, message: Vec<u8>) -> io::Result<()> {
         if let Some(writing_closure) = self.node.writing_closure() {
             let message = writing_closure(&message);
-            let mut writer = self.writer.lock().await;
-            writer.write(&message).await?;
-            writer.flush().await
+            self.write_bytes(&message).await
         } else {
             error!(parent: self.node.span(), "can't send messages! WriteProtocol is not enabled");
             Err(ErrorKind::Other.into())
         }
+    }
+
+    // FIXME: this pub is not ideal
+    pub async fn write_bytes(&self, bytes: &[u8]) -> io::Result<()> {
+        let mut writer = self.writer.lock().await;
+        writer.write(bytes).await?;
+        writer.flush().await
     }
 }

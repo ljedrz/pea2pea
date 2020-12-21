@@ -1,26 +1,31 @@
-use tokio::{task::JoinHandle, time::sleep};
+use tokio::{io::AsyncReadExt, task::JoinHandle, time::sleep};
 use tracing::*;
 
-use pea2pea::{ConnectionReader, HandshakeClosures, HandshakeProtocol, Node, NodeConfig};
+mod common;
+use pea2pea::{
+    Connection, ConnectionReader, ContainsNode, HandshakeClosures, HandshakeProtocol, Node,
+    NodeConfig, ReadProtocol, WriteProtocol,
+};
 
 use parking_lot::RwLock;
 use std::{
     collections::{HashMap, HashSet},
+    convert::TryInto,
     net::SocketAddr,
     ops::Deref,
     sync::Arc,
     time::Duration,
 };
 
+enum HandshakeMsg {
+    A(u64),
+    B(u64),
+}
+
 #[derive(Clone)]
 struct SecureishNode {
     node: Arc<Node>,
     handshakes: Arc<RwLock<HashMap<SocketAddr, HashSet<u64>>>>,
-}
-
-enum HandshakeMsg {
-    A(u64),
-    B(u64),
 }
 
 impl Deref for SecureishNode {
@@ -30,19 +35,28 @@ impl Deref for SecureishNode {
         &self.node
     }
 }
-/*
-impl HandshakeProtocol for &SecureishNode {
+
+impl ContainsNode for SecureishNode {
+    fn node(&self) -> &Node {
+        &self.node
+    }
+}
+
+impl WriteProtocol for SecureishNode {}
+
+impl HandshakeProtocol for SecureishNode {
     fn enable_handshake_protocol(&self) {
-        let initiator = |node: Arc<Node>,
-                         addr: SocketAddr,
-                         mut connection_reader: ConnectionReader|
+        let initiator = |addr: SocketAddr,
+                         mut connection_reader: ConnectionReader,
+                         connection: Arc<Connection>|
          -> JoinHandle<ConnectionReader> {
             tokio::spawn(async move {
+                let node = Arc::clone(&connection_reader.node);
                 debug!(parent: node.span(), "spawned a task to handshake with {}", addr);
 
                 // send A
-                if let Err(e) = node
-                    .send_direct_message(addr, vec![HandshakeMsg::A as u8]) // TODO: send nonce
+                if let Err(e) = connection
+                    .write_bytes(&[HandshakeMsg::A as u8]) // TODO: send nonce too
                     .await
                 {
                     error!(parent: node.span(), "can't send handshake message A to {}: {}", addr, e);
@@ -52,21 +66,21 @@ impl HandshakeProtocol for &SecureishNode {
                 };
 
                 // read B
-                match connection_reader.read_message().await {
-                    Ok(msg) => {
-                        // node.known_peers.register_incoming_message(addr, msg.len());
+                match connection_reader.read_bytes(1).await {
+                    Ok(1) => {
+                        node.register_received_message(addr, 1);
 
-                        if msg[0] == HandshakeMsg::B as u8 {
+                        if connection_reader.buffer[0] == HandshakeMsg::B as u8 {
                             // TODO: register nonce
                             debug!(parent: node.span(), "received handshake message B from {}", addr);
                         } else {
-                            error!(parent: node.span(), "received an invalid handshake message from {}", addr);
+                            error!(parent: node.span(), "received an invalid handshake message from {} (expected B)", addr);
                             // TODO: kick, register failure
                         }
                     }
-                    Err(e) => {
+                    _ => {
                         // TODO: kick, register failure
-                        error!(parent: node.span(), "can't read message: {}", e);
+                        error!(parent: node.span(), "couldn't read handshake message B");
                     }
                 }
 
@@ -74,35 +88,36 @@ impl HandshakeProtocol for &SecureishNode {
             })
         };
 
-        let responder = |node: Arc<Node>,
-                         addr: SocketAddr,
-                         mut connection_reader: ConnectionReader|
+        let responder = |addr: SocketAddr,
+                         mut connection_reader: ConnectionReader,
+                         connection: Arc<Connection>|
          -> JoinHandle<ConnectionReader> {
             tokio::spawn(async move {
+                let node = Arc::clone(&connection_reader.node);
                 debug!(parent: node.span(), "spawned a task to handshake with {}", addr);
 
                 // read A
-                match connection_reader.read_message().await {
-                    Ok(msg) => {
-                        // node.known_peers.register_incoming_message(addr, msg.len());
+                match connection_reader.read_bytes(1).await {
+                    Ok(1) => {
+                        node.register_received_message(addr, 1);
 
-                        if msg[0] == HandshakeMsg::A as u8 {
+                        if connection_reader.buffer[0] == HandshakeMsg::A as u8 {
                             // TODO: register nonce
                             debug!(parent: node.span(), "received handshake message A from {}", addr);
                         } else {
-                            error!(parent: node.span(), "received an invalid handshake message from {}", addr);
+                            error!(parent: node.span(), "received an invalid handshake message from {} (expected A)", addr);
                             // TODO: kick, register failure
                         }
                     }
-                    Err(e) => {
+                    _ => {
                         // TODO: kick, register failure
-                        error!(parent: node.span(), "can't read message: {}", e);
+                        error!(parent: node.span(), "couldn't read handshake message A");
                     }
                 }
 
                 // send B
-                if let Err(e) = node
-                    .send_direct_message(addr, vec![HandshakeMsg::B as u8]) // TODO: send nonce
+                if let Err(e) = connection
+                    .write_bytes(&[HandshakeMsg::B as u8]) // TODO: send nonce too
                     .await
                 {
                     error!(parent: node.span(), "can't send handshake message B to {}: {}", addr, e);
@@ -120,14 +135,7 @@ impl HandshakeProtocol for &SecureishNode {
             responder: Box::new(responder),
         };
 
-        if self
-            .node
-            .handshake_closures
-            .set(Some(handshake_closures))
-            .is_err()
-        {
-            unreachable!()
-        }
+        self.node().set_handshake_closures(handshake_closures);
     }
 }
 
@@ -166,4 +174,3 @@ async fn simple_handshake() {
     // TODO: the responder is also handshaken, but it knows the initiator under a different address;
     // obtain it and then perform the assertion
 }
-*/

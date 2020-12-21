@@ -1,6 +1,4 @@
-use crate::{Connection, ContainsNode, Node};
-
-use std::io;
+use crate::ContainsNode;
 
 #[async_trait::async_trait]
 pub trait WriteProtocol: ContainsNode {

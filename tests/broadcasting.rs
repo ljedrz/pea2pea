@@ -1,6 +1,7 @@
 use tokio::time::sleep;
 use tracing::*;
 
+mod common;
 use pea2pea::{BroadcastProtocol, ContainsNode, Node, NodeConfig, ReadProtocol, WriteProtocol};
 
 use std::{ops::Deref, sync::Arc, time::Duration};
@@ -44,9 +45,8 @@ impl BroadcastProtocol for ChattyNode {
 async fn chatty_node_broadcasts() {
     tracing_subscriber::fmt::init();
 
-    let mut generic_node_config = NodeConfig::default();
-    generic_node_config.name = Some("generic".into());
-    let generic_node = Node::new(Some(generic_node_config)).await.unwrap();
+    let reader_node = common::RwNode::new().await;
+    reader_node.enable_reading_protocol();
 
     let mut chatty_node_config = NodeConfig::default();
     chatty_node_config.name = Some("chatty".into());
@@ -62,17 +62,14 @@ async fn chatty_node_broadcasts() {
 
     chatty_node.enable_writing_protocol(writing_closure);
 
-    // FIXME
-    // generic_node.enable_reading_protocol();
-
     chatty_node
         .0
-        .initiate_connection(generic_node.local_addr)
+        .initiate_connection(reader_node.local_addr)
         .await
         .unwrap();
     chatty_node.enable_broadcast_protocol();
 
     sleep(Duration::from_millis(100)).await;
 
-    // assert!(generic_node.num_messages_received() != 0);
+    assert!(reader_node.num_messages_received() != 0);
 }
