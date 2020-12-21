@@ -144,30 +144,29 @@ impl Node {
             .write()
             .insert(addr, Arc::clone(&connection));
 
-        let connection_reader =
-            if let Some(Some(ref handshake_closures)) = self.handshake_closures.get() {
-                let handshake_task = match side {
-                    ConnectionSide::Initiator => {
-                        (handshake_closures.initiator)(addr, connection_reader, connection)
-                    }
-                    ConnectionSide::Responder => {
-                        (handshake_closures.responder)(addr, connection_reader, connection)
-                    }
-                };
-
-                match handshake_task.await {
-                    Ok(conn_reader) => conn_reader,
-                    Err(e) => {
-                        error!(parent: self.span(), "handshake with {} failed: {}", addr, e);
-                        return;
-                        // TODO: cleanup, probably return some Result instead
-                    }
+        let connection_reader = if let Some(ref handshake_closures) = self.handshake_closures() {
+            let handshake_task = match side {
+                ConnectionSide::Initiator => {
+                    (handshake_closures.initiator)(addr, connection_reader, connection)
                 }
-            } else {
-                connection_reader
+                ConnectionSide::Responder => {
+                    (handshake_closures.responder)(addr, connection_reader, connection)
+                }
             };
 
-        let reader_task = if let Some(Some(ref reading_closure)) = self.reading_closure.get() {
+            match handshake_task.await {
+                Ok(conn_reader) => conn_reader,
+                Err(e) => {
+                    error!(parent: self.span(), "handshake with {} failed: {}", addr, e);
+                    return;
+                    // TODO: cleanup, probably return some Result instead
+                }
+            }
+        } else {
+            connection_reader
+        };
+
+        let reader_task = if let Some(ref reading_closure) = self.reading_closure() {
             Some(reading_closure(connection_reader, addr))
         } else {
             None
