@@ -22,7 +22,7 @@ use std::{
 
 static SEQUENTIAL_NODE_ID: AtomicUsize = AtomicUsize::new(0);
 
-type IncomingRequests = Sender<(Vec<u8>, SocketAddr)>;
+type InboundMessages = Sender<(Vec<u8>, SocketAddr)>;
 
 pub trait ContainsNode {
     fn node(&self) -> &Node;
@@ -34,7 +34,7 @@ pub struct Node {
     pub local_addr: SocketAddr,
     messaging_closure: OnceCell<Option<MessagingClosure>>,
     packeting_closure: OnceCell<Option<PacketingClosure>>,
-    incoming_requests: OnceCell<Option<IncomingRequests>>,
+    inbound_messages: OnceCell<Option<InboundMessages>>,
     handshake_closures: OnceCell<Option<HandshakeClosures>>,
     connections: Connections,
     known_peers: KnownPeers,
@@ -84,7 +84,7 @@ impl Node {
             span,
             config,
             local_addr,
-            incoming_requests: Default::default(),
+            inbound_messages: Default::default(),
             messaging_closure: Default::default(),
             packeting_closure: Default::default(),
             handshake_closures: Default::default(),
@@ -262,10 +262,8 @@ impl Node {
         self.connections.mark_as_handshaken(addr, None).await
     }
 
-    pub fn incoming_requests(&self) -> Option<&IncomingRequests> {
-        self.incoming_requests
-            .get()
-            .and_then(|inner| inner.as_ref())
+    pub fn inbound_messages(&self) -> Option<&InboundMessages> {
+        self.inbound_messages.get().and_then(|inner| inner.as_ref())
     }
 
     pub fn messaging_closure(&self) -> Option<&MessagingClosure> {
@@ -286,10 +284,10 @@ impl Node {
             .and_then(|inner| inner.as_ref())
     }
 
-    pub fn set_incoming_requests(&self, sender: IncomingRequests) {
-        self.incoming_requests
+    pub fn set_inbound_messages(&self, sender: InboundMessages) {
+        self.inbound_messages
             .set(Some(sender))
-            .expect("the incoming_requests field was set more than once!");
+            .expect("the inbound_messages field was set more than once!");
     }
 
     pub fn set_messaging_closure(&self, closure: MessagingClosure) {

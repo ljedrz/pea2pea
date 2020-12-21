@@ -15,7 +15,7 @@ pub trait MessagingProtocol: ContainsNode {
         Self: Send + Sync + 'static,
     {
         let (sender, mut receiver) = channel(1024); // TODO: specify in NodeConfig
-        self.node().set_incoming_requests(sender);
+        self.node().set_inbound_messages(sender);
 
         let self_clone = Arc::clone(self);
         tokio::spawn(async move {
@@ -48,8 +48,8 @@ pub trait MessagingProtocol: ContainsNode {
 
                             node.register_received_message(addr, msg.len());
 
-                            if let Some(ref incoming_requests) = node.incoming_requests() {
-                                if let Err(e) = incoming_requests.send((msg, addr)).await {
+                            if let Some(ref inbound_messages) = node.inbound_messages() {
+                                if let Err(e) = inbound_messages.send((msg, addr)).await {
                                     error!(parent: node.span(), "can't register an incoming message: {}", e);
                                     // TODO: how to proceed?
                                 }
