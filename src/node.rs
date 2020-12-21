@@ -32,10 +32,10 @@ pub struct Node {
     span: Span,
     pub config: NodeConfig,
     pub local_addr: SocketAddr,
-    messaging_closure: OnceCell<Option<MessagingClosure>>,
-    packeting_closure: OnceCell<Option<PacketingClosure>>,
-    inbound_messages: OnceCell<Option<InboundMessages>>,
-    handshake_closures: OnceCell<Option<HandshakeClosures>>,
+    messaging_closure: OnceCell<MessagingClosure>,
+    packeting_closure: OnceCell<PacketingClosure>,
+    inbound_messages: OnceCell<InboundMessages>,
+    handshake_closures: OnceCell<HandshakeClosures>,
     connections: Connections,
     known_peers: KnownPeers,
 }
@@ -263,47 +263,41 @@ impl Node {
     }
 
     pub fn inbound_messages(&self) -> Option<&InboundMessages> {
-        self.inbound_messages.get().and_then(|inner| inner.as_ref())
+        self.inbound_messages.get()
     }
 
     pub fn messaging_closure(&self) -> Option<&MessagingClosure> {
-        self.messaging_closure
-            .get()
-            .and_then(|inner| inner.as_ref())
+        self.messaging_closure.get()
     }
 
     pub fn packeting_closure(&self) -> Option<&PacketingClosure> {
-        self.packeting_closure
-            .get()
-            .and_then(|inner| inner.as_ref())
+        self.packeting_closure.get()
     }
 
     pub fn handshake_closures(&self) -> Option<&HandshakeClosures> {
-        self.handshake_closures
-            .get()
-            .and_then(|inner| inner.as_ref())
+        self.handshake_closures.get()
     }
 
     pub fn set_inbound_messages(&self, sender: InboundMessages) {
         self.inbound_messages
-            .set(Some(sender))
+            .set(sender)
             .expect("the inbound_messages field was set more than once!");
     }
 
     pub fn set_messaging_closure(&self, closure: MessagingClosure) {
-        if self.messaging_closure.set(Some(closure)).is_err() {
+        if self.messaging_closure.set(closure).is_err() {
             panic!("the messaging_closure field was set more than once!");
         }
     }
 
     pub fn set_packeting_closure(&self, closure: PacketingClosure) {
-        if self.packeting_closure.set(Some(closure)).is_err() {
+        if self.packeting_closure.set(closure).is_err() {
             panic!("the packeting_closure field was set more than once!");
         }
     }
 
     pub fn set_handshake_closures(&self, closures: HandshakeClosures) {
-        if self.handshake_closures.set(Some(closures)).is_err() {
+        if self.handshake_closures.set(closures).is_err() {
             panic!("the handshake_closures field was set more than once!");
         }
     }
