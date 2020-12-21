@@ -1,4 +1,4 @@
-use crate::{Connection, ConnectionReader, Node, ReadProtocol, WriteProtocol};
+use crate::{Connection, ConnectionReader, WriteProtocol};
 
 use tokio::task::JoinHandle;
 

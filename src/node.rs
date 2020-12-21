@@ -144,7 +144,6 @@ impl Node {
             .write()
             .insert(addr, Arc::clone(&connection));
 
-        let node = Arc::clone(&self);
         let connection_reader =
             if let Some(Some(ref handshake_closures)) = self.handshake_closures.get() {
                 let handshake_task = match side {
@@ -168,8 +167,7 @@ impl Node {
                 connection_reader
             };
 
-        let node = Arc::clone(&self);
-        let reader_task = if let Some(Some(ref reading_closure)) = node.reading_closure.get() {
+        let reader_task = if let Some(Some(ref reading_closure)) = self.reading_closure.get() {
             Some(reading_closure(connection_reader, addr))
         } else {
             None

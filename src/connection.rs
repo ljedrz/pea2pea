@@ -1,4 +1,4 @@
-use crate::{Node, NodeConfig};
+use crate::Node;
 
 use once_cell::sync::OnceCell;
 use tokio::{
