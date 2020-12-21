@@ -30,8 +30,8 @@ impl Deref for SecureishNode {
         &self.node
     }
 }
-
-impl HandshakeProtocol for SecureishNode {
+/*
+impl HandshakeProtocol for &SecureishNode {
     fn enable_handshake_protocol(&self) {
         let initiator = |node: Arc<Node>,
                          addr: SocketAddr,
@@ -166,3 +166,4 @@ async fn simple_handshake() {
     // TODO: the responder is also handshaken, but it knows the initiator under a different address;
     // obtain it and then perform the assertion
 }
+*/

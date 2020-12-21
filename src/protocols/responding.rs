@@ -1,6 +1,8 @@
+use crate::ReadProtocol;
+
 use std::{io, net::SocketAddr, sync::Arc};
 
-pub trait ResponseProtocol {
+pub trait ResponseProtocol: ReadProtocol {
     type Message;
 
     // prepare the Node to act on incoming messages

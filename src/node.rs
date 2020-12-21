@@ -2,7 +2,7 @@ use crate::config::*;
 use crate::connection::{Connection, ConnectionReader, ConnectionSide};
 use crate::connections::Connections;
 use crate::known_peers::KnownPeers;
-use crate::protocols::HandshakeClosures;
+use crate::protocols::{HandshakeClosures, ReadingClosure};
 
 use once_cell::sync::OnceCell;
 use tokio::{
@@ -22,12 +22,15 @@ use std::{
 
 static SEQUENTIAL_NODE_ID: AtomicUsize = AtomicUsize::new(0);
 
+type IncomingRequests = Sender<(Vec<u8>, SocketAddr)>;
+
 pub struct Node {
     span: Span,
     pub config: NodeConfig,
     pub local_addr: SocketAddr,
-    pub incoming_requests: OnceCell<Option<Sender<(Vec<u8>, SocketAddr)>>>,
-    pub handshake_closures: OnceCell<Option<HandshakeClosures>>,
+    reading_closure: OnceCell<Option<ReadingClosure>>,
+    incoming_requests: OnceCell<Option<IncomingRequests>>,
+    handshake_closures: OnceCell<Option<HandshakeClosures>>,
     connections: Connections,
     known_peers: KnownPeers,
 }
@@ -77,6 +80,7 @@ impl Node {
             config,
             local_addr,
             incoming_requests: Default::default(),
+            reading_closure: Default::default(),
             handshake_closures: Default::default(),
             connections: Default::default(),
             known_peers: Default::default(),
@@ -135,7 +139,7 @@ impl Node {
             .insert(addr, connection);
 
         let node = Arc::clone(&self);
-        let mut connection_reader =
+        let connection_reader =
             if let Some(Some(ref handshake_closures)) = self.handshake_closures.get() {
                 let handshake_task = match side {
                     ConnectionSide::Initiator => {
@@ -159,35 +163,13 @@ impl Node {
             };
 
         let node = Arc::clone(&self);
-        let reader_task = tokio::spawn(async move {
-            debug!(parent: node.span(), "spawned a task reading messages from {}", addr);
-            loop {
-                match connection_reader.read_message().await {
-                    Ok(msg) => {
-                        info!(parent: node.span(), "received a {}B message from {}", msg.len(), addr);
+        let reader_task = if let Some(Some(ref reading_closure)) = node.reading_closure.get() {
+            Some(reading_closure(connection_reader, addr))
+        } else {
+            None
+        };
 
-                        node.known_peers.register_incoming_message(addr, msg.len());
-
-                        if let Some(Some(ref incoming_requests)) = node.incoming_requests.get() {
-                            if let Err(e) = incoming_requests.send((msg, addr)).await {
-                                error!(parent: node.span(), "can't register an incoming message: {}", e);
-                                // TODO: how to proceed?
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        node.known_peers.register_failure(addr);
-                        error!(parent: node.span(), "can't read message: {}", e);
-                    }
-                }
-            }
-        });
-
-        if let Err(e) = self
-            .connections
-            .mark_as_handshaken(addr, Some(reader_task))
-            .await
-        {
+        if let Err(e) = self.connections.mark_as_handshaken(addr, reader_task).await {
             error!(parent: self.span(), "can't mark {} as handshaken: {}", addr, e);
         } else {
             debug!(parent: self.span(), "marked {} as handshaken", addr);
@@ -267,5 +249,39 @@ impl Node {
 
     pub async fn mark_as_handshaken(&self, addr: SocketAddr) -> io::Result<()> {
         self.connections.mark_as_handshaken(addr, None).await
+    }
+
+    pub fn incoming_requests(&self) -> Option<&IncomingRequests> {
+        self.incoming_requests
+            .get()
+            .and_then(|inner| inner.as_ref())
+    }
+
+    pub fn reading_closure(&self) -> Option<&ReadingClosure> {
+        self.reading_closure.get().and_then(|inner| inner.as_ref())
+    }
+
+    pub fn handshake_closures(&self) -> Option<&HandshakeClosures> {
+        self.handshake_closures
+            .get()
+            .and_then(|inner| inner.as_ref())
+    }
+
+    pub fn set_incoming_requests(&self, sender: IncomingRequests) {
+        self.incoming_requests
+            .set(Some(sender))
+            .expect("the incoming_requests field was set more than once!");
+    }
+
+    pub fn set_reading_closure(&self, closure: ReadingClosure) {
+        if self.reading_closure.set(Some(closure)).is_err() {
+            panic!("the reading_closure field was set more than once!");
+        }
+    }
+
+    pub fn set_handshake_closures(&self, closures: HandshakeClosures) {
+        if self.handshake_closures.set(Some(closures)).is_err() {
+            panic!("the handshake_closures field was set more than once!");
+        }
     }
 }
