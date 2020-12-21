@@ -44,10 +44,8 @@ pub async fn spawn_nodes(count: usize, topology: Topology) -> io::Result<Vec<Arc
             let mut connected_pairs = HashSet::with_capacity((count - 1) * 2);
             for i in 0..count {
                 for (j, peer) in nodes.iter().enumerate() {
-                    if i != j {
-                        if connected_pairs.insert((i, j)) && connected_pairs.insert((j, i)) {
-                            nodes[i].initiate_connection(peer.local_addr).await?;
-                        }
+                    if i != j && connected_pairs.insert((i, j)) && connected_pairs.insert((j, i)) {
+                        nodes[i].initiate_connection(peer.local_addr).await?;
                     }
                 }
             }
