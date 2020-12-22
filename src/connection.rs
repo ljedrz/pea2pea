@@ -68,8 +68,7 @@ impl Connection {
             let message = packeting_closure(&message);
             self.write_bytes(&message).await
         } else {
-            error!(parent: self.node.span(), "can't send messages: PacketingProtocol is not enabled");
-            Err(ErrorKind::Other.into())
+            self.write_bytes(&message).await
         }
     }
 
