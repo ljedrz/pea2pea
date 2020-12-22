@@ -26,7 +26,7 @@ impl Deref for RwNode {
 }
 
 impl ContainsNode for RwNode {
-    fn node(&self) -> &Node {
+    fn node(&self) -> &Arc<Node> {
         &self.0
     }
 }

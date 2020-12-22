@@ -33,7 +33,7 @@ impl Deref for EchoNode {
 }
 
 impl ContainsNode for EchoNode {
-    fn node(&self) -> &Node {
+    fn node(&self) -> &Arc<Node> {
         &self.node
     }
 }

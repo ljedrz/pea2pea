@@ -25,7 +25,7 @@ static SEQUENTIAL_NODE_ID: AtomicUsize = AtomicUsize::new(0);
 type InboundMessages = Sender<(Vec<u8>, SocketAddr)>;
 
 pub trait ContainsNode {
-    fn node(&self) -> &Node;
+    fn node(&self) -> &Arc<Node>;
 }
 
 pub struct Node {
@@ -304,5 +304,11 @@ impl Node {
         if self.handshake_closures.set(closures).is_err() {
             panic!("the handshake_closures field was set more than once!");
         }
+    }
+}
+
+impl ContainsNode for Arc<Node> {
+    fn node(&self) -> &Arc<Node> {
+        &self
     }
 }

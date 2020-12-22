@@ -1,4 +1,4 @@
-use pea2pea::{spawn_nodes, Node, NodeConfig, Topology};
+use pea2pea::{connect_nodes, spawn_nodes, Node, NodeConfig, Topology};
 use tokio::time::sleep;
 
 use std::time::Duration;
@@ -27,7 +27,8 @@ async fn node_creation_used_port_fails() {
 
 #[tokio::test]
 async fn start_and_cancel_connecting() {
-    let nodes = spawn_nodes(2, Topology::Line, None).await.unwrap();
+    let nodes = spawn_nodes(2, None).await.unwrap();
+    connect_nodes(&nodes, Topology::Line).await.unwrap();
     sleep(Duration::from_millis(200)).await;
 
     assert!(nodes[0].disconnect(nodes[1].listening_addr));

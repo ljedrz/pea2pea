@@ -20,7 +20,7 @@ impl Deref for ChattyNode {
 }
 
 impl ContainsNode for ChattyNode {
-    fn node(&self) -> &Node {
+    fn node(&self) -> &Arc<Node> {
         &self.0
     }
 }

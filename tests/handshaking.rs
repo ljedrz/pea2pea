@@ -37,7 +37,7 @@ impl Deref for SecureishNode {
 }
 
 impl ContainsNode for SecureishNode {
-    fn node(&self) -> &Node {
+    fn node(&self) -> &Arc<Node> {
         &self.node
     }
 }

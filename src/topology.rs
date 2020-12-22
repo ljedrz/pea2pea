@@ -1,4 +1,4 @@
-use crate::{Node, NodeConfig};
+use crate::{ContainsNode, Node, NodeConfig};
 
 use std::{collections::HashSet, io, sync::Arc};
 
@@ -17,11 +17,7 @@ pub enum Topology {
     Star,
 }
 
-pub async fn spawn_nodes(
-    count: usize,
-    topology: Topology,
-    config: Option<NodeConfig>,
-) -> io::Result<Vec<Arc<Node>>> {
+pub async fn spawn_nodes(count: usize, config: Option<NodeConfig>) -> io::Result<Vec<Arc<Node>>> {
     let mut nodes = Vec::with_capacity(count);
 
     for _ in 0..count {
@@ -29,16 +25,24 @@ pub async fn spawn_nodes(
         nodes.push(node);
     }
 
+    Ok(nodes)
+}
+
+pub async fn connect_nodes<T: ContainsNode>(nodes: &[T], topology: Topology) -> io::Result<()> {
+    let count = nodes.len();
+
     match topology {
         Topology::Line | Topology::Ring => {
             for i in 0..(count - 1) {
                 nodes[i]
-                    .initiate_connection(nodes[i + 1].listening_addr)
+                    .node()
+                    .initiate_connection(nodes[i + 1].node().listening_addr)
                     .await?;
             }
             if topology == Topology::Ring {
                 nodes[count - 1]
-                    .initiate_connection(nodes[0].listening_addr)
+                    .node()
+                    .initiate_connection(nodes[0].node().listening_addr)
                     .await?;
             }
         }
@@ -47,20 +51,26 @@ pub async fn spawn_nodes(
             for i in 0..count {
                 for (j, peer) in nodes.iter().enumerate() {
                     if i != j && connected_pairs.insert((i, j)) && connected_pairs.insert((j, i)) {
-                        nodes[i].initiate_connection(peer.listening_addr).await?;
+                        nodes[i]
+                            .node()
+                            .initiate_connection(peer.node().listening_addr)
+                            .await?;
                     }
                 }
             }
         }
         Topology::Star => {
             for node in nodes.iter().skip(1) {
-                nodes[0].initiate_connection(node.listening_addr).await?;
+                nodes[0]
+                    .node()
+                    .initiate_connection(node.node().listening_addr)
+                    .await?;
             }
         }
         Topology::None => {}
     }
 
-    Ok(nodes)
+    Ok(())
 }
 
 #[cfg(test)]
@@ -76,7 +86,8 @@ mod tests {
 
     #[tokio::test]
     async fn topology_line_conn_counts() {
-        let nodes = spawn_nodes(N, Topology::Line, None).await.unwrap();
+        let nodes = spawn_nodes(N, None).await.unwrap();
+        connect_nodes(&nodes, Topology::Line).await.unwrap();
         sleep(Duration::from_millis(200)).await;
 
         for (i, node) in nodes.iter().enumerate() {
@@ -90,7 +101,8 @@ mod tests {
 
     #[tokio::test]
     async fn topology_ring_conn_counts() {
-        let nodes = spawn_nodes(N, Topology::Ring, None).await.unwrap();
+        let nodes = spawn_nodes(N, None).await.unwrap();
+        connect_nodes(&nodes, Topology::Ring).await.unwrap();
         sleep(Duration::from_millis(200)).await;
 
         for node in &nodes {
@@ -100,7 +112,8 @@ mod tests {
 
     #[tokio::test]
     async fn topology_mesh_conn_counts() {
-        let nodes = spawn_nodes(N, Topology::Mesh, None).await.unwrap();
+        let nodes = spawn_nodes(N, None).await.unwrap();
+        connect_nodes(&nodes, Topology::Mesh).await.unwrap();
         sleep(Duration::from_millis(200)).await;
 
         for node in &nodes {
@@ -110,7 +123,8 @@ mod tests {
 
     #[tokio::test]
     async fn topology_star_conn_counts() {
-        let nodes = spawn_nodes(N, Topology::Star, None).await.unwrap();
+        let nodes = spawn_nodes(N, None).await.unwrap();
+        connect_nodes(&nodes, Topology::Star).await.unwrap();
         sleep(Duration::from_millis(200)).await;
 
         for (i, node) in nodes.iter().enumerate() {
