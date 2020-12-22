@@ -7,4 +7,4 @@ pub trait PacketingProtocol: ContainsNode {
     }
 }
 
-pub type PacketingClosure = Box<dyn Fn(&[u8]) -> Vec<u8> + Send + Sync + 'static>;
+pub type PacketingClosure = Box<dyn Fn(&[u8]) -> Vec<u8> + Send + Sync>;

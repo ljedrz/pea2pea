@@ -86,4 +86,4 @@ where
 }
 
 pub type MessagingClosure =
-    Box<dyn Fn(ConnectionReader, SocketAddr) -> JoinHandle<()> + Send + Sync + 'static>;
+    Box<dyn Fn(ConnectionReader, SocketAddr) -> JoinHandle<()> + Send + Sync>;

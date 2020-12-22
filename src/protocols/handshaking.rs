@@ -13,8 +13,7 @@ pub trait HandshakeProtocol {
 type HandshakeClosure = Box<
     dyn Fn(SocketAddr, ConnectionReader, Arc<Connection>) -> JoinHandle<ConnectionReader>
         + Send
-        + Sync
-        + 'static,
+        + Sync,
 >;
 
 // FIXME: the pub for members is not ideal
