@@ -10,6 +10,8 @@ pub struct NodeConfig {
     pub conn_read_buffer_size: usize,
     /// the depth of the queue used to process all inbound messages
     pub inbound_message_queue_depth: usize,
+    /// the delay on the next read from a node that provided an invalid message
+    pub invalid_message_penalty_secs: u64,
 }
 
 impl Default for NodeConfig {
@@ -20,6 +22,7 @@ impl Default for NodeConfig {
             allow_random_port: true,
             conn_read_buffer_size: 64 * 1024,
             inbound_message_queue_depth: 256,
+            invalid_message_penalty_secs: 10,
         }
     }
 }

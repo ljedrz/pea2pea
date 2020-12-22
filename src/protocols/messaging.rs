@@ -1,10 +1,10 @@
 use crate::{ConnectionReader, ContainsNode};
 
 use async_trait::async_trait;
-use tokio::{sync::mpsc::channel, task::JoinHandle};
+use tokio::{sync::mpsc::channel, task::JoinHandle, time::sleep};
 use tracing::*;
 
-use std::{io, net::SocketAddr};
+use std::{io, net::SocketAddr, time::Duration};
 
 #[async_trait]
 pub trait MessagingProtocol: ContainsNode {
@@ -58,6 +58,10 @@ pub trait MessagingProtocol: ContainsNode {
                         Err(e) => {
                             node.register_failure(addr);
                             error!(parent: node.span(), "can't read message: {}", e);
+                            sleep(Duration::from_secs(
+                                node.config.invalid_message_penalty_secs,
+                            ))
+                            .await;
                         }
                     }
                 }
