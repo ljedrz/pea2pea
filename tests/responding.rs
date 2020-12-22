@@ -123,20 +123,20 @@ async fn request_handling_echo() {
     echo_node.enable_packeting_protocol(writing_closure);
 
     shout_node
-        .initiate_connection(echo_node.local_addr)
+        .initiate_connection(echo_node.listening_addr)
         .await
         .unwrap();
 
     shout_node
-        .send_direct_message(echo_node.local_addr, vec![TestMessage::Herp as u8])
+        .send_direct_message(echo_node.listening_addr, vec![TestMessage::Herp as u8])
         .await
         .unwrap();
     shout_node
-        .send_direct_message(echo_node.local_addr, vec![TestMessage::Derp as u8])
+        .send_direct_message(echo_node.listening_addr, vec![TestMessage::Derp as u8])
         .await
         .unwrap();
     shout_node
-        .send_direct_message(echo_node.local_addr, vec![TestMessage::Herp as u8])
+        .send_direct_message(echo_node.listening_addr, vec![TestMessage::Herp as u8])
         .await
         .unwrap();
 

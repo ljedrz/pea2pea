@@ -31,7 +31,7 @@ pub trait ContainsNode {
 pub struct Node {
     span: Span,
     pub config: NodeConfig,
-    pub local_addr: SocketAddr,
+    pub listening_addr: SocketAddr,
     messaging_closure: OnceCell<MessagingClosure>,
     packeting_closure: OnceCell<PacketingClosure>,
     inbound_messages: OnceCell<InboundMessages>,
@@ -56,8 +56,8 @@ impl Node {
         let span = trace_span!("node", name = config.name.as_deref().unwrap());
 
         let desired_listener = if let Some(port) = config.desired_listening_port {
-            let desired_local_addr = SocketAddr::new(local_ip, port);
-            TcpListener::bind(desired_local_addr).await
+            let desired_listening_addr = SocketAddr::new(local_ip, port);
+            TcpListener::bind(desired_listening_addr).await
         } else if config.allow_random_port {
             let random_available_addr = SocketAddr::new(local_ip, 0);
             TcpListener::bind(random_available_addr).await
@@ -78,12 +78,12 @@ impl Node {
                 }
             }
         };
-        let local_addr = listener.local_addr()?;
+        let listening_addr = listener.local_addr()?;
 
         let node = Arc::new(Self {
             span,
             config,
-            local_addr,
+            listening_addr,
             inbound_messages: Default::default(),
             messaging_closure: Default::default(),
             packeting_closure: Default::default(),
@@ -112,7 +112,7 @@ impl Node {
         info!(
             parent: node.span(),
             "the node is ready; listening on {}",
-            local_addr
+            listening_addr
         );
 
         Ok(node)

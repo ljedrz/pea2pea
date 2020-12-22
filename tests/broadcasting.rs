@@ -66,7 +66,7 @@ async fn chatty_node_broadcasts() {
 
     chatty_node
         .0
-        .initiate_connection(reader_node.local_addr)
+        .initiate_connection(reader_node.listening_addr)
         .await
         .unwrap();
     chatty_node.enable_broadcast_protocol();

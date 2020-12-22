@@ -170,13 +170,13 @@ async fn simple_handshake() {
 
     initiator_node
         .node
-        .initiate_connection(responder_node.local_addr)
+        .initiate_connection(responder_node.listening_addr)
         .await
         .unwrap();
 
     sleep(Duration::from_millis(100)).await;
 
-    assert!(initiator_node.is_handshaken(responder_node.local_addr));
+    assert!(initiator_node.is_handshaken(responder_node.listening_addr));
     // TODO: the responder is also handshaken, but it knows the initiator under a different address;
     // obtain it and then perform the assertion
 }
