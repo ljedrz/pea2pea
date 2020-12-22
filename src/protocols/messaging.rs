@@ -14,7 +14,7 @@ pub trait MessagingProtocol: ContainsNode {
     where
         Self: Send + Sync + 'static,
     {
-        let (sender, mut receiver) = channel(1024); // TODO: specify in NodeConfig
+        let (sender, mut receiver) = channel(self.node().config.inbound_message_queue_depth);
         self.node().set_inbound_messages(sender);
 
         let self_clone = Arc::clone(self);
@@ -26,10 +26,10 @@ pub trait MessagingProtocol: ContainsNode {
                         self_clone.process_message(&msg);
 
                         if let Err(e) = self_clone.respond_to_message(msg, source) {
-                            error!(parent: node.span(), "failed to handle an incoming message: {}", e);
+                            error!(parent: node.span(), "failed to handle an inbound message: {}", e);
                         }
                     } else {
-                        error!(parent: node.span(), "can't parse an incoming message");
+                        error!(parent: node.span(), "can't parse an inbound message");
                     }
                 }
             }
@@ -50,7 +50,7 @@ pub trait MessagingProtocol: ContainsNode {
 
                             if let Some(ref inbound_messages) = node.inbound_messages() {
                                 if let Err(e) = inbound_messages.send((msg, addr)).await {
-                                    error!(parent: node.span(), "can't register an incoming message: {}", e);
+                                    error!(parent: node.span(), "can't process an inbound message: {}", e);
                                     // TODO: how to proceed?
                                 }
                             }
