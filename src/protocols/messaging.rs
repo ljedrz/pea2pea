@@ -7,13 +7,13 @@ use tracing::*;
 use std::{io, net::SocketAddr, time::Duration};
 
 #[async_trait]
-pub trait MessagingProtocol: ContainsNode {
+pub trait MessagingProtocol: ContainsNode
+where
+    Self: Clone + Send + 'static,
+{
     type Message;
 
-    fn enable_messaging_protocol(&self)
-    where
-        Self: Clone + Send + 'static,
-    {
+    fn enable_messaging_protocol(&self) {
         let (sender, mut receiver) = channel(self.node().config.inbound_message_queue_depth);
         self.node().set_inbound_messages(sender);
 

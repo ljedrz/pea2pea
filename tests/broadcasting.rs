@@ -6,7 +6,7 @@ use pea2pea::{
     BroadcastProtocol, ContainsNode, MessagingProtocol, Node, NodeConfig, PacketingProtocol,
 };
 
-use std::{ops::Deref, sync::Arc, time::Duration};
+use std::{io, ops::Deref, sync::Arc, time::Duration};
 
 #[derive(Clone)]
 struct ChattyNode(Arc<Node>);
@@ -27,19 +27,18 @@ impl ContainsNode for ChattyNode {
 
 impl PacketingProtocol for ChattyNode {}
 
+#[async_trait::async_trait]
 impl BroadcastProtocol for ChattyNode {
     const INTERVAL_MS: u64 = 100;
 
-    fn enable_broadcast_protocol(&self) {
-        let node = self.clone();
-        tokio::spawn(async move {
-            let message = "hello there ( ͡° ͜ʖ ͡°)";
-            loop {
-                info!(parent: node.span(), "sending \"{}\" to all my frens", message);
-                node.send_broadcast(message.as_bytes().to_vec()).await;
-                sleep(Duration::from_millis(Self::INTERVAL_MS)).await;
-            }
-        });
+    async fn perform_broadcast(&self) -> io::Result<()> {
+        let message = "hello there ( ͡° ͜ʖ ͡°)";
+        info!(parent: self.node().span(), "sending \"{}\" to all my frens", message);
+        self.node()
+            .send_broadcast(message.as_bytes().to_vec())
+            .await;
+
+        Ok(())
     }
 }
 
