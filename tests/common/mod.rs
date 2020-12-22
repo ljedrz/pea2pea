@@ -7,9 +7,9 @@ use pea2pea::{
 use std::{convert::TryInto, ops::Deref, sync::Arc};
 
 #[derive(Clone)]
-pub struct RwNode(Arc<Node>);
+pub struct GenericNode(Arc<Node>);
 
-impl RwNode {
+impl GenericNode {
     #[allow(dead_code)]
     pub async fn new() -> Arc<Self> {
         let mut config = NodeConfig::default();
@@ -18,7 +18,7 @@ impl RwNode {
     }
 }
 
-impl Deref for RwNode {
+impl Deref for GenericNode {
     type Target = Arc<Node>;
 
     fn deref(&self) -> &Self::Target {
@@ -26,7 +26,7 @@ impl Deref for RwNode {
     }
 }
 
-impl ContainsNode for RwNode {
+impl ContainsNode for GenericNode {
     fn node(&self) -> &Arc<Node> {
         &self.0
     }
@@ -67,6 +67,6 @@ macro_rules! impl_messaging_protocol {
     };
 }
 
-impl_messaging_protocol!(RwNode);
+impl_messaging_protocol!(GenericNode);
 
-impl PacketingProtocol for RwNode {}
+impl PacketingProtocol for GenericNode {}

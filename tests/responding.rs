@@ -101,7 +101,7 @@ impl MessagingProtocol for EchoNode {
 async fn request_handling_echo() {
     tracing_subscriber::fmt::init();
 
-    let shout_node = common::RwNode::new().await;
+    let shout_node = common::GenericNode::new().await;
 
     let writing_closure = Box::new(|message: &[u8]| -> Vec<u8> {
         let mut message_with_u16_len = Vec::with_capacity(message.len() + 2);

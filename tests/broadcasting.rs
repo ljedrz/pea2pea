@@ -46,7 +46,7 @@ impl BroadcastProtocol for ChattyNode {
 async fn chatty_node_broadcasts() {
     tracing_subscriber::fmt::init();
 
-    let reader_node = common::RwNode::new().await;
+    let reader_node = common::GenericNode::new().await;
     reader_node.enable_messaging_protocol();
 
     let mut chatty_node_config = NodeConfig::default();
