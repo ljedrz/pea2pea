@@ -54,14 +54,14 @@ async fn chatty_node_broadcasts() {
     let chatty_node = Node::new(Some(chatty_node_config)).await.unwrap();
     let chatty_node = Arc::new(ChattyNode(chatty_node));
 
-    let writing_closure = Box::new(|message: &[u8]| -> Vec<u8> {
+    let packeting_closure = Box::new(|message: &[u8]| -> Vec<u8> {
         let mut message_with_u16_len = Vec::with_capacity(message.len() + 2);
         message_with_u16_len.extend_from_slice(&(message.len() as u16).to_le_bytes());
         message_with_u16_len.extend_from_slice(message);
         message_with_u16_len
     });
 
-    chatty_node.enable_packeting_protocol(writing_closure);
+    chatty_node.enable_packeting_protocol(packeting_closure);
 
     chatty_node
         .0

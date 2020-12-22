@@ -103,14 +103,14 @@ async fn request_handling_echo() {
 
     let shout_node = common::GenericNode::new().await;
 
-    let writing_closure = Box::new(|message: &[u8]| -> Vec<u8> {
+    let packeting_closure = Box::new(|message: &[u8]| -> Vec<u8> {
         let mut message_with_u16_len = Vec::with_capacity(message.len() + 2);
         message_with_u16_len.extend_from_slice(&(message.len() as u16).to_le_bytes());
         message_with_u16_len.extend_from_slice(message);
         message_with_u16_len
     });
 
-    shout_node.enable_packeting_protocol(writing_closure.clone());
+    shout_node.enable_packeting_protocol(packeting_closure.clone());
 
     let mut echo_node_config = NodeConfig::default();
     echo_node_config.name = Some("echo".into());
@@ -120,7 +120,7 @@ async fn request_handling_echo() {
     });
 
     echo_node.enable_messaging_protocol();
-    echo_node.enable_packeting_protocol(writing_closure);
+    echo_node.enable_packeting_protocol(packeting_closure);
 
     shout_node
         .initiate_connection(echo_node.listening_addr)
