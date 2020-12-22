@@ -6,6 +6,7 @@ use pea2pea::{
 
 use std::{convert::TryInto, ops::Deref, sync::Arc};
 
+#[derive(Clone)]
 pub struct RwNode(Arc<Node>);
 
 impl RwNode {

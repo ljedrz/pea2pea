@@ -75,7 +75,7 @@ impl MessagingProtocol for EchoNode {
     }
 
     fn respond_to_message(
-        self: &Arc<Self>,
+        &self,
         message: Self::Message,
         source_addr: SocketAddr,
     ) -> io::Result<()> {
@@ -83,7 +83,7 @@ impl MessagingProtocol for EchoNode {
         if self.echoed.lock().insert(message) {
             info!(parent: self.span(), "it was new! echoing it");
 
-            let node = Arc::clone(self);
+            let node = self.clone();
             tokio::spawn(async move {
                 node.send_direct_message(source_addr, vec![message as u8])
                     .await

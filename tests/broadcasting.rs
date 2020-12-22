@@ -30,8 +30,8 @@ impl PacketingProtocol for ChattyNode {}
 impl BroadcastProtocol for ChattyNode {
     const INTERVAL_MS: u64 = 100;
 
-    fn enable_broadcast_protocol(self: &Arc<Self>) {
-        let node = Arc::clone(self);
+    fn enable_broadcast_protocol(&self) {
+        let node = self.clone();
         tokio::spawn(async move {
             let message = "hello there ( ͡° ͜ʖ ͡°)";
             loop {

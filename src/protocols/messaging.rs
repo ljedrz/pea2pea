@@ -4,20 +4,20 @@ use async_trait::async_trait;
 use tokio::{sync::mpsc::channel, task::JoinHandle};
 use tracing::*;
 
-use std::{io, net::SocketAddr, sync::Arc};
+use std::{io, net::SocketAddr};
 
 #[async_trait]
 pub trait MessagingProtocol: ContainsNode {
     type Message;
 
-    fn enable_messaging_protocol(self: &Arc<Self>)
+    fn enable_messaging_protocol(&self)
     where
-        Self: Send + Sync + 'static,
+        Self: Clone + Send + 'static,
     {
         let (sender, mut receiver) = channel(self.node().config.inbound_message_queue_depth);
         self.node().set_inbound_messages(sender);
 
-        let self_clone = Arc::clone(self);
+        let self_clone = self.clone();
         tokio::spawn(async move {
             let node = self_clone.node();
             loop {
@@ -75,11 +75,7 @@ pub trait MessagingProtocol: ContainsNode {
         // do nothing by default
     }
 
-    fn respond_to_message(
-        self: &Arc<Self>,
-        _message: Self::Message,
-        _source: SocketAddr,
-    ) -> io::Result<()> {
+    fn respond_to_message(&self, _message: Self::Message, _source: SocketAddr) -> io::Result<()> {
         // don't do anything by default
         Ok(())
     }

@@ -1,8 +1,9 @@
-use std::sync::Arc;
-
-pub trait BroadcastProtocol {
+pub trait BroadcastProtocol
+where
+    Self: Clone,
+{
     const INTERVAL_MS: u64;
 
     // prepare the Node to broadcast messages
-    fn enable_broadcast_protocol(self: &Arc<Self>);
+    fn enable_broadcast_protocol(&self);
 }
