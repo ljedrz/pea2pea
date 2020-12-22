@@ -98,7 +98,7 @@ impl MessagingProtocol for EchoNode {
 }
 
 #[tokio::test]
-async fn request_handling_echo() {
+async fn echo_node_messaging() {
     tracing_subscriber::fmt::init();
 
     let shout_node = common::GenericNode::new().await;
