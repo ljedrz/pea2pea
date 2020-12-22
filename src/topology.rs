@@ -17,13 +17,15 @@ pub enum Topology {
     Star,
 }
 
-pub async fn spawn_nodes(count: usize, topology: Topology) -> io::Result<Vec<Arc<Node>>> {
+pub async fn spawn_nodes(
+    count: usize,
+    topology: Topology,
+    config: Option<NodeConfig>,
+) -> io::Result<Vec<Arc<Node>>> {
     let mut nodes = Vec::with_capacity(count);
 
-    for i in 0..count {
-        let mut config = NodeConfig::default();
-        config.name = Some(i.to_string());
-        let node = Node::new(Some(config)).await?;
+    for _ in 0..count {
+        let node = Node::new(config.clone()).await?;
         nodes.push(node);
     }
 
@@ -74,7 +76,7 @@ mod tests {
 
     #[tokio::test]
     async fn topology_line_conn_counts() {
-        let nodes = spawn_nodes(N, Topology::Line).await.unwrap();
+        let nodes = spawn_nodes(N, Topology::Line, None).await.unwrap();
         sleep(Duration::from_millis(200)).await;
 
         for (i, node) in nodes.iter().enumerate() {
@@ -88,7 +90,7 @@ mod tests {
 
     #[tokio::test]
     async fn topology_ring_conn_counts() {
-        let nodes = spawn_nodes(N, Topology::Ring).await.unwrap();
+        let nodes = spawn_nodes(N, Topology::Ring, None).await.unwrap();
         sleep(Duration::from_millis(200)).await;
 
         for node in &nodes {
@@ -98,7 +100,7 @@ mod tests {
 
     #[tokio::test]
     async fn topology_mesh_conn_counts() {
-        let nodes = spawn_nodes(N, Topology::Mesh).await.unwrap();
+        let nodes = spawn_nodes(N, Topology::Mesh, None).await.unwrap();
         sleep(Duration::from_millis(200)).await;
 
         for node in &nodes {
@@ -108,7 +110,7 @@ mod tests {
 
     #[tokio::test]
     async fn topology_star_conn_counts() {
-        let nodes = spawn_nodes(N, Topology::Star).await.unwrap();
+        let nodes = spawn_nodes(N, Topology::Star, None).await.unwrap();
         sleep(Duration::from_millis(200)).await;
 
         for (i, node) in nodes.iter().enumerate() {

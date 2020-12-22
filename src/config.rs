@@ -1,4 +1,4 @@
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct NodeConfig {
     /// the name/identifier of the node
     pub name: Option<String>,
