@@ -44,7 +44,7 @@ pub trait MessagingProtocol: ContainsNode {
                 loop {
                     match Self::read_message(&mut connection_reader).await {
                         Ok(msg) => {
-                            info!(parent: node.span(), "received a message from {}", addr);
+                            debug!(parent: node.span(), "received a message from {}", addr);
 
                             node.register_received_message(addr, msg.len());
 
