@@ -3,7 +3,7 @@ use parking_lot::RwLock;
 use std::{collections::HashMap, net::SocketAddr, time::Instant};
 
 #[derive(Default)]
-pub(crate) struct KnownPeers(RwLock<HashMap<SocketAddr, PeerStats>>);
+pub struct KnownPeers(RwLock<HashMap<SocketAddr, PeerStats>>);
 
 impl KnownPeers {
     pub(crate) fn add(&self, addr: SocketAddr) {
@@ -29,16 +29,20 @@ impl KnownPeers {
             .map(|peer_stats| peer_stats.msgs_received)
             .sum()
     }
+
+    pub fn peer_stats(&self) -> &RwLock<HashMap<SocketAddr, PeerStats>> {
+        &self.0
+    }
 }
 
-#[derive(Debug)]
-pub(crate) struct PeerStats {
+#[derive(Debug, Clone)]
+pub struct PeerStats {
     times_connected: usize, // TODO: can be NonZeroUsize
     first_seen: Instant,
     last_seen: Instant,
     msgs_received: usize,
     bytes_received: u64,
-    failures: u8,
+    pub failures: u8, // FIXME: consider some public "reset" method instead
 }
 
 impl Default for PeerStats {

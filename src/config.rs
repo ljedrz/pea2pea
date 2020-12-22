@@ -12,6 +12,8 @@ pub struct NodeConfig {
     pub inbound_message_queue_depth: usize,
     /// the delay on the next read from a node that provided an invalid message
     pub invalid_message_penalty_secs: u64,
+    /// the per-connection number of failures over which the connection is closed
+    pub max_allowed_failures: u8,
 }
 
 impl Default for NodeConfig {
@@ -23,6 +25,7 @@ impl Default for NodeConfig {
             conn_read_buffer_size: 64 * 1024,
             inbound_message_queue_depth: 256,
             invalid_message_penalty_secs: 10,
+            max_allowed_failures: 10,
         }
     }
 }

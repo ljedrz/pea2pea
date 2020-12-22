@@ -37,7 +37,7 @@ pub struct Node {
     inbound_messages: OnceCell<InboundMessages>,
     handshake_closures: OnceCell<HandshakeClosures>,
     connections: Connections,
-    known_peers: KnownPeers,
+    pub known_peers: KnownPeers,
 }
 
 impl Node {
