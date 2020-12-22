@@ -53,7 +53,7 @@ impl Node {
             );
         }
 
-        let span = trace_span!("node", name = config.name.as_deref().unwrap());
+        let span = create_span(config.name.as_deref().unwrap());
 
         let desired_listener = if let Some(port) = config.desired_listening_port {
             let desired_listening_addr = SocketAddr::new(local_ip, port);
@@ -311,4 +311,30 @@ impl ContainsNode for Arc<Node> {
     fn node(&self) -> &Arc<Node> {
         &self
     }
+}
+
+// FIXME: this can probably be done more elegantly
+fn create_span(node_name: &str) -> Span {
+    let span = trace_span!("node", name = node_name);
+    let span = if span.is_disabled() {
+        debug_span!("node", name = node_name)
+    } else {
+        span
+    };
+    let span = if span.is_disabled() {
+        info_span!("node", name = node_name)
+    } else {
+        span
+    };
+    let span = if span.is_disabled() {
+        warn_span!("node", name = node_name)
+    } else {
+        span
+    };
+    let span = if span.is_disabled() {
+        error_span!("node", name = node_name)
+    } else {
+        span
+    };
+    span
 }
