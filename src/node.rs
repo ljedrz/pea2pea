@@ -230,6 +230,10 @@ impl Node {
         }
     }
 
+    pub fn handshaken_addrs(&self) -> Vec<SocketAddr> {
+        self.connections.handshaken.read().keys().copied().collect()
+    }
+
     pub fn register_received_message(&self, from: SocketAddr, len: usize) {
         self.known_peers.register_received_message(from, len)
     }
