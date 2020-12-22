@@ -133,7 +133,7 @@ impl Node {
         addr: SocketAddr,
         side: ConnectionSide,
     ) {
-        debug!(parent: self.span(), "connecting to {}", addr);
+        debug!(parent: self.span(), "establishing connection with {}", addr);
         let (reader, writer) = stream.into_split();
 
         let connection_reader = ConnectionReader::new(reader, Arc::clone(&self));
