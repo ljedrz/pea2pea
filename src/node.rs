@@ -191,8 +191,8 @@ impl Node {
             return Ok(());
         }
 
-        self.known_peers.add(addr);
         let stream = TcpStream::connect(addr).await?;
+        self.known_peers.add(addr);
         self.adapt_stream(stream, addr, ConnectionSide::Initiator)
             .await;
 
