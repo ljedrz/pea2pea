@@ -137,7 +137,7 @@ impl Node {
         let (reader, writer) = stream.into_split();
 
         let connection_reader = ConnectionReader::new(reader, Arc::clone(&self));
-        let connection = Arc::new(Connection::new(writer, Arc::clone(&self)));
+        let connection = Arc::new(Connection::new(writer, Arc::clone(&self), side));
 
         self.connections
             .handshaking

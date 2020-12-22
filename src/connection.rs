@@ -14,6 +14,7 @@ use std::{
     sync::Arc,
 };
 
+#[derive(Clone, Copy)]
 pub(crate) enum ConnectionSide {
     Initiator,
     Responder,
@@ -52,14 +53,16 @@ pub struct Connection {
     node: Arc<Node>,
     pub(crate) reader_task: OnceCell<Option<JoinHandle<()>>>,
     writer: Mutex<OwnedWriteHalf>,
+    side: ConnectionSide,
 }
 
 impl Connection {
-    pub(crate) fn new(writer: OwnedWriteHalf, node: Arc<Node>) -> Self {
+    pub(crate) fn new(writer: OwnedWriteHalf, node: Arc<Node>, side: ConnectionSide) -> Self {
         Self {
             node,
             reader_task: Default::default(),
             writer: Mutex::new(writer),
+            side,
         }
     }
 
@@ -77,5 +80,21 @@ impl Connection {
         let mut writer = self.writer.lock().await;
         writer.write(bytes).await?;
         writer.flush().await
+    }
+}
+
+impl Drop for Connection {
+    fn drop(&mut self) {
+        // if the main node was not the initiator of the connection, it doesn't know the listening address
+        // of the associated peer, so the related stats are unreliable; the next connection initiated by
+        // the peer could be bound to an entirely different port number
+        if matches!(self.side, ConnectionSide::Initiator) {
+            let peer_addr = self.writer.get_mut().as_ref().peer_addr();
+            if let Ok(addr) = peer_addr {
+                self.node.known_peers.peer_stats().write().remove(&addr);
+            } else {
+                warn!(parent: self.node.span(), "couldn't remove the stats of an obsolete peer");
+            }
+        }
     }
 }

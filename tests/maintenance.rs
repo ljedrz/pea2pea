@@ -32,14 +32,20 @@ impl MaintenanceProtocol for TidyNode {
 
         debug!(parent: node.span(), "performing maintenance");
 
-        let mut peer_stats = node.known_peers.peer_stats().write();
-        for addr in node.handshaken_addrs() {
-            if let Some(ref mut stats) = peer_stats.get_mut(&addr) {
-                if stats.failures > node.config.max_allowed_failures {
-                    node.disconnect(addr);
-                    stats.failures = 0;
-                }
+        // collect the addresses instead of disconnecting immediately inside the loop,
+        // because dropping peers that initiated the connection removes the associated
+        // peer stat, which would otherwise lead to a deadlock
+        let mut addrs_to_disconnect = Vec::new();
+
+        for (addr, stats) in node.known_peers.peer_stats().write().iter_mut() {
+            if stats.failures > node.config.max_allowed_failures {
+                addrs_to_disconnect.push(*addr);
+                stats.failures = 0;
             }
+        }
+
+        for addr in addrs_to_disconnect {
+            node.disconnect(addr);
         }
 
         Ok(())

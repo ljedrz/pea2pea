@@ -19,7 +19,9 @@ impl KnownPeers {
     }
 
     pub(crate) fn register_failure(&self, from: SocketAddr) {
-        self.0.write().get_mut(&from).unwrap().register_failure()
+        if let Some(ref mut stats) = self.0.write().get_mut(&from) {
+            stats.register_failure();
+        }
     }
 
     pub(crate) fn num_messages_received(&self) -> usize {
