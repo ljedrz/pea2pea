@@ -11,6 +11,7 @@ use tracing::*;
 
 use std::{
     io::{self, ErrorKind},
+    ops::Not,
     sync::Arc,
 };
 
@@ -18,6 +19,17 @@ use std::{
 pub(crate) enum ConnectionSide {
     Initiator,
     Responder,
+}
+
+impl Not for ConnectionSide {
+    type Output = Self;
+
+    fn not(self) -> Self::Output {
+        match self {
+            Self::Initiator => Self::Responder,
+            Self::Responder => Self::Initiator,
+        }
+    }
 }
 
 // FIXME: these pubs are not ideal
