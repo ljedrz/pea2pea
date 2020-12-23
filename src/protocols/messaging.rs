@@ -57,7 +57,7 @@ where
                         }
                         Err(e) => {
                             node.register_failure(addr);
-                            error!(parent: node.span(), "can't read message: {}", e);
+                            error!(parent: node.span(), "can't read a message from {}: {}", addr, e);
                             sleep(Duration::from_secs(
                                 node.config.invalid_message_penalty_secs,
                             ))
