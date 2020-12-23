@@ -22,10 +22,10 @@ where
             let node = self_clone.node();
             loop {
                 if let Some((request, source)) = receiver.recv().await {
-                    if let Some(msg) = self_clone.parse_message(&request) {
-                        self_clone.process_message(&msg);
+                    if let Some(msg) = self_clone.parse_message(source, &request) {
+                        self_clone.process_message(source, &msg);
 
-                        if let Err(e) = self_clone.respond_to_message(msg, source) {
+                        if let Err(e) = self_clone.respond_to_message(source, msg) {
                             error!(parent: node.span(), "failed to handle an inbound message: {}", e);
                         }
                     } else {
@@ -73,13 +73,15 @@ where
 
     async fn read_message(conn_reader: &mut ConnectionReader) -> io::Result<Vec<u8>>;
 
-    fn parse_message(&self, buffer: &[u8]) -> Option<Self::Message>;
+    fn parse_message(&self, source: SocketAddr, buffer: &[u8]) -> Option<Self::Message>;
 
-    fn process_message(&self, _message: &Self::Message) {
+    #[allow(unused_variables)]
+    fn process_message(&self, source: SocketAddr, message: &Self::Message) {
         // do nothing by default
     }
 
-    fn respond_to_message(&self, _message: Self::Message, _source: SocketAddr) -> io::Result<()> {
+    #[allow(unused_variables)]
+    fn respond_to_message(&self, source: SocketAddr, message: Self::Message) -> io::Result<()> {
         // don't do anything by default
         Ok(())
     }

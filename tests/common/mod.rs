@@ -4,7 +4,7 @@ use pea2pea::{
     ConnectionReader, ContainsNode, MessagingProtocol, Node, NodeConfig, PacketingProtocol,
 };
 
-use std::{convert::TryInto, ops::Deref, sync::Arc};
+use std::{convert::TryInto, net::SocketAddr, ops::Deref, sync::Arc};
 
 #[derive(Clone)]
 pub struct GenericNode(Arc<Node>);
@@ -60,7 +60,7 @@ macro_rules! impl_messaging_protocol {
                 Ok(buffer[..msg_len].to_vec())
             }
 
-            fn parse_message(&self, _: &[u8]) -> Option<Self::Message> {
+            fn parse_message(&self, _source: SocketAddr, _: &[u8]) -> Option<Self::Message> {
                 Some(())
             }
         }

@@ -62,7 +62,7 @@ impl MessagingProtocol for EchoNode {
         Ok(buffer[..msg_len].to_vec())
     }
 
-    fn parse_message(&self, buffer: &[u8]) -> Option<Self::Message> {
+    fn parse_message(&self, _source: SocketAddr, buffer: &[u8]) -> Option<Self::Message> {
         if buffer.len() == 1 {
             match buffer[0] {
                 0 => Some(TestMessage::Herp),
@@ -74,18 +74,14 @@ impl MessagingProtocol for EchoNode {
         }
     }
 
-    fn respond_to_message(
-        &self,
-        message: Self::Message,
-        source_addr: SocketAddr,
-    ) -> io::Result<()> {
-        info!(parent: self.span(), "got a {:?} from {}", message, source_addr);
+    fn respond_to_message(&self, source: SocketAddr, message: Self::Message) -> io::Result<()> {
+        info!(parent: self.span(), "got a {:?} from {}", message, source);
         if self.echoed.lock().insert(message) {
             info!(parent: self.span(), "it was new! echoing it");
 
             let node = self.clone();
             tokio::spawn(async move {
-                node.send_direct_message(source_addr, vec![message as u8])
+                node.send_direct_message(source, vec![message as u8])
                     .await
                     .unwrap();
             });
