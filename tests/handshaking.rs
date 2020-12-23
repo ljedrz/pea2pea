@@ -13,7 +13,6 @@ use std::{
     convert::TryInto,
     io::{self, ErrorKind},
     net::SocketAddr,
-    ops::Deref,
     sync::Arc,
     time::Duration,
 };
@@ -53,10 +52,7 @@ impl HandshakeMsg {
 }
 
 #[derive(PartialEq, Eq)]
-struct NoncePair {
-    mine: u64,
-    peers: u64,
-}
+struct NoncePair(u64, u64); // (mine, peer's)
 
 #[derive(Clone)]
 struct SecureishNode {
@@ -64,17 +60,46 @@ struct SecureishNode {
     handshakes: Arc<RwLock<HashMap<SocketAddr, NoncePair>>>,
 }
 
-impl Deref for SecureishNode {
-    type Target = Node;
-
-    fn deref(&self) -> &Self::Target {
+impl ContainsNode for SecureishNode {
+    fn node(&self) -> &Arc<Node> {
         &self.node
     }
 }
 
-impl ContainsNode for SecureishNode {
-    fn node(&self) -> &Arc<Node> {
-        &self.node
+macro_rules! read_handshake_message {
+    ($expected: path, $node: expr, $connection_reader: expr, $addr: expr) => {
+        match $connection_reader.read_bytes(9).await {
+            Ok(9) => {
+                $node.register_received_message($addr, 9);
+                let msg = HandshakeMsg::deserialize(&$connection_reader.buffer[..9]);
+
+                if let $expected(nonce) = msg {
+                    debug!(parent: $node.span(), "received handshake message B from {}", $addr);
+                    nonce
+                } else {
+                    error!(parent: $node.span(), "received an invalid handshake message from {} (expected B)", $addr);
+                    return Err(ErrorKind::Other.into());
+                }
+            }
+            _ => {
+                error!(parent: $node.span(), "couldn't read handshake message B");
+                return Err(ErrorKind::Other.into());
+            }
+        }
+    }
+}
+
+macro_rules! send_handshake_message {
+    ($msg: expr, $node: expr, $connection: expr, $addr: expr) => {
+        if let Err(e) = $connection
+            .write_bytes(&$msg.serialize())
+            .await
+        {
+            error!(parent: $node.span(), "can't send handshake message A to {}: {}", $addr, e);
+            return Err(ErrorKind::Other.into());
+        } else {
+            debug!(parent: $node.span(), "sent handshake message A to {}", $addr);
+        };
     }
 }
 
@@ -105,40 +130,13 @@ impl HandshakeProtocol for SecureishNode {
 
                 // send A
                 let own_nonce = 0;
-                if let Err(e) = connection
-                    .write_bytes(&HandshakeMsg::A(own_nonce).serialize())
-                    .await
-                {
-                    error!(parent: node.span(), "can't send handshake message A to {}: {}", addr, e);
-                    return Err(ErrorKind::Other.into());
-                } else {
-                    debug!(parent: node.span(), "sent handshake message A to {}", addr);
-                };
+                send_handshake_message!(HandshakeMsg::A(own_nonce), node, connection, addr);
 
                 // read B
-                let peer_nonce = match connection_reader.read_bytes(9).await {
-                    Ok(9) => {
-                        node.register_received_message(addr, 9);
-                        let msg = HandshakeMsg::deserialize(&connection_reader.buffer[..9]);
+                let peer_nonce =
+                    read_handshake_message!(HandshakeMsg::B, node, connection_reader, addr);
 
-                        if let HandshakeMsg::B(peer_nonce) = msg {
-                            debug!(parent: node.span(), "received handshake message B from {}", addr);
-                            peer_nonce
-                        } else {
-                            error!(parent: node.span(), "received an invalid handshake message from {} (expected B)", addr);
-                            return Err(ErrorKind::Other.into());
-                        }
-                    }
-                    _ => {
-                        error!(parent: node.span(), "couldn't read handshake message B");
-                        return Err(ErrorKind::Other.into());
-                    }
-                };
-
-                let nonce_pair = NoncePair {
-                    mine: own_nonce,
-                    peers: peer_nonce,
-                };
+                let nonce_pair = NoncePair(own_nonce, peer_nonce);
 
                 Ok((connection_reader, Box::new(nonce_pair) as HandshakeState))
             })
@@ -153,40 +151,14 @@ impl HandshakeProtocol for SecureishNode {
                 debug!(parent: node.span(), "spawned a task to handshake with {}", addr);
 
                 // read A
-                let peer_nonce = match connection_reader.read_bytes(9).await {
-                    Ok(9) => {
-                        node.register_received_message(addr, 9);
-                        let msg = HandshakeMsg::deserialize(&connection_reader.buffer[..9]);
-
-                        if let HandshakeMsg::A(peer_nonce) = msg {
-                            debug!(parent: node.span(), "received handshake message A from {}", addr);
-                            peer_nonce
-                        } else {
-                            error!(parent: node.span(), "received an invalid handshake message from {} (expected A)", addr);
-                            return Err(ErrorKind::Other.into());
-                        }
-                    }
-                    _ => {
-                        error!(parent: node.span(), "couldn't read handshake message A");
-                        return Err(ErrorKind::Other.into());
-                    }
-                };
+                let peer_nonce =
+                    read_handshake_message!(HandshakeMsg::A, node, connection_reader, addr);
 
                 // send B
                 let own_nonce = 1;
-                if let Err(e) = connection
-                    .write_bytes(&HandshakeMsg::B(own_nonce).serialize())
-                    .await
-                {
-                    error!(parent: node.span(), "can't send handshake message B to {}: {}", addr, e);
-                } else {
-                    debug!(parent: node.span(), "sent handshake message B to {}", addr);
-                };
+                send_handshake_message!(HandshakeMsg::B(own_nonce), node, connection, addr);
 
-                let nonce_pair = NoncePair {
-                    mine: own_nonce,
-                    peers: peer_nonce,
-                };
+                let nonce_pair = NoncePair(own_nonce, peer_nonce);
 
                 Ok((connection_reader, Box::new(nonce_pair) as HandshakeState))
             })
@@ -206,45 +178,41 @@ impl HandshakeProtocol for SecureishNode {
 async fn simple_handshake() {
     tracing_subscriber::fmt::init();
 
-    let mut initiator_node_config = NodeConfig::default();
-    initiator_node_config.name = Some("initiator".into());
-    let initiator_node = Node::new(Some(initiator_node_config)).await.unwrap();
-    let initiator_node = Arc::new(SecureishNode {
-        node: initiator_node,
+    let mut initiator_config = NodeConfig::default();
+    initiator_config.name = Some("initiator".into());
+    let initiator = Node::new(Some(initiator_config)).await.unwrap();
+    let initiator = Arc::new(SecureishNode {
+        node: initiator,
         handshakes: Default::default(),
     });
 
-    let mut responder_node_config = NodeConfig::default();
-    responder_node_config.name = Some("responder".into());
-    let responder_node = Node::new(Some(responder_node_config)).await.unwrap();
-    let responder_node = Arc::new(SecureishNode {
-        node: responder_node,
+    let mut responder_config = NodeConfig::default();
+    responder_config.name = Some("responder".into());
+    let responder = Node::new(Some(responder_config)).await.unwrap();
+    let responder = Arc::new(SecureishNode {
+        node: responder,
         handshakes: Default::default(),
     });
 
     // not required for the handshake; it's enabled only so that its relationship with the
     // handshake protocol can be tested too; it should kick in only after the handshake
-    initiator_node.enable_messaging_protocol();
-    responder_node.enable_messaging_protocol();
+    initiator.enable_messaging_protocol();
+    responder.enable_messaging_protocol();
 
-    initiator_node.enable_handshake_protocol();
-    responder_node.enable_handshake_protocol();
+    initiator.enable_handshake_protocol();
+    responder.enable_handshake_protocol();
 
-    initiator_node
+    initiator
         .node
-        .initiate_connection(responder_node.listening_addr)
+        .initiate_connection(responder.node().listening_addr)
         .await
         .unwrap();
 
     sleep(Duration::from_millis(100)).await;
 
-    assert!(initiator_node.handshaken_addrs().len() == 1);
-    assert!(responder_node.handshaken_addrs().len() == 1);
+    assert!(initiator.node().handshaken_addrs().len() == 1);
+    assert!(responder.node().handshaken_addrs().len() == 1);
 
-    assert!(
-        initiator_node.handshakes.read().values().next() == Some(&NoncePair { mine: 0, peers: 1 })
-    );
-    assert!(
-        responder_node.handshakes.read().values().next() == Some(&NoncePair { mine: 1, peers: 0 })
-    );
+    assert!(initiator.handshakes.read().values().next() == Some(&NoncePair(0, 1)));
+    assert!(responder.handshakes.read().values().next() == Some(&NoncePair(1, 0)));
 }
