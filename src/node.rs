@@ -169,7 +169,6 @@ impl Node {
                     error!(parent: self.span(), "handshake with {} failed; dropping the connection", addr);
                     self.register_failure(addr);
                     return;
-                    // TODO: probably return some Result instead
                 }
             }
         } else {

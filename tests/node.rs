@@ -18,9 +18,8 @@ async fn node_creation_bad_params() {
 
 #[tokio::test]
 async fn node_creation_used_port_fails() {
-    // TODO: double-check if port 9 (discard protocol) is always unavailable
     let mut config = NodeConfig::default();
-    config.desired_listening_port = Some(9);
+    config.desired_listening_port = Some(9); // the official Discard Protocol port
     config.allow_random_port = false;
     assert!(Node::new(Some(config)).await.is_err());
 }
