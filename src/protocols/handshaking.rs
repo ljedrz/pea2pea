@@ -1,23 +1,30 @@
 use crate::{Connection, ConnectionReader};
 
-use tokio::task::JoinHandle;
+use tokio::{sync::mpsc::Sender, task::JoinHandle};
 
-use std::{net::SocketAddr, sync::Arc};
+use std::{any::Any, io, net::SocketAddr, sync::Arc};
 
 pub trait HandshakeProtocol {
     // prepare the Node to produce and handle handshakes
     fn enable_handshake_protocol(&self);
 }
 
+pub type DynHandshakeState = Box<dyn Any + Send>;
+
 // FIXME; simplify; also, should prolly return some sort of a Result
 type HandshakeClosure = Box<
-    dyn Fn(SocketAddr, ConnectionReader, Arc<Connection>) -> JoinHandle<ConnectionReader>
+    dyn Fn(
+            SocketAddr,
+            ConnectionReader,
+            Arc<Connection>,
+        ) -> JoinHandle<io::Result<(ConnectionReader, DynHandshakeState)>>
         + Send
         + Sync,
 >;
 
 // FIXME: the pub for members is not ideal
-pub struct HandshakeClosures {
-    pub initiator: HandshakeClosure,
-    pub responder: HandshakeClosure,
+pub struct HandshakeSetup {
+    pub initiator_closure: HandshakeClosure,
+    pub responder_closure: HandshakeClosure,
+    pub state_sender: Option<Sender<(SocketAddr, DynHandshakeState)>>,
 }

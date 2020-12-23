@@ -2,7 +2,7 @@ use crate::config::*;
 use crate::connection::{Connection, ConnectionReader, ConnectionSide};
 use crate::connections::Connections;
 use crate::known_peers::KnownPeers;
-use crate::protocols::{HandshakeClosures, MessagingClosure, PacketingClosure};
+use crate::protocols::{HandshakeSetup, MessagingClosure, PacketingClosure};
 
 use once_cell::sync::OnceCell;
 use tokio::{
@@ -35,7 +35,7 @@ pub struct Node {
     messaging_closure: OnceCell<MessagingClosure>,
     packeting_closure: OnceCell<PacketingClosure>,
     inbound_messages: OnceCell<InboundMessages>,
-    handshake_closures: OnceCell<HandshakeClosures>,
+    handshake_setup: OnceCell<HandshakeSetup>,
     connections: Connections,
     pub known_peers: KnownPeers,
 }
@@ -87,7 +87,7 @@ impl Node {
             inbound_messages: Default::default(),
             messaging_closure: Default::default(),
             packeting_closure: Default::default(),
-            handshake_closures: Default::default(),
+            handshake_setup: Default::default(),
             connections: Default::default(),
             known_peers: Default::default(),
         });
@@ -144,22 +144,32 @@ impl Node {
             .write()
             .insert(addr, Arc::clone(&connection));
 
-        let connection_reader = if let Some(ref handshake_closures) = self.handshake_closures() {
+        let connection_reader = if let Some(ref handshake_setup) = self.handshake_setup() {
             let handshake_task = match side {
                 ConnectionSide::Initiator => {
-                    (handshake_closures.initiator)(addr, connection_reader, connection)
+                    (handshake_setup.initiator_closure)(addr, connection_reader, connection)
                 }
                 ConnectionSide::Responder => {
-                    (handshake_closures.responder)(addr, connection_reader, connection)
+                    (handshake_setup.responder_closure)(addr, connection_reader, connection)
                 }
             };
 
             match handshake_task.await {
-                Ok(conn_reader) => conn_reader,
-                Err(e) => {
-                    error!(parent: self.span(), "handshake with {} failed: {}", addr, e);
+                Ok(Ok((conn_reader, handshake_state))) => {
+                    if let Some(ref sender) = handshake_setup.state_sender {
+                        if let Err(e) = sender.send((addr, handshake_state)).await {
+                            error!(parent: self.span(), "couldn't registed handshake state: {}", e);
+                            // TODO: what to do?
+                        }
+                    }
+
+                    conn_reader
+                }
+                _ => {
+                    error!(parent: self.span(), "handshake with {} failed; dropping the connection", addr);
+                    self.register_failure(addr);
                     return;
-                    // TODO: cleanup, probably return some Result instead
+                    // TODO: probably return some Result instead
                 }
             }
         } else {
@@ -278,8 +288,8 @@ impl Node {
         self.packeting_closure.get()
     }
 
-    pub fn handshake_closures(&self) -> Option<&HandshakeClosures> {
-        self.handshake_closures.get()
+    pub fn handshake_setup(&self) -> Option<&HandshakeSetup> {
+        self.handshake_setup.get()
     }
 
     pub fn set_inbound_messages(&self, sender: InboundMessages) {
@@ -300,9 +310,9 @@ impl Node {
         }
     }
 
-    pub fn set_handshake_closures(&self, closures: HandshakeClosures) {
-        if self.handshake_closures.set(closures).is_err() {
-            panic!("the handshake_closures field was set more than once!");
+    pub fn set_handshake_setup(&self, closures: HandshakeSetup) {
+        if self.handshake_setup.set(closures).is_err() {
+            panic!("the handshake_setup field was set more than once!");
         }
     }
 }
