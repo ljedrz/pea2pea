@@ -1,5 +1,6 @@
 # pea2pea
 [![license](https://img.shields.io/badge/license-CC0-blue.svg)](https://creativecommons.org/publicdomain/zero/1.0/)
+[![current version](https://img.shields.io/crates/v/pea2pea.svg)](https://crates.io/crates/pea2pea)
 
 **pea2pea** is a P2P library designed with the following use cases in mind:
 - simple and quick creation of P2P networks
