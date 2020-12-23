@@ -9,7 +9,7 @@ pub trait HandshakeProtocol {
     fn enable_handshake_protocol(&self);
 }
 
-pub type DynHandshakeState = Box<dyn Any + Send>;
+pub type HandshakeState = Box<dyn Any + Send>;
 
 // FIXME; simplify; also, should prolly return some sort of a Result
 type HandshakeClosure = Box<
@@ -17,7 +17,7 @@ type HandshakeClosure = Box<
             SocketAddr,
             ConnectionReader,
             Arc<Connection>,
-        ) -> JoinHandle<io::Result<(ConnectionReader, DynHandshakeState)>>
+        ) -> JoinHandle<io::Result<(ConnectionReader, HandshakeState)>>
         + Send
         + Sync,
 >;
@@ -26,5 +26,5 @@ type HandshakeClosure = Box<
 pub struct HandshakeSetup {
     pub initiator_closure: HandshakeClosure,
     pub responder_closure: HandshakeClosure,
-    pub state_sender: Option<Sender<(SocketAddr, DynHandshakeState)>>,
+    pub state_sender: Option<Sender<(SocketAddr, HandshakeState)>>,
 }

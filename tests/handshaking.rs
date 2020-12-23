@@ -3,8 +3,8 @@ use tracing::*;
 
 mod common;
 use pea2pea::{
-    Connection, ConnectionReader, ContainsNode, DynHandshakeState, HandshakeProtocol,
-    HandshakeSetup, MessagingProtocol, Node, NodeConfig, PacketingProtocol,
+    Connection, ConnectionReader, ContainsNode, HandshakeProtocol, HandshakeSetup, HandshakeState,
+    MessagingProtocol, Node, NodeConfig, PacketingProtocol,
 };
 
 use parking_lot::RwLock;
@@ -83,7 +83,7 @@ impl PacketingProtocol for SecureishNode {}
 
 impl HandshakeProtocol for SecureishNode {
     fn enable_handshake_protocol(&self) {
-        let (state_sender, mut state_receiver) = channel::<(SocketAddr, DynHandshakeState)>(64);
+        let (state_sender, mut state_receiver) = channel::<(SocketAddr, HandshakeState)>(64);
 
         let self_clone = self.clone();
         tokio::spawn(async move {
@@ -98,7 +98,7 @@ impl HandshakeProtocol for SecureishNode {
         let initiator = |addr: SocketAddr,
                          mut connection_reader: ConnectionReader,
                          connection: Arc<Connection>|
-         -> JoinHandle<io::Result<(ConnectionReader, DynHandshakeState)>> {
+         -> JoinHandle<io::Result<(ConnectionReader, HandshakeState)>> {
             tokio::spawn(async move {
                 let node = Arc::clone(&connection_reader.node);
                 debug!(parent: node.span(), "spawned a task to handshake with {}", addr);
@@ -140,14 +140,14 @@ impl HandshakeProtocol for SecureishNode {
                     peers: peer_nonce,
                 };
 
-                Ok((connection_reader, Box::new(nonce_pair) as DynHandshakeState))
+                Ok((connection_reader, Box::new(nonce_pair) as HandshakeState))
             })
         };
 
         let responder = |addr: SocketAddr,
                          mut connection_reader: ConnectionReader,
                          connection: Arc<Connection>|
-         -> JoinHandle<io::Result<(ConnectionReader, DynHandshakeState)>> {
+         -> JoinHandle<io::Result<(ConnectionReader, HandshakeState)>> {
             tokio::spawn(async move {
                 let node = Arc::clone(&connection_reader.node);
                 debug!(parent: node.span(), "spawned a task to handshake with {}", addr);
@@ -188,7 +188,7 @@ impl HandshakeProtocol for SecureishNode {
                     peers: peer_nonce,
                 };
 
-                Ok((connection_reader, Box::new(nonce_pair) as DynHandshakeState))
+                Ok((connection_reader, Box::new(nonce_pair) as HandshakeState))
             })
         };
 

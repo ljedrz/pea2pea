@@ -10,7 +10,7 @@ pub use config::NodeConfig;
 pub use connection::{Connection, ConnectionReader};
 pub use node::{ContainsNode, Node};
 pub use protocols::{
-    BroadcastProtocol, DynHandshakeState, DynInboundMessage, HandshakeProtocol, HandshakeSetup,
+    BroadcastProtocol, HandshakeProtocol, HandshakeSetup, HandshakeState, InboundMessage,
     MaintenanceProtocol, MessagingClosure, MessagingProtocol, PacketingClosure, PacketingProtocol,
 };
 pub use topology::{connect_nodes, spawn_nodes, Topology};

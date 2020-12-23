@@ -2,7 +2,7 @@ use crate::connection::{Connection, ConnectionReader, ConnectionSide};
 use crate::connections::Connections;
 use crate::known_peers::KnownPeers;
 use crate::protocols::{HandshakeSetup, MessagingClosure, PacketingClosure};
-use crate::{config::*, DynInboundMessage};
+use crate::{config::*, InboundMessage};
 
 use once_cell::sync::OnceCell;
 use tokio::{
@@ -26,7 +26,7 @@ pub trait ContainsNode {
     fn node(&self) -> &Arc<Node>;
 }
 
-type InboundMessages = Sender<(SocketAddr, DynInboundMessage)>;
+type InboundMessages = Sender<(SocketAddr, InboundMessage)>;
 
 pub struct Node {
     span: Span,

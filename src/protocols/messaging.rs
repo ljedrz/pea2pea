@@ -92,7 +92,7 @@ where
     }
 }
 
-pub type DynInboundMessage = Box<dyn Any + Send>;
+pub type InboundMessage = Box<dyn Any + Send>;
 
 pub type MessagingClosure =
     Box<dyn Fn(ConnectionReader, SocketAddr) -> JoinHandle<()> + Send + Sync>;
