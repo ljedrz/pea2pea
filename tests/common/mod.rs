@@ -60,7 +60,7 @@ macro_rules! impl_messaging_protocol {
                 Ok(buffer[..msg_len].to_vec())
             }
 
-            fn parse_message(&self, _source: SocketAddr, _: &[u8]) -> Option<Self::Message> {
+            fn parse_message(_source: SocketAddr, _: &[u8]) -> Option<Self::Message> {
                 Some(())
             }
         }

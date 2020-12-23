@@ -1,8 +1,8 @@
-use crate::config::*;
 use crate::connection::{Connection, ConnectionReader, ConnectionSide};
 use crate::connections::Connections;
 use crate::known_peers::KnownPeers;
 use crate::protocols::{HandshakeSetup, MessagingClosure, PacketingClosure};
+use crate::{config::*, DynInboundMessage};
 
 use once_cell::sync::OnceCell;
 use tokio::{
@@ -22,11 +22,11 @@ use std::{
 
 static SEQUENTIAL_NODE_ID: AtomicUsize = AtomicUsize::new(0);
 
-type InboundMessages = Sender<(Vec<u8>, SocketAddr)>;
-
 pub trait ContainsNode {
     fn node(&self) -> &Arc<Node>;
 }
+
+type InboundMessages = Sender<(SocketAddr, DynInboundMessage)>;
 
 pub struct Node {
     span: Span,

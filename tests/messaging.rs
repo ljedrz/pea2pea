@@ -62,7 +62,7 @@ impl MessagingProtocol for EchoNode {
         Ok(buffer[..msg_len].to_vec())
     }
 
-    fn parse_message(&self, _source: SocketAddr, buffer: &[u8]) -> Option<Self::Message> {
+    fn parse_message(_source: SocketAddr, buffer: &[u8]) -> Option<Self::Message> {
         if buffer.len() == 1 {
             match buffer[0] {
                 0 => Some(TestMessage::Herp),

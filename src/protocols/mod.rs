@@ -7,5 +7,5 @@ mod packeting;
 pub use broadcasting::BroadcastProtocol;
 pub use handshaking::{DynHandshakeState, HandshakeProtocol, HandshakeSetup};
 pub use maintenance::MaintenanceProtocol;
-pub use messaging::{MessagingClosure, MessagingProtocol};
+pub use messaging::{DynInboundMessage, MessagingClosure, MessagingProtocol};
 pub use packeting::{PacketingClosure, PacketingProtocol};
