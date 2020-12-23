@@ -3,6 +3,12 @@ name = "pea2pea"
 version = "0.1.0"
 authors = ["ljedrz <ljedrz@gmail.com>"]
 edition = "2018"
+description = "a simple P2P library"
+license = "CC0-1.0"
+repository = "https://github.com/ljedrz/pea2pea"
+readme = "README.md"
+categories = ["network-programming", "asynchronous"]
+keywords = ["p2p", "peer-to-peer", "networking"]
 
 [lib]
 crate-type = ["lib"]
