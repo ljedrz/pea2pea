@@ -7,13 +7,13 @@ use pea2pea::{
 use std::{convert::TryInto, net::SocketAddr, ops::Deref, sync::Arc};
 
 #[derive(Clone)]
-pub struct GenericNode(Arc<Node>);
+pub struct GenericNode(pub Arc<Node>);
 
 impl GenericNode {
     #[allow(dead_code)]
-    pub async fn new() -> Arc<Self> {
+    pub async fn new<T: AsRef<str>>(name: T) -> Arc<Self> {
         let mut config = NodeConfig::default();
-        config.name = Some("reader".into());
+        config.name = Some(name.as_ref().into());
         Arc::new(Self(Node::new(Some(config)).await.unwrap()))
     }
 }

@@ -7,10 +7,7 @@ use pea2pea::{
     ConnectionReader, ContainsNode, MessagingProtocol, Node, NodeConfig, PacketingProtocol,
 };
 
-use std::{
-    collections::HashSet, convert::TryInto, io, net::SocketAddr, ops::Deref, sync::Arc,
-    time::Duration,
-};
+use std::{collections::HashSet, convert::TryInto, io, net::SocketAddr, sync::Arc, time::Duration};
 
 #[derive(PartialEq, Eq, Hash, Debug, Clone, Copy)]
 enum TestMessage {
@@ -22,14 +19,6 @@ enum TestMessage {
 struct EchoNode {
     node: Arc<Node>,
     echoed: Arc<Mutex<HashSet<TestMessage>>>,
-}
-
-impl Deref for EchoNode {
-    type Target = Node;
-
-    fn deref(&self) -> &Self::Target {
-        &self.node
-    }
 }
 
 impl ContainsNode for EchoNode {
@@ -75,18 +64,20 @@ impl MessagingProtocol for EchoNode {
     }
 
     fn respond_to_message(&self, source: SocketAddr, message: Self::Message) -> io::Result<()> {
-        info!(parent: self.span(), "got a {:?} from {}", message, source);
+        info!(parent: self.node().span(), "got a {:?} from {}", message, source);
         if self.echoed.lock().insert(message) {
-            info!(parent: self.span(), "it was new! echoing it");
+            info!(parent: self.node().span(), "it was new! echoing it");
 
-            let node = self.clone();
+            let self_clone = self.clone();
             tokio::spawn(async move {
-                node.send_direct_message(source, vec![message as u8])
+                self_clone
+                    .node()
+                    .send_direct_message(source, vec![message as u8])
                     .await
                     .unwrap();
             });
         } else {
-            debug!(parent: self.span(), "I've already seen {:?}! not echoing", message);
+            debug!(parent: self.node().span(), "I've already heard {:?}! not echoing", message);
         }
 
         Ok(())
@@ -94,10 +85,8 @@ impl MessagingProtocol for EchoNode {
 }
 
 #[tokio::test]
-async fn echo_node_messaging() {
+async fn messaging_protocol() {
     tracing_subscriber::fmt::init();
-
-    let shout_node = common::GenericNode::new().await;
 
     let packeting_closure = Box::new(|message: &[u8]| -> Vec<u8> {
         let mut message_with_u16_len = Vec::with_capacity(message.len() + 2);
@@ -106,35 +95,45 @@ async fn echo_node_messaging() {
         message_with_u16_len
     });
 
-    shout_node.enable_packeting_protocol(packeting_closure.clone());
+    let shouter = common::GenericNode::new("shout").await;
+    shouter.enable_messaging_protocol();
+    shouter.enable_packeting_protocol(packeting_closure.clone());
 
-    let mut echo_node_config = NodeConfig::default();
-    echo_node_config.name = Some("echo".into());
-    let echo_node = Arc::new(EchoNode {
-        node: Node::new(Some(echo_node_config)).await.unwrap(),
+    let mut picky_echo_config = NodeConfig::default();
+    picky_echo_config.name = Some("picky_echo".into());
+    let picky_echo = Arc::new(EchoNode {
+        node: Node::new(Some(picky_echo_config)).await.unwrap(),
         echoed: Default::default(),
     });
 
-    echo_node.enable_messaging_protocol();
-    echo_node.enable_packeting_protocol(packeting_closure);
+    picky_echo.enable_messaging_protocol();
+    picky_echo.enable_packeting_protocol(packeting_closure);
 
-    shout_node
-        .initiate_connection(echo_node.listening_addr)
+    let picky_echo_addr = picky_echo.node().listening_addr;
+
+    shouter
+        .node()
+        .initiate_connection(picky_echo_addr)
         .await
         .unwrap();
 
-    shout_node
-        .send_direct_message(echo_node.listening_addr, vec![TestMessage::Herp as u8])
+    shouter
+        .node()
+        .send_direct_message(picky_echo_addr, vec![TestMessage::Herp as u8])
         .await
         .unwrap();
-    shout_node
-        .send_direct_message(echo_node.listening_addr, vec![TestMessage::Derp as u8])
+    shouter
+        .node()
+        .send_direct_message(picky_echo_addr, vec![TestMessage::Derp as u8])
         .await
         .unwrap();
-    shout_node
-        .send_direct_message(echo_node.listening_addr, vec![TestMessage::Herp as u8])
+    shouter
+        .node()
+        .send_direct_message(picky_echo_addr, vec![TestMessage::Herp as u8])
         .await
         .unwrap();
 
     sleep(Duration::from_millis(200)).await;
+    // check if the shouter heard the (non-duplicate) echoes
+    assert_eq!(shouter.num_messages_received(), 2);
 }

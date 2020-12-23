@@ -3,21 +3,14 @@ use tracing::*;
 
 mod common;
 use pea2pea::{
-    BroadcastProtocol, ContainsNode, MessagingProtocol, Node, NodeConfig, PacketingProtocol,
+    spawn_nodes, BroadcastProtocol, ContainsNode, MessagingProtocol, Node, NodeConfig,
+    PacketingProtocol,
 };
 
-use std::{io, ops::Deref, sync::Arc, time::Duration};
+use std::{io, sync::Arc, time::Duration};
 
 #[derive(Clone)]
 struct ChattyNode(Arc<Node>);
-
-impl Deref for ChattyNode {
-    type Target = Node;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
 
 impl ContainsNode for ChattyNode {
     fn node(&self) -> &Arc<Node> {
@@ -43,16 +36,23 @@ impl BroadcastProtocol for ChattyNode {
 }
 
 #[tokio::test]
-async fn chatty_node_broadcasts() {
+async fn broadcast_protocol() {
     tracing_subscriber::fmt::init();
 
-    let reader_node = common::GenericNode::new().await;
-    reader_node.enable_messaging_protocol();
+    let generic_nodes = spawn_nodes(4, None)
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|node| Arc::new(common::GenericNode(node)))
+        .collect::<Vec<_>>();
+    for generic in &generic_nodes {
+        generic.enable_messaging_protocol();
+    }
 
-    let mut chatty_node_config = NodeConfig::default();
-    chatty_node_config.name = Some("chatty".into());
-    let chatty_node = Node::new(Some(chatty_node_config)).await.unwrap();
-    let chatty_node = Arc::new(ChattyNode(chatty_node));
+    let mut broadcaster_config = NodeConfig::default();
+    broadcaster_config.name = Some("broadcaster".into());
+    let broadcaster = Node::new(Some(broadcaster_config)).await.unwrap();
+    let broadcaster = Arc::new(ChattyNode(broadcaster));
 
     let packeting_closure = Box::new(|message: &[u8]| -> Vec<u8> {
         let mut message_with_u16_len = Vec::with_capacity(message.len() + 2);
@@ -61,16 +61,20 @@ async fn chatty_node_broadcasts() {
         message_with_u16_len
     });
 
-    chatty_node.enable_packeting_protocol(packeting_closure);
+    broadcaster.enable_packeting_protocol(packeting_closure);
+    broadcaster.enable_broadcast_protocol();
 
-    chatty_node
-        .0
-        .initiate_connection(reader_node.listening_addr)
-        .await
-        .unwrap();
-    chatty_node.enable_broadcast_protocol();
+    for generic in &generic_nodes {
+        broadcaster
+            .0
+            .initiate_connection(generic.node().listening_addr)
+            .await
+            .unwrap();
+    }
 
     sleep(Duration::from_millis(100)).await;
 
-    assert!(reader_node.num_messages_received() != 0);
+    for generic in &generic_nodes {
+        assert!(generic.node().num_messages_received() != 0);
+    }
 }
