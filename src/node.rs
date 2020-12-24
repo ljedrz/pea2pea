@@ -132,13 +132,11 @@ impl Node {
         // if the Node accepted the connection, as opposed to having initiated it
         let peer_local_addr = if let ConnectionSide::Responder = own_side {
             peer_addr
+        } else if let Ok(addr) = stream.local_addr() {
+            addr
         } else {
-            if let Ok(addr) = stream.local_addr() {
-                addr
-            } else {
-                error!(parent: self.span(), "couldn't determine the local address of the peer");
-                return Err(ErrorKind::Other.into());
-            }
+            error!(parent: self.span(), "couldn't determine the local address of the peer");
+            return Err(ErrorKind::Other.into());
         };
 
         let (reader, writer) = stream.into_split();
