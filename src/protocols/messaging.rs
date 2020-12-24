@@ -1,7 +1,11 @@
 use crate::{ConnectionReader, ContainsNode};
 
 use async_trait::async_trait;
-use tokio::{sync::mpsc::channel, task::JoinHandle, time::sleep};
+use tokio::{
+    sync::mpsc::{channel, Sender},
+    task::JoinHandle,
+    time::sleep,
+};
 use tracing::*;
 
 use std::{any::Any, io, net::SocketAddr, time::Duration};
@@ -91,6 +95,7 @@ where
 }
 
 pub type InboundMessage = Box<dyn Any + Send>;
+pub type InboundMessages = Sender<(SocketAddr, InboundMessage)>;
 
 pub type MessagingClosure =
     Box<dyn Fn(ConnectionReader, SocketAddr) -> JoinHandle<()> + Send + Sync>;

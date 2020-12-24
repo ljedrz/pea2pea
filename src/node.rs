@@ -1,19 +1,16 @@
+use crate::config::NodeConfig;
 use crate::connection::{Connection, ConnectionReader, ConnectionSide};
 use crate::connections::Connections;
 use crate::known_peers::KnownPeers;
-use crate::protocols::{HandshakeSetup, MessagingClosure, PacketingClosure};
-use crate::{config::*, InboundMessage};
-
-use io::ErrorKind;
-use once_cell::sync::OnceCell;
-use tokio::{
-    net::{TcpListener, TcpStream},
-    sync::mpsc::Sender,
+use crate::protocols::{
+    HandshakeSetup, InboundMessages, MessagingClosure, PacketingClosure, Protocols,
 };
+
+use tokio::net::{TcpListener, TcpStream};
 use tracing::*;
 
 use std::{
-    io,
+    io::{self, ErrorKind},
     net::{IpAddr, Ipv4Addr, SocketAddr},
     sync::{
         atomic::{AtomicUsize, Ordering},
@@ -27,16 +24,11 @@ pub trait ContainsNode {
     fn node(&self) -> &Arc<Node>;
 }
 
-type InboundMessages = Sender<(SocketAddr, InboundMessage)>;
-
 pub struct Node {
     span: Span,
     pub config: NodeConfig,
     pub listening_addr: SocketAddr,
-    messaging_closure: OnceCell<MessagingClosure>,
-    packeting_closure: OnceCell<PacketingClosure>,
-    inbound_messages: OnceCell<InboundMessages>,
-    handshake_setup: OnceCell<HandshakeSetup>,
+    protocols: Protocols,
     connections: Connections,
     pub known_peers: KnownPeers,
 }
@@ -85,10 +77,7 @@ impl Node {
             span,
             config,
             listening_addr,
-            inbound_messages: Default::default(),
-            messaging_closure: Default::default(),
-            packeting_closure: Default::default(),
-            handshake_setup: Default::default(),
+            protocols: Default::default(),
             connections: Default::default(),
             known_peers: Default::default(),
         });
@@ -302,41 +291,42 @@ impl Node {
     }
 
     pub fn inbound_messages(&self) -> Option<&InboundMessages> {
-        self.inbound_messages.get()
+        self.protocols.inbound_messages.get()
     }
 
     pub fn messaging_closure(&self) -> Option<&MessagingClosure> {
-        self.messaging_closure.get()
+        self.protocols.messaging_closure.get()
     }
 
     pub fn packeting_closure(&self) -> Option<&PacketingClosure> {
-        self.packeting_closure.get()
+        self.protocols.packeting_closure.get()
     }
 
     pub fn handshake_setup(&self) -> Option<&HandshakeSetup> {
-        self.handshake_setup.get()
+        self.protocols.handshake_setup.get()
     }
 
     pub fn set_inbound_messages(&self, sender: InboundMessages) {
-        self.inbound_messages
+        self.protocols
+            .inbound_messages
             .set(sender)
             .expect("the inbound_messages field was set more than once!");
     }
 
     pub fn set_messaging_closure(&self, closure: MessagingClosure) {
-        if self.messaging_closure.set(closure).is_err() {
+        if self.protocols.messaging_closure.set(closure).is_err() {
             panic!("the messaging_closure field was set more than once!");
         }
     }
 
     pub fn set_packeting_closure(&self, closure: PacketingClosure) {
-        if self.packeting_closure.set(closure).is_err() {
+        if self.protocols.packeting_closure.set(closure).is_err() {
             panic!("the packeting_closure field was set more than once!");
         }
     }
 
     pub fn set_handshake_setup(&self, closures: HandshakeSetup) {
-        if self.handshake_setup.set(closures).is_err() {
+        if self.protocols.handshake_setup.set(closures).is_err() {
             panic!("the handshake_setup field was set more than once!");
         }
     }
