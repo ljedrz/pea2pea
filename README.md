@@ -14,7 +14,7 @@
 - interoperability
 - good performance
 
-## no-goals
+## non-goals
 - `no_std`
 - DHT
 - becoming a framework
