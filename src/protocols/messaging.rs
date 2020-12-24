@@ -75,7 +75,7 @@ where
             })
         };
 
-        self.node().set_messaging_closure(Box::new(reading_closure));
+        self.node().set_reading_closure(Box::new(reading_closure));
     }
 
     async fn read_message(conn_reader: &mut ConnectionReader) -> io::Result<Vec<u8>>;
@@ -97,5 +97,4 @@ where
 pub type InboundMessage = Box<dyn Any + Send>;
 pub type InboundMessages = Sender<(SocketAddr, InboundMessage)>;
 
-pub type MessagingClosure =
-    Box<dyn Fn(ConnectionReader, SocketAddr) -> JoinHandle<()> + Send + Sync>;
+pub type ReadingClosure = Box<dyn Fn(ConnectionReader, SocketAddr) -> JoinHandle<()> + Send + Sync>;

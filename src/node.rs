@@ -3,7 +3,7 @@ use crate::connection::{Connection, ConnectionReader, ConnectionSide};
 use crate::connections::Connections;
 use crate::known_peers::KnownPeers;
 use crate::protocols::{
-    HandshakeSetup, InboundMessages, MessagingClosure, PacketingClosure, Protocols,
+    HandshakeSetup, InboundMessages, PacketingClosure, Protocols, ReadingClosure,
 };
 
 use tokio::net::{TcpListener, TcpStream};
@@ -182,7 +182,7 @@ impl Node {
             connection_reader
         };
 
-        let reader_task = if let Some(ref messaging_closure) = self.messaging_closure() {
+        let reader_task = if let Some(ref messaging_closure) = self.reading_closure() {
             Some(messaging_closure(connection_reader, peer_addr))
         } else {
             None
@@ -294,8 +294,8 @@ impl Node {
         self.protocols.inbound_messages.get()
     }
 
-    pub fn messaging_closure(&self) -> Option<&MessagingClosure> {
-        self.protocols.messaging_closure.get()
+    pub fn reading_closure(&self) -> Option<&ReadingClosure> {
+        self.protocols.reading_closure.get()
     }
 
     pub fn packeting_closure(&self) -> Option<&PacketingClosure> {
@@ -313,9 +313,9 @@ impl Node {
             .expect("the inbound_messages field was set more than once!");
     }
 
-    pub fn set_messaging_closure(&self, closure: MessagingClosure) {
-        if self.protocols.messaging_closure.set(closure).is_err() {
-            panic!("the messaging_closure field was set more than once!");
+    pub fn set_reading_closure(&self, closure: ReadingClosure) {
+        if self.protocols.reading_closure.set(closure).is_err() {
+            panic!("the reading_closure field was set more than once!");
         }
     }
 
