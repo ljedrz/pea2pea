@@ -2,7 +2,7 @@ use crate::{ContainsNode, Node, NodeConfig};
 
 use std::{collections::HashSet, io, sync::Arc};
 
-/// The way in which nodes are connected to each other; to be used with spawn_nodes.
+/// The way in which nodes are connected to each other; used in connect_nodes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Topology {
     /// no connections

@@ -96,5 +96,4 @@ where
 
 pub type InboundMessage = Box<dyn Any + Send>;
 pub type InboundMessages = Sender<(SocketAddr, InboundMessage)>;
-
 pub type ReadingClosure = Box<dyn Fn(ConnectionReader, SocketAddr) -> JoinHandle<()> + Send + Sync>;

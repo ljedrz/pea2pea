@@ -11,7 +11,7 @@ pub trait HandshakeProtocol {
 
 pub type HandshakeState = Box<dyn Any + Send>;
 
-// FIXME; simplify; also, should prolly return some sort of a Result
+// FIXME; simplify
 type HandshakeClosure = Box<
     dyn Fn(
             SocketAddr,
