@@ -43,8 +43,6 @@ where
                 loop {
                     match Self::read_message(&mut connection_reader).await {
                         Ok(msg) => {
-                            debug!(parent: node.span(), "received a message from {}", addr);
-
                             node.register_received_message(addr, msg.len());
 
                             if let Some(ref inbound_messages) = node.inbound_messages() {
