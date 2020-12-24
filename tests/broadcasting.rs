@@ -18,8 +18,6 @@ impl ContainsNode for ChattyNode {
     }
 }
 
-impl PacketingProtocol for ChattyNode {}
-
 #[async_trait::async_trait]
 impl BroadcastProtocol for ChattyNode {
     const INTERVAL_MS: u64 = 100;
@@ -32,6 +30,13 @@ impl BroadcastProtocol for ChattyNode {
             .await;
 
         Ok(())
+    }
+}
+
+impl PacketingProtocol for ChattyNode {
+    fn enable_packeting_protocol(&self) {
+        self.node()
+            .set_packeting_closure(Box::new(common::packeting_closure));
     }
 }
 
@@ -54,14 +59,7 @@ async fn broadcast_protocol() {
     let broadcaster = Node::new(Some(broadcaster_config)).await.unwrap();
     let broadcaster = Arc::new(ChattyNode(broadcaster));
 
-    let packeting_closure = Box::new(|message: &[u8]| -> Vec<u8> {
-        let mut message_with_u16_len = Vec::with_capacity(message.len() + 2);
-        message_with_u16_len.extend_from_slice(&(message.len() as u16).to_le_bytes());
-        message_with_u16_len.extend_from_slice(message);
-        message_with_u16_len
-    });
-
-    broadcaster.enable_packeting_protocol(packeting_closure);
+    broadcaster.enable_packeting_protocol();
     broadcaster.enable_broadcast_protocol();
 
     for rando in &random_nodes {

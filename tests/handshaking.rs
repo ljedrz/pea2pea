@@ -4,7 +4,7 @@ use tracing::*;
 mod common;
 use pea2pea::{
     Connection, ConnectionReader, ContainsNode, HandshakeProtocol, HandshakeSetup, HandshakeState,
-    MessagingProtocol, Node, NodeConfig, PacketingProtocol,
+    MessagingProtocol, Node, NodeConfig,
 };
 
 use parking_lot::RwLock;
@@ -104,7 +104,6 @@ macro_rules! send_handshake_message {
 }
 
 impl_messaging_protocol!(SecureishNode);
-impl PacketingProtocol for SecureishNode {}
 
 impl HandshakeProtocol for SecureishNode {
     fn enable_handshake_protocol(&self) {

@@ -61,4 +61,16 @@ macro_rules! impl_messaging_protocol {
 
 impl_messaging_protocol!(RandomNode);
 
-impl PacketingProtocol for RandomNode {}
+// prepend the message with its length in LE u16
+pub fn packeting_closure(message: &mut Vec<u8>) {
+    let u16_len_bytes = (message.len() as u16).to_le_bytes();
+    message.extend_from_slice(&u16_len_bytes);
+    message.rotate_right(2);
+}
+
+impl PacketingProtocol for RandomNode {
+    fn enable_packeting_protocol(&self) {
+        self.node()
+            .set_packeting_closure(Box::new(packeting_closure));
+    }
+}

@@ -27,8 +27,6 @@ impl ContainsNode for EchoNode {
     }
 }
 
-impl PacketingProtocol for EchoNode {}
-
 #[async_trait::async_trait]
 impl MessagingProtocol for EchoNode {
     type Message = TestMessage;
@@ -84,20 +82,20 @@ impl MessagingProtocol for EchoNode {
     }
 }
 
+impl PacketingProtocol for EchoNode {
+    fn enable_packeting_protocol(&self) {
+        self.node()
+            .set_packeting_closure(Box::new(common::packeting_closure));
+    }
+}
+
 #[tokio::test]
 async fn messaging_protocol() {
     tracing_subscriber::fmt::init();
 
-    let packeting_closure = Box::new(|message: &[u8]| -> Vec<u8> {
-        let mut message_with_u16_len = Vec::with_capacity(message.len() + 2);
-        message_with_u16_len.extend_from_slice(&(message.len() as u16).to_le_bytes());
-        message_with_u16_len.extend_from_slice(message);
-        message_with_u16_len
-    });
-
     let shouter = common::RandomNode::new("shout").await;
     shouter.enable_messaging_protocol();
-    shouter.enable_packeting_protocol(packeting_closure.clone());
+    shouter.enable_packeting_protocol();
 
     let mut picky_echo_config = NodeConfig::default();
     picky_echo_config.name = Some("picky_echo".into());
@@ -107,7 +105,7 @@ async fn messaging_protocol() {
     });
 
     picky_echo.enable_messaging_protocol();
-    picky_echo.enable_packeting_protocol(packeting_closure);
+    picky_echo.enable_packeting_protocol();
 
     let picky_echo_addr = picky_echo.node().listening_addr;
 

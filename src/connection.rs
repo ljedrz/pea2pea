@@ -78,9 +78,9 @@ impl Connection {
         }
     }
 
-    pub(crate) async fn send_message(&self, message: Vec<u8>) -> io::Result<()> {
+    pub(crate) async fn send_message(&self, mut message: Vec<u8>) -> io::Result<()> {
         if let Some(packeting_closure) = self.node.packeting_closure() {
-            let message = packeting_closure(&message);
+            packeting_closure(&mut message);
             self.write_bytes(&message).await
         } else {
             self.write_bytes(&message).await
