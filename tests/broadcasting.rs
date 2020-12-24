@@ -39,14 +39,14 @@ impl BroadcastProtocol for ChattyNode {
 async fn broadcast_protocol() {
     tracing_subscriber::fmt::init();
 
-    let generic_nodes = spawn_nodes(4, None)
+    let random_nodes = spawn_nodes(4, None)
         .await
         .unwrap()
         .into_iter()
-        .map(|node| Arc::new(common::GenericNode(node)))
+        .map(|node| Arc::new(common::RandomNode(node)))
         .collect::<Vec<_>>();
-    for generic in &generic_nodes {
-        generic.enable_messaging_protocol();
+    for rando in &random_nodes {
+        rando.enable_messaging_protocol();
     }
 
     let mut broadcaster_config = NodeConfig::default();
@@ -64,17 +64,17 @@ async fn broadcast_protocol() {
     broadcaster.enable_packeting_protocol(packeting_closure);
     broadcaster.enable_broadcast_protocol();
 
-    for generic in &generic_nodes {
+    for rando in &random_nodes {
         broadcaster
             .0
-            .initiate_connection(generic.node().listening_addr)
+            .initiate_connection(rando.node().listening_addr)
             .await
             .unwrap();
     }
 
     sleep(Duration::from_millis(100)).await;
 
-    for generic in &generic_nodes {
-        assert!(generic.node().num_messages_received() != 0);
+    for rando in &random_nodes {
+        assert!(rando.node().num_messages_received() != 0);
     }
 }

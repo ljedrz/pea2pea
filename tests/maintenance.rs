@@ -48,7 +48,7 @@ impl MaintenanceProtocol for TidyNode {
 async fn maintenance_protocol() {
     tracing_subscriber::fmt::init();
 
-    let generic_node = common::GenericNode::new("0").await;
+    let rando = common::RandomNode::new("0").await;
 
     let mut tidy_config = NodeConfig::default();
     tidy_config.name = Some("tidy".into());
@@ -57,12 +57,12 @@ async fn maintenance_protocol() {
     let tidy = Arc::new(TidyNode(tidy));
 
     tidy.node()
-        .initiate_connection(generic_node.listening_addr)
+        .initiate_connection(rando.node().listening_addr)
         .await
         .unwrap();
 
     tidy.enable_maintenance_protocol();
-    tidy.node().register_failure(generic_node.listening_addr); // artificially report an issue with generic_node
+    tidy.node().register_failure(rando.node().listening_addr); // artificially report an issue with rando
     sleep(Duration::from_millis(100)).await;
 
     assert_eq!(tidy.node().num_connected(), 0);

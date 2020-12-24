@@ -4,12 +4,12 @@ use pea2pea::{
     ConnectionReader, ContainsNode, MessagingProtocol, Node, NodeConfig, PacketingProtocol,
 };
 
-use std::{convert::TryInto, net::SocketAddr, ops::Deref, sync::Arc};
+use std::{convert::TryInto, net::SocketAddr, sync::Arc};
 
 #[derive(Clone)]
-pub struct GenericNode(pub Arc<Node>);
+pub struct RandomNode(pub Arc<Node>);
 
-impl GenericNode {
+impl RandomNode {
     #[allow(dead_code)]
     pub async fn new<T: AsRef<str>>(name: T) -> Arc<Self> {
         let mut config = NodeConfig::default();
@@ -18,15 +18,7 @@ impl GenericNode {
     }
 }
 
-impl Deref for GenericNode {
-    type Target = Arc<Node>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl ContainsNode for GenericNode {
+impl ContainsNode for RandomNode {
     fn node(&self) -> &Arc<Node> {
         &self.0
     }
@@ -67,6 +59,6 @@ macro_rules! impl_messaging_protocol {
     };
 }
 
-impl_messaging_protocol!(GenericNode);
+impl_messaging_protocol!(RandomNode);
 
-impl PacketingProtocol for GenericNode {}
+impl PacketingProtocol for RandomNode {}

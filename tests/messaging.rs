@@ -95,7 +95,7 @@ async fn messaging_protocol() {
         message_with_u16_len
     });
 
-    let shouter = common::GenericNode::new("shout").await;
+    let shouter = common::RandomNode::new("shout").await;
     shouter.enable_messaging_protocol();
     shouter.enable_packeting_protocol(packeting_closure.clone());
 
@@ -135,5 +135,5 @@ async fn messaging_protocol() {
 
     sleep(Duration::from_millis(200)).await;
     // check if the shouter heard the (non-duplicate) echoes
-    assert_eq!(shouter.num_messages_received(), 2);
+    assert_eq!(shouter.node().num_messages_received(), 2);
 }
