@@ -34,5 +34,7 @@
 4. create that struct (or as many of them as you like)
 5. `enable_X_protocol` for all the protocols you want it to activate
 
-- the `tests` directory contains some examples
-- some more advanced `examples` coming soon
+that's it!
+
+- the `tests` directory contains some examples of simple use
+- `examples` contain more advanced setups, e.g. using [noise](https://noiseprotocol.org/noise.html) encryption

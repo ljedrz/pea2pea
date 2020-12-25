@@ -259,29 +259,31 @@ async fn main() {
     let initiator = SecureNode::new("initiator").await.unwrap();
     let responder = SecureNode::new("responder").await.unwrap();
 
-    initiator.enable_handshake_protocol();
-    initiator.enable_messaging_protocol();
-    initiator.enable_packeting_protocol();
-    responder.enable_handshake_protocol();
-    responder.enable_messaging_protocol();
-    responder.enable_packeting_protocol();
+    for node in &[&initiator, &responder] {
+        node.enable_handshake_protocol(); // enable the pre-defined handshakes
+        node.enable_messaging_protocol(); // enable the pre-defined messaging rules
+        node.enable_packeting_protocol(); // enable the pre-defined packeting scheme
+    }
 
+    // connect the initiator to the responder
     initiator
         .node
         .initiate_connection(responder.node().listening_addr)
         .await
         .unwrap();
 
+    // allow a bit of time for the handshake process to conclude
     sleep(Duration::from_millis(100)).await;
 
+    // send a message from initiator to responder
     let msg = b"why hello there, fellow noise protocol user; I'm the initiator";
     initiator
         .send_direct_message(responder.node().listening_addr, msg)
         .await
         .unwrap();
 
+    // send a message from responder to initiator; determine the latter's address first
     let initiator_addr = responder.node().handshaken_addrs()[0];
-
     let msg = b"why hello there, fellow noise protocol user; I'm the responder";
     responder
         .send_direct_message(initiator_addr, msg)
