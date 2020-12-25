@@ -4,8 +4,8 @@
 
 **pea2pea** is a P2P library designed with the following use cases in mind:
 - simple and quick creation of P2P networks
-- testing/verifying P2P network protocols
-- benchmarking and stress-testing P2P nodes
+- testing/verifying network protocols
+- benchmarking and stress-testing P2P nodes (or other network entities)
 - substituting other, "heavier" nodes in local network tests
 
 ## goals
@@ -16,7 +16,7 @@
 
 ## non-goals
 - `no_std`
-- DHT
+- DHT (it _can_ be applied on top, however)
 - becoming a framework
 - support for multiple `async` runtimes
 
@@ -28,5 +28,11 @@
 - the tests need to be extended
 
 ## how to use it
+1. define a custom struct containing an `Arc<Node>` and any extra state you'd like to carry
+2. `impl ContainsNode` for it
+3. make it implement any/all of the protocols
+4. create that struct (or as many of them as you like)
+5. `enable_X_protocol` for all the protocols you want it to activate
+
 - the `tests` directory contains some examples
-- `examples` coming soon
+- some more advanced `examples` coming soon
