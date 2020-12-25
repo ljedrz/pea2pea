@@ -19,14 +19,18 @@ impl ContainsNode for ChattyNode {
 
 #[async_trait::async_trait]
 impl BroadcastProtocol for ChattyNode {
-    const INTERVAL_MS: u64 = 100;
+    const INTERVAL_MS: u64 = 50;
 
     async fn perform_broadcast(&self) -> io::Result<()> {
-        let message = "hello there ( ͡° ͜ʖ ͡°)";
-        info!(parent: self.node().span(), "sending \"{}\" to all my frens", message);
-        self.node()
-            .send_broadcast(message.as_bytes().to_vec())
-            .await;
+        if !self.node().handshaken_addrs().is_empty() {
+            let message = "hello there ( ͡° ͜ʖ ͡°)";
+            info!(parent: self.node().span(), "sending \"{}\" to all my frens", message);
+            self.node()
+                .send_broadcast(message.as_bytes().to_vec())
+                .await;
+        } else {
+            info!(parent: self.node().span(), "meh, I have no frens to chat with",);
+        }
 
         Ok(())
     }
@@ -54,7 +58,7 @@ async fn broadcast_protocol() {
     }
 
     let mut broadcaster_config = NodeConfig::default();
-    broadcaster_config.name = Some("broadcaster".into());
+    broadcaster_config.name = Some("chatty".into());
     let broadcaster = Node::new(Some(broadcaster_config)).await.unwrap();
     let broadcaster = Arc::new(ChattyNode(broadcaster));
 
