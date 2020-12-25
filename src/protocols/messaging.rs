@@ -78,7 +78,7 @@ where
         self.node().set_reading_closure(Box::new(reading_closure));
     }
 
-    async fn read_message(conn_reader: &mut ConnectionReader) -> io::Result<Vec<u8>>;
+    async fn read_message(conn_reader: &mut ConnectionReader) -> io::Result<&[u8]>;
 
     fn parse_message(source: SocketAddr, buffer: &[u8]) -> Option<Self::Message>;
 

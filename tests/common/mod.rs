@@ -34,7 +34,7 @@ macro_rules! impl_messaging_protocol {
 
             async fn read_message(
                 connection_reader: &mut ConnectionReader,
-            ) -> std::io::Result<Vec<u8>> {
+            ) -> std::io::Result<&[u8]> {
                 // expecting the test messages to be prefixed with their length encoded as a LE u16
                 let msg_len_size: usize = 2;
 
@@ -50,7 +50,7 @@ macro_rules! impl_messaging_protocol {
                     .read_exact(&mut buffer[..msg_len])
                     .await?;
 
-                Ok(buffer[..msg_len].to_vec())
+                Ok(&buffer[..msg_len])
             }
 
             fn parse_message(_source: SocketAddr, _message: &[u8]) -> Option<Self::Message> {

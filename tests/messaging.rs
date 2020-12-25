@@ -31,7 +31,7 @@ impl ContainsNode for EchoNode {
 impl MessagingProtocol for EchoNode {
     type Message = TestMessage;
 
-    async fn read_message(connection_reader: &mut ConnectionReader) -> std::io::Result<Vec<u8>> {
+    async fn read_message(connection_reader: &mut ConnectionReader) -> std::io::Result<&[u8]> {
         // expecting the test messages to be prefixed with their length encoded as a LE u16
         let msg_len_size: usize = 2;
 
@@ -46,7 +46,7 @@ impl MessagingProtocol for EchoNode {
             .read_exact(&mut buffer[..msg_len])
             .await?;
 
-        Ok(buffer[..msg_len].to_vec())
+        Ok(&buffer[..msg_len])
     }
 
     fn parse_message(_source: SocketAddr, buffer: &[u8]) -> Option<Self::Message> {
