@@ -39,11 +39,11 @@ impl KnownPeers {
 
 #[derive(Debug, Clone)]
 pub struct PeerStats {
-    times_connected: usize, // TODO: can be NonZeroUsize
-    first_seen: Instant,
-    last_seen: Instant,
-    msgs_received: usize,
-    bytes_received: u64,
+    pub times_connected: usize, // TODO: can be NonZeroUsize
+    pub first_seen: Instant,
+    pub last_seen: Instant,
+    pub msgs_received: usize,
+    pub bytes_received: u64,
     pub failures: u8, // FIXME: consider some public "reset" method instead
 }
 
