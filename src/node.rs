@@ -142,14 +142,13 @@ impl Node {
     ) -> io::Result<()> {
         debug!(parent: self.span(), "establishing connection with {}", peer_addr);
 
-        // check the local address of the connection; it will differ from peer_addr
-        // if the Node accepted the connection, as opposed to having initiated it
-        let peer_local_addr = if let ConnectionSide::Responder = own_side {
-            peer_addr
+        // register the port seen by the peer
+        let port_seen_by_peer = if let ConnectionSide::Responder = own_side {
+            peer_addr.port()
         } else if let Ok(addr) = stream.local_addr() {
-            addr
+            addr.port()
         } else {
-            error!(parent: self.span(), "couldn't determine the local address of the peer");
+            error!(parent: self.span(), "couldn't determine the local address of a connection");
             return Err(ErrorKind::Other.into());
         };
 
@@ -208,7 +207,16 @@ impl Node {
             error!(parent: self.span(), "can't mark {} as handshaken: {}", peer_addr, e);
             Err(ErrorKind::Other.into())
         } else {
-            debug!(parent: self.span(), "marked {}{} as handshaken", peer_addr, if peer_addr != peer_local_addr { format!(" (aka {})", peer_local_addr) } else { "".into() });
+            debug!(
+                parent: self.span(),
+                "marked {} as handshaken{}",
+                peer_addr,
+                if peer_addr.port() != port_seen_by_peer {
+                    format!("; the peer is connected to port {}", port_seen_by_peer)
+                } else {
+                    "".into()
+                }
+            );
             Ok(())
         }
     }
