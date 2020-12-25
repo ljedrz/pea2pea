@@ -78,6 +78,7 @@ impl Connection {
         }
     }
 
+    // TODO: add and use a persistent write buffer if possible
     pub(crate) async fn send_message(&self, mut message: Vec<u8>) -> io::Result<()> {
         if let Some(packeting_closure) = self.node.packeting_closure() {
             packeting_closure(&mut message);

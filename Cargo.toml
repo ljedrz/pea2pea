@@ -21,4 +21,5 @@ tokio = { version = "0.3", features = ["io-util", "macros", "net", "parking_lot"
 tracing = { version = "0.1", features = ["attributes"] }
 
 [dev-dependencies]
+snow = "0.7"
 tracing-subscriber = { version = "0.2", features = ["ansi", "chrono", "env-filter", "fmt", "parking_lot", "smallvec"] }
