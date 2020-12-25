@@ -1,4 +1,5 @@
 use tokio::io::AsyncReadExt;
+use tracing::*;
 
 use pea2pea::{
     ConnectionReader, ContainsNode, MessagingProtocol, Node, NodeConfig, PacketingProtocol,
@@ -52,8 +53,12 @@ macro_rules! impl_messaging_protocol {
                 Ok(buffer[..msg_len].to_vec())
             }
 
-            fn parse_message(_source: SocketAddr, _: &[u8]) -> Option<Self::Message> {
+            fn parse_message(_source: SocketAddr, _message: &[u8]) -> Option<Self::Message> {
                 Some(())
+            }
+
+            fn process_message(&self, source: SocketAddr, _message: &Self::Message) {
+                info!(parent: self.node().span(), "received a message from {}", source);
             }
         }
     };
