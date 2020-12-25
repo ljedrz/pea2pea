@@ -125,7 +125,7 @@ impl HandshakeProtocol for SecureishNode {
          -> JoinHandle<io::Result<(ConnectionReader, HandshakeState)>> {
             tokio::spawn(async move {
                 let node = Arc::clone(&connection_reader.node);
-                debug!(parent: node.span(), "spawned a task to handshake with {}", addr);
+                debug!(parent: node.span(), "handshaking with {} as the initiator", addr);
 
                 // send A
                 let own_nonce = 0;
@@ -147,7 +147,7 @@ impl HandshakeProtocol for SecureishNode {
          -> JoinHandle<io::Result<(ConnectionReader, HandshakeState)>> {
             tokio::spawn(async move {
                 let node = Arc::clone(&connection_reader.node);
-                debug!(parent: node.span(), "spawned a task to handshake with {}", addr);
+                debug!(parent: node.span(), "handshaking with {} as the responder", addr);
 
                 // read A
                 let peer_nonce =
