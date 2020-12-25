@@ -8,7 +8,7 @@ use tokio::{
 };
 use tracing::*;
 
-use std::{any::Any, io, net::SocketAddr, time::Duration};
+use std::{io, net::SocketAddr, time::Duration};
 
 #[async_trait]
 pub trait MessagingProtocol: ContainsNode
@@ -27,11 +27,15 @@ where
             let node = self_clone.node();
             loop {
                 if let Some((source, msg)) = receiver.recv().await {
-                    let msg = *msg.downcast().unwrap();
-                    self_clone.process_message(source, &msg);
+                    if let Some(msg) = self_clone.parse_message(source, &msg) {
+                        self_clone.process_message(source, &msg);
 
-                    if let Err(e) = self_clone.respond_to_message(source, msg) {
-                        error!(parent: node.span(), "failed to respond to an inbound message: {}", e);
+                        if let Err(e) = self_clone.respond_to_message(source, msg) {
+                            error!(parent: node.span(), "failed to respond to an inbound message: {}", e);
+                            node.register_failure(source);
+                        }
+                    } else {
+                        error!(parent: node.span(), "can't parse an inbound message");
                         node.register_failure(source);
                     }
                 }
@@ -45,20 +49,14 @@ where
                 let node = connection_reader.node.clone();
                 debug!(parent: node.span(), "spawned a task reading messages from {}", addr);
                 loop {
-                    match Self::read_message(&mut connection_reader).await {
+                    match Self::receive_message(&mut connection_reader).await {
                         Ok(msg) => {
                             node.register_received_message(addr, msg.len());
 
                             if let Some(ref inbound_messages) = node.inbound_messages() {
-                                if let Some(msg) = Self::parse_message(addr, &msg) {
-                                    let boxed_msg = Box::new(msg) as Box<dyn Any + Send>;
-                                    if let Err(e) = inbound_messages.send((addr, boxed_msg)).await {
-                                        error!(parent: node.span(), "can't process an inbound message: {}", e);
-                                        // TODO: how to proceed?
-                                    }
-                                } else {
-                                    error!(parent: node.span(), "can't parse an inbound message");
-                                    node.register_failure(addr);
+                                if let Err(e) = inbound_messages.send((addr, msg.to_vec())).await {
+                                    error!(parent: node.span(), "can't process an inbound message: {}", e);
+                                    // TODO: how to proceed?
                                 }
                             }
                         }
@@ -78,9 +76,9 @@ where
         self.node().set_reading_closure(Box::new(reading_closure));
     }
 
-    async fn read_message(conn_reader: &mut ConnectionReader) -> io::Result<&[u8]>;
+    async fn receive_message(conn_reader: &mut ConnectionReader) -> io::Result<&[u8]>;
 
-    fn parse_message(source: SocketAddr, buffer: &[u8]) -> Option<Self::Message>;
+    fn parse_message(&self, source: SocketAddr, buffer: &[u8]) -> Option<Self::Message>;
 
     #[allow(unused_variables)]
     fn process_message(&self, source: SocketAddr, message: &Self::Message) {
@@ -94,6 +92,6 @@ where
     }
 }
 
-pub type InboundMessage = Box<dyn Any + Send>;
+pub type InboundMessage = Vec<u8>;
 pub type InboundMessages = Sender<(SocketAddr, InboundMessage)>;
 pub type ReadingClosure = Box<dyn Fn(ConnectionReader, SocketAddr) -> JoinHandle<()> + Send + Sync>;

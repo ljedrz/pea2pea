@@ -32,7 +32,7 @@ macro_rules! impl_messaging_protocol {
         impl MessagingProtocol for $target {
             type Message = ();
 
-            async fn read_message(
+            async fn receive_message(
                 connection_reader: &mut ConnectionReader,
             ) -> std::io::Result<&[u8]> {
                 // expecting the test messages to be prefixed with their length encoded as a LE u16
@@ -53,7 +53,7 @@ macro_rules! impl_messaging_protocol {
                 Ok(&buffer[..msg_len])
             }
 
-            fn parse_message(_source: SocketAddr, _message: &[u8]) -> Option<Self::Message> {
+            fn parse_message(&self, _source: SocketAddr, _message: &[u8]) -> Option<Self::Message> {
                 Some(())
             }
 

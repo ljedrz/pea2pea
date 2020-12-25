@@ -224,24 +224,24 @@ impl HandshakeProtocol for SecureNode {
 
 #[async_trait::async_trait]
 impl MessagingProtocol for SecureNode {
-    type Message = Vec<u8>; // the message is an encrypted payload
+    type Message = String; // the encrypted messages are strings
 
-    async fn read_message(connection_reader: &mut ConnectionReader) -> std::io::Result<&[u8]> {
+    async fn receive_message(connection_reader: &mut ConnectionReader) -> std::io::Result<&[u8]> {
         receive_message(connection_reader).await
     }
 
-    fn parse_message(_source: SocketAddr, buffer: &[u8]) -> Option<Self::Message> {
-        Some(buffer.to_vec())
+    fn parse_message(&self, source: SocketAddr, message: &[u8]) -> Option<Self::Message> {
+        let noise = Arc::clone(self.noise_states.read().get(&source)?);
+        let NoiseState { state, buffer } = &mut *noise.lock();
+
+        let len = state.read_message(&message, buffer).ok()?;
+        let decrypted_message = String::from_utf8(buffer[..len].to_vec()).ok()?;
+
+        Some(decrypted_message)
     }
 
     fn process_message(&self, source: SocketAddr, message: &Self::Message) {
-        let noise = Arc::clone(&self.noise_states.read().get(&source).unwrap());
-        let NoiseState { state, buffer } = &mut *noise.lock();
-
-        let len = state.read_message(&message, buffer).unwrap();
-        let decrypted_message = String::from_utf8(buffer[..len].to_vec()).unwrap();
-
-        info!(parent: self.node().span(), "decrypted a message from {}: \"{}\"", source, decrypted_message);
+        info!(parent: self.node().span(), "decrypted a message from {}: \"{}\"", source, message);
     }
 }
 
