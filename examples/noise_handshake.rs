@@ -127,7 +127,7 @@ impl HandshakeProtocol for SecureNode {
                     .unwrap();
                 connection_reader.buffer[..2].copy_from_slice(&(len as u16).to_be_bytes());
                 connection
-                    .write_bytes(&mut connection_reader.buffer[..len + 2])
+                    .write_bytes(&connection_reader.buffer[..len + 2])
                     .await
                     .unwrap();
 
@@ -146,7 +146,7 @@ impl HandshakeProtocol for SecureNode {
                     .unwrap();
                 connection_reader.buffer[..2].copy_from_slice(&(len as u16).to_be_bytes());
                 connection
-                    .write_bytes(&mut connection_reader.buffer[..len + 2])
+                    .write_bytes(&connection_reader.buffer[..len + 2])
                     .await
                     .unwrap();
 
@@ -190,7 +190,7 @@ impl HandshakeProtocol for SecureNode {
                     .unwrap();
                 connection_reader.buffer[..2].copy_from_slice(&(len as u16).to_be_bytes());
                 connection
-                    .write_bytes(&mut connection_reader.buffer[..len + 2])
+                    .write_bytes(&connection_reader.buffer[..len + 2])
                     .await
                     .unwrap();
 

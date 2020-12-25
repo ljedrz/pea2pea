@@ -51,7 +51,7 @@ async fn broadcast_protocol() {
         .await
         .unwrap()
         .into_iter()
-        .map(|node| common::RandomNode(node))
+        .map(common::RandomNode)
         .collect::<Vec<_>>();
     for rando in &random_nodes {
         rando.enable_messaging_protocol();
