@@ -12,10 +12,10 @@ pub struct RandomNode(pub Arc<Node>);
 
 impl RandomNode {
     #[allow(dead_code)]
-    pub async fn new<T: AsRef<str>>(name: T) -> Arc<Self> {
+    pub async fn new<T: AsRef<str>>(name: T) -> Self {
         let mut config = NodeConfig::default();
         config.name = Some(name.as_ref().into());
-        Arc::new(Self(Node::new(Some(config)).await.unwrap()))
+        Self(Node::new(Some(config)).await.unwrap())
     }
 }
 

@@ -99,10 +99,10 @@ async fn messaging_protocol() {
 
     let mut picky_echo_config = NodeConfig::default();
     picky_echo_config.name = Some("picky_echo".into());
-    let picky_echo = Arc::new(EchoNode {
+    let picky_echo = EchoNode {
         node: Node::new(Some(picky_echo_config)).await.unwrap(),
         echoed: Default::default(),
-    });
+    };
 
     picky_echo.enable_messaging_protocol();
     picky_echo.enable_packeting_protocol();

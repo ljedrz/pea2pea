@@ -54,7 +54,7 @@ async fn maintenance_protocol() {
     tidy_config.name = Some("tidy".into());
     tidy_config.max_allowed_failures = 0;
     let tidy = Node::new(Some(tidy_config)).await.unwrap();
-    let tidy = Arc::new(TidyNode(tidy));
+    let tidy = TidyNode(tidy);
 
     tidy.node()
         .initiate_connection(rando.node().listening_addr)

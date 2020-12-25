@@ -51,7 +51,7 @@ async fn broadcast_protocol() {
         .await
         .unwrap()
         .into_iter()
-        .map(|node| Arc::new(common::RandomNode(node)))
+        .map(|node| common::RandomNode(node))
         .collect::<Vec<_>>();
     for rando in &random_nodes {
         rando.enable_messaging_protocol();
@@ -60,7 +60,7 @@ async fn broadcast_protocol() {
     let mut broadcaster_config = NodeConfig::default();
     broadcaster_config.name = Some("chatty".into());
     let broadcaster = Node::new(Some(broadcaster_config)).await.unwrap();
-    let broadcaster = Arc::new(ChattyNode(broadcaster));
+    let broadcaster = ChattyNode(broadcaster);
 
     broadcaster.enable_packeting_protocol();
     broadcaster.enable_broadcast_protocol();

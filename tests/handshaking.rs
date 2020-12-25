@@ -180,18 +180,18 @@ async fn handshake_protocol() {
     let mut initiator_config = NodeConfig::default();
     initiator_config.name = Some("initiator".into());
     let initiator = Node::new(Some(initiator_config)).await.unwrap();
-    let initiator = Arc::new(SecureishNode {
+    let initiator = SecureishNode {
         node: initiator,
         handshakes: Default::default(),
-    });
+    };
 
     let mut responder_config = NodeConfig::default();
     responder_config.name = Some("responder".into());
     let responder = Node::new(Some(responder_config)).await.unwrap();
-    let responder = Arc::new(SecureishNode {
+    let responder = SecureishNode {
         node: responder,
         handshakes: Default::default(),
-    });
+    };
 
     // not required for the handshake; it's enabled only so that its relationship with the
     // handshake protocol can be tested too; it should kick in only after the handshake
