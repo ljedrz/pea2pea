@@ -111,6 +111,20 @@ impl Node {
         Ok(node)
     }
 
+    pub async fn spawn_multiple(
+        count: usize,
+        config: Option<NodeConfig>,
+    ) -> io::Result<Vec<Arc<Self>>> {
+        let mut nodes = Vec::with_capacity(count);
+
+        for _ in 0..count {
+            let node = Node::new(config.clone()).await?;
+            nodes.push(node);
+        }
+
+        Ok(nodes)
+    }
+
     pub fn name(&self) -> &str {
         // safe; can be set as None in NodeConfig, but receives a default value on Node creation
         self.config.name.as_deref().unwrap()

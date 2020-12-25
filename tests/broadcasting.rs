@@ -3,8 +3,7 @@ use tracing::*;
 
 mod common;
 use pea2pea::{
-    spawn_nodes, BroadcastProtocol, ContainsNode, MessagingProtocol, Node, NodeConfig,
-    PacketingProtocol,
+    BroadcastProtocol, ContainsNode, MessagingProtocol, Node, NodeConfig, PacketingProtocol,
 };
 
 use std::{io, sync::Arc, time::Duration};
@@ -44,7 +43,7 @@ impl PacketingProtocol for ChattyNode {
 async fn broadcast_protocol() {
     tracing_subscriber::fmt::init();
 
-    let random_nodes = spawn_nodes(4, None)
+    let random_nodes = Node::spawn_multiple(4, None)
         .await
         .unwrap()
         .into_iter()

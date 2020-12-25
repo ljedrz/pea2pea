@@ -1,6 +1,6 @@
-use crate::{ContainsNode, Node, NodeConfig};
+use crate::ContainsNode;
 
-use std::{collections::HashSet, io, sync::Arc};
+use std::{collections::HashSet, io};
 
 /// The way in which nodes are connected to each other; used in connect_nodes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -15,17 +15,6 @@ pub enum Topology {
     Mesh,
     /// a > b, a > c
     Star,
-}
-
-pub async fn spawn_nodes(count: usize, config: Option<NodeConfig>) -> io::Result<Vec<Arc<Node>>> {
-    let mut nodes = Vec::with_capacity(count);
-
-    for _ in 0..count {
-        let node = Node::new(config.clone()).await?;
-        nodes.push(node);
-    }
-
-    Ok(nodes)
 }
 
 pub async fn connect_nodes<T: ContainsNode>(nodes: &[T], topology: Topology) -> io::Result<()> {

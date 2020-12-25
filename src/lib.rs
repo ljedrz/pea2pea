@@ -13,4 +13,4 @@ pub use protocols::{
     BroadcastProtocol, HandshakeProtocol, HandshakeSetup, HandshakeState, InboundMessage,
     MaintenanceProtocol, MessagingProtocol, PacketingClosure, PacketingProtocol, ReadingClosure,
 };
-pub use topology::{connect_nodes, spawn_nodes, Topology};
+pub use topology::{connect_nodes, Topology};

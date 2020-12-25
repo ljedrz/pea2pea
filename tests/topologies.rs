@@ -1,6 +1,6 @@
 use tokio::time::sleep;
 
-use pea2pea::{connect_nodes, spawn_nodes, Topology};
+use pea2pea::{connect_nodes, Node, Topology};
 
 use std::time::Duration;
 
@@ -9,7 +9,7 @@ const N: usize = 10;
 
 #[tokio::test]
 async fn topology_line_conn_counts() {
-    let nodes = spawn_nodes(N, None).await.unwrap();
+    let nodes = Node::spawn_multiple(N, None).await.unwrap();
     connect_nodes(&nodes, Topology::Line).await.unwrap();
     sleep(Duration::from_millis(200)).await;
 
@@ -24,7 +24,7 @@ async fn topology_line_conn_counts() {
 
 #[tokio::test]
 async fn topology_ring_conn_counts() {
-    let nodes = spawn_nodes(N, None).await.unwrap();
+    let nodes = Node::spawn_multiple(N, None).await.unwrap();
     connect_nodes(&nodes, Topology::Ring).await.unwrap();
     sleep(Duration::from_millis(200)).await;
 
@@ -35,7 +35,7 @@ async fn topology_ring_conn_counts() {
 
 #[tokio::test]
 async fn topology_mesh_conn_counts() {
-    let nodes = spawn_nodes(N, None).await.unwrap();
+    let nodes = Node::spawn_multiple(N, None).await.unwrap();
     connect_nodes(&nodes, Topology::Mesh).await.unwrap();
     sleep(Duration::from_millis(200)).await;
 
@@ -46,7 +46,7 @@ async fn topology_mesh_conn_counts() {
 
 #[tokio::test]
 async fn topology_star_conn_counts() {
-    let nodes = spawn_nodes(N, None).await.unwrap();
+    let nodes = Node::spawn_multiple(N, None).await.unwrap();
     connect_nodes(&nodes, Topology::Star).await.unwrap();
     sleep(Duration::from_millis(200)).await;
 
