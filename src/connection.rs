@@ -36,14 +36,14 @@ impl Not for ConnectionSide {
 
 pub struct ConnectionReader {
     pub node: Arc<Node>,
-    buffer: Vec<u8>,
+    buffer: Box<[u8]>,
     reader: OwnedReadHalf,
 }
 
 impl ConnectionReader {
     pub(crate) fn new(reader: OwnedReadHalf, node: Arc<Node>) -> Self {
         Self {
-            buffer: vec![0; node.config.conn_read_buffer_size],
+            buffer: vec![0; node.config.conn_read_buffer_size].into(),
             node,
             reader,
         }
