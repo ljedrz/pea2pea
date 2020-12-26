@@ -140,7 +140,7 @@ impl HandshakeProtocol for SecureNode {
                     .read_message(&message, &mut connection_reader.buffer)
                     .unwrap();
 
-                // -> s, se
+                // -> s, se, psk
                 let len = noise
                     .write_message(&[], &mut connection_reader.buffer[2..])
                     .unwrap();
@@ -174,7 +174,7 @@ impl HandshakeProtocol for SecureNode {
                     .build_responder()
                     .unwrap();
 
-                // <- e, ee, s, es
+                // <- e
                 let message = receive_message(&mut connection_reader)
                     .await
                     .unwrap()
@@ -183,7 +183,7 @@ impl HandshakeProtocol for SecureNode {
                     .read_message(&message, &mut connection_reader.buffer)
                     .unwrap();
 
-                // -> s, se
+                // -> e, ee, s, es
                 // we can use the reader's buffer for both reads and writes for the purposes of the handshake
                 let len = noise
                     .write_message(&[], &mut connection_reader.buffer[2..])
@@ -194,7 +194,7 @@ impl HandshakeProtocol for SecureNode {
                     .await
                     .unwrap();
 
-                // <- s, se
+                // <- s, se, psk
                 let message = receive_message(&mut connection_reader)
                     .await
                     .unwrap()
