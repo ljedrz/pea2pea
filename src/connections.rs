@@ -57,8 +57,8 @@ impl Connections {
         reader_task: Option<JoinHandle<()>>,
     ) -> io::Result<()> {
         if let Some(conn) = self.handshaking.write().remove(&addr) {
-            if reader_task.is_some() {
-                conn.reader_task.set(reader_task).unwrap();
+            if let Some(task) = reader_task {
+                conn.reader_task.set(task).unwrap();
             }
             self.handshaken.write().insert(addr, conn);
             Ok(())

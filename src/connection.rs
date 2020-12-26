@@ -63,7 +63,7 @@ impl ConnectionReader {
 
 pub struct Connection {
     node: Arc<Node>,
-    pub(crate) reader_task: OnceCell<Option<JoinHandle<()>>>,
+    pub(crate) reader_task: OnceCell<JoinHandle<()>>,
     writer: Mutex<OwnedWriteHalf>,
     side: ConnectionSide,
 }
