@@ -79,20 +79,23 @@ impl Connection {
     }
 
     // TODO: add and use a persistent write buffer if possible
-    pub(crate) async fn send_message(&self, mut message: Vec<u8>) -> io::Result<()> {
-        if let Some(packeting_closure) = self.node.packeting_closure() {
-            packeting_closure(&mut message);
-            self.write_bytes(&message).await
-        } else {
-            self.write_bytes(&message).await
+    pub(crate) async fn send_message(
+        &self,
+        header: Option<&[u8]>,
+        payload: &[u8],
+    ) -> io::Result<()> {
+        let mut writer = self.writer.lock().await;
+        if let Some(header) = header {
+            writer.write(header).await?;
         }
+        writer.write(payload).await?;
+        writer.flush().await
     }
 
     // FIXME: this pub is not ideal
-    pub async fn write_bytes(&self, bytes: &[u8]) -> io::Result<()> {
+    pub async fn write_bytes(&self, bytes: &[u8]) -> io::Result<usize> {
         let mut writer = self.writer.lock().await;
-        writer.write(bytes).await?;
-        writer.flush().await
+        writer.write(bytes).await
     }
 }
 

@@ -2,9 +2,7 @@ use tokio::time::sleep;
 use tracing::*;
 
 mod common;
-use pea2pea::{
-    BroadcastProtocol, ContainsNode, MessagingProtocol, Node, NodeConfig, PacketingProtocol,
-};
+use pea2pea::{BroadcastProtocol, ContainsNode, MessagingProtocol, Node, NodeConfig};
 
 use std::{io, sync::Arc, time::Duration};
 
@@ -25,21 +23,16 @@ impl BroadcastProtocol for ChattyNode {
         if !self.node().handshaken_addrs().is_empty() {
             let message = "hello there ( ͡° ͜ʖ ͡°)";
             info!(parent: self.node().span(), "sending \"{}\" to all my frens", message);
+
+            let u16_len = (message.len() as u16).to_le_bytes();
             self.node()
-                .send_broadcast(message.as_bytes().to_vec())
+                .send_broadcast(Some(&u16_len), message.as_bytes())
                 .await;
         } else {
             info!(parent: self.node().span(), "meh, I have no frens to chat with",);
         }
 
         Ok(())
-    }
-}
-
-impl PacketingProtocol for ChattyNode {
-    fn enable_packeting_protocol(&self) {
-        self.node()
-            .set_packeting_closure(Box::new(common::packeting_closure));
     }
 }
 
@@ -62,7 +55,6 @@ async fn broadcast_protocol() {
     let broadcaster = Node::new(Some(broadcaster_config)).await.unwrap();
     let broadcaster = ChattyNode(broadcaster);
 
-    broadcaster.enable_packeting_protocol();
     broadcaster.enable_broadcast_protocol();
 
     for rando in &random_nodes {

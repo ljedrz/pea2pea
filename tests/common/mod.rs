@@ -1,9 +1,7 @@
 use tokio::io::AsyncReadExt;
 use tracing::*;
 
-use pea2pea::{
-    ConnectionReader, ContainsNode, MessagingProtocol, Node, NodeConfig, PacketingProtocol,
-};
+use pea2pea::{ConnectionReader, ContainsNode, MessagingProtocol, Node, NodeConfig};
 
 use std::{convert::TryInto, net::SocketAddr, sync::Arc};
 
@@ -16,6 +14,16 @@ impl RandomNode {
         let mut config = NodeConfig::default();
         config.name = Some(name.as_ref().into());
         Self(Node::new(Some(config)).await.unwrap())
+    }
+
+    #[allow(dead_code)]
+    pub async fn send_direct_message(&self, target: SocketAddr, message: &[u8]) {
+        // prepend the message with its length in LE u16
+        let u16_len = (message.len() as u16).to_le_bytes();
+        self.node()
+            .send_direct_message(target, Some(&u16_len), message)
+            .await
+            .unwrap();
     }
 }
 
@@ -65,17 +73,3 @@ macro_rules! impl_messaging_protocol {
 }
 
 impl_messaging_protocol!(RandomNode);
-
-// prepend the message with its length in LE u16
-pub fn packeting_closure(message: &mut Vec<u8>) {
-    let u16_len_bytes = (message.len() as u16).to_le_bytes();
-    message.extend_from_slice(&u16_len_bytes);
-    message.rotate_right(2);
-}
-
-impl PacketingProtocol for RandomNode {
-    fn enable_packeting_protocol(&self) {
-        self.node()
-            .set_packeting_closure(Box::new(packeting_closure));
-    }
-}

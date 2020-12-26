@@ -3,7 +3,12 @@ use tokio::task::JoinHandle;
 
 use crate::connection::Connection;
 
-use std::{collections::HashMap, io, net::SocketAddr, sync::Arc};
+use std::{
+    collections::HashMap,
+    io::{self, ErrorKind},
+    net::SocketAddr,
+    sync::Arc,
+};
 
 type ConnectionMap = HashMap<SocketAddr, Arc<Connection>>;
 
@@ -65,18 +70,19 @@ impl Connections {
     pub(crate) async fn send_direct_message(
         &self,
         target: SocketAddr,
-        message: Vec<u8>,
+        header: Option<&[u8]>,
+        payload: &[u8],
     ) -> io::Result<()> {
         let conn = self.handshaken.read().get(&target).cloned();
 
         let conn = if conn.is_some() {
             conn
         } else {
-            self.handshaking.read().get(&target).cloned()
+            return Err(ErrorKind::NotConnected.into());
         };
 
         if let Some(ref conn) = conn {
-            conn.send_message(message).await
+            conn.send_message(header, payload).await
         } else {
             Err(io::ErrorKind::NotConnected.into())
         }

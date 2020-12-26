@@ -11,6 +11,6 @@ pub use connection::{Connection, ConnectionReader};
 pub use node::{ContainsNode, Node};
 pub use protocols::{
     BroadcastProtocol, HandshakeProtocol, HandshakeSetup, HandshakeState, InboundMessage,
-    MaintenanceProtocol, MessagingProtocol, PacketingClosure, PacketingProtocol, ReadingClosure,
+    MaintenanceProtocol, MessagingProtocol, ReadingClosure,
 };
 pub use topology::{connect_nodes, Topology};

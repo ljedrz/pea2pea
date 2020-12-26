@@ -3,9 +3,7 @@ use tokio::{io::AsyncReadExt, time::sleep};
 use tracing::*;
 
 mod common;
-use pea2pea::{
-    ConnectionReader, ContainsNode, MessagingProtocol, Node, NodeConfig, PacketingProtocol,
-};
+use pea2pea::{ConnectionReader, ContainsNode, MessagingProtocol, Node, NodeConfig};
 
 use std::{collections::HashSet, convert::TryInto, io, net::SocketAddr, sync::Arc, time::Duration};
 
@@ -68,9 +66,10 @@ impl MessagingProtocol for EchoNode {
 
             let self_clone = self.clone();
             tokio::spawn(async move {
+                let u16_len = 1u16.to_le_bytes();
                 self_clone
                     .node()
-                    .send_direct_message(source, vec![message as u8])
+                    .send_direct_message(source, Some(&u16_len), &[message as u8])
                     .await
                     .unwrap();
             });
@@ -82,20 +81,12 @@ impl MessagingProtocol for EchoNode {
     }
 }
 
-impl PacketingProtocol for EchoNode {
-    fn enable_packeting_protocol(&self) {
-        self.node()
-            .set_packeting_closure(Box::new(common::packeting_closure));
-    }
-}
-
 #[tokio::test]
 async fn messaging_protocol() {
     tracing_subscriber::fmt::init();
 
     let shouter = common::RandomNode::new("shout").await;
     shouter.enable_messaging_protocol();
-    shouter.enable_packeting_protocol();
 
     let mut picky_echo_config = NodeConfig::default();
     picky_echo_config.name = Some("picky_echo".into());
@@ -105,7 +96,6 @@ async fn messaging_protocol() {
     };
 
     picky_echo.enable_messaging_protocol();
-    picky_echo.enable_packeting_protocol();
 
     let picky_echo_addr = picky_echo.node().listening_addr;
 
@@ -116,19 +106,21 @@ async fn messaging_protocol() {
         .unwrap();
     sleep(Duration::from_millis(100)).await;
 
+    let u16_len = 1u16.to_le_bytes();
+
     shouter
         .node()
-        .send_direct_message(picky_echo_addr, vec![TestMessage::Herp as u8])
+        .send_direct_message(picky_echo_addr, Some(&u16_len), &[TestMessage::Herp as u8])
         .await
         .unwrap();
     shouter
         .node()
-        .send_direct_message(picky_echo_addr, vec![TestMessage::Derp as u8])
+        .send_direct_message(picky_echo_addr, Some(&u16_len), &[TestMessage::Derp as u8])
         .await
         .unwrap();
     shouter
         .node()
-        .send_direct_message(picky_echo_addr, vec![TestMessage::Herp as u8])
+        .send_direct_message(picky_echo_addr, Some(&u16_len), &[TestMessage::Herp as u8])
         .await
         .unwrap();
 
@@ -137,7 +129,7 @@ async fn messaging_protocol() {
 
     picky_echo
         .node()
-        .send_direct_message(shouter_addr, vec![TestMessage::Herp as u8])
+        .send_direct_message(shouter_addr, Some(&u16_len), &[TestMessage::Herp as u8])
         .await
         .unwrap();
 

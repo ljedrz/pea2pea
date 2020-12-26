@@ -72,7 +72,7 @@ async fn bench_spam_one_on_one() {
     for _ in 0..MSG_COUNT {
         spammer
             .node()
-            .send_direct_message(victim_addr, msg.clone())
+            .send_direct_message(victim_addr, None, &msg)
             .await
             .unwrap();
     }

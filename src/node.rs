@@ -2,9 +2,7 @@ use crate::config::NodeConfig;
 use crate::connection::{Connection, ConnectionReader, ConnectionSide};
 use crate::connections::Connections;
 use crate::known_peers::KnownPeers;
-use crate::protocols::{
-    HandshakeSetup, InboundMessages, PacketingClosure, Protocols, ReadingClosure,
-};
+use crate::protocols::{HandshakeSetup, InboundMessages, Protocols, ReadingClosure};
 
 use tokio::net::{TcpListener, TcpStream};
 use tracing::*;
@@ -255,8 +253,16 @@ impl Node {
         disconnected
     }
 
-    pub async fn send_direct_message(&self, addr: SocketAddr, message: Vec<u8>) -> io::Result<()> {
-        let ret = self.connections.send_direct_message(addr, message).await;
+    pub async fn send_direct_message(
+        &self,
+        addr: SocketAddr,
+        header: Option<&[u8]>,
+        payload: &[u8],
+    ) -> io::Result<()> {
+        let ret = self
+            .connections
+            .send_direct_message(addr, header, payload)
+            .await;
 
         if let Err(ref e) = ret {
             error!(parent: self.span(), "couldn't send a direct message to {}: {}", addr, e);
@@ -265,10 +271,10 @@ impl Node {
         ret
     }
 
-    pub async fn send_broadcast(&self, message: Vec<u8>) {
+    pub async fn send_broadcast(&self, header: Option<&[u8]>, payload: &[u8]) {
         for (addr, conn) in self.connections.handshaken_connections().iter() {
             // FIXME: it would be nice not to clone the message
-            if let Err(e) = conn.send_message(message.clone()).await {
+            if let Err(e) = conn.send_message(header, payload).await {
                 error!(parent: self.span(), "couldn't send a broadcast to {}: {}", addr, e);
             }
         }
@@ -318,10 +324,6 @@ impl Node {
         self.protocols.reading_closure.get()
     }
 
-    pub fn packeting_closure(&self) -> Option<&PacketingClosure> {
-        self.protocols.packeting_closure.get()
-    }
-
     pub fn handshake_setup(&self) -> Option<&HandshakeSetup> {
         self.protocols.handshake_setup.get()
     }
@@ -336,12 +338,6 @@ impl Node {
     pub fn set_reading_closure(&self, closure: ReadingClosure) {
         if self.protocols.reading_closure.set(closure).is_err() {
             panic!("the reading_closure field was set more than once!");
-        }
-    }
-
-    pub fn set_packeting_closure(&self, closure: PacketingClosure) {
-        if self.protocols.packeting_closure.set(closure).is_err() {
-            panic!("the packeting_closure field was set more than once!");
         }
     }
 

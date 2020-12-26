@@ -50,10 +50,11 @@ impl SecureNode {
         let NoiseState { state, buffer } = &mut *noise.lock();
 
         let len = state.write_message(message, buffer).unwrap();
-        let encrypted_message = buffer[..len].to_vec();
+        let encrypted_message = &buffer[..len];
+        let u16_len_header = (len as u16).to_be_bytes();
 
         self.node()
-            .send_direct_message(target, encrypted_message)
+            .send_direct_message(target, Some(&u16_len_header), encrypted_message)
             .await
     }
 }
@@ -75,13 +76,6 @@ async fn receive_message(connection_reader: &mut ConnectionReader) -> std::io::R
         .await?;
 
     Ok(&buffer[..msg_len])
-}
-
-// prepend sent messages with their length encoded as a BE u16
-pub fn packeting_closure(message: &mut Vec<u8>) {
-    let u16_len_bytes = (message.len() as u16).to_be_bytes();
-    message.extend_from_slice(&u16_len_bytes);
-    message.rotate_right(2);
 }
 
 impl HandshakeProtocol for SecureNode {
@@ -245,13 +239,6 @@ impl MessagingProtocol for SecureNode {
     }
 }
 
-impl PacketingProtocol for SecureNode {
-    fn enable_packeting_protocol(&self) {
-        self.node()
-            .set_packeting_closure(Box::new(packeting_closure));
-    }
-}
-
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt::init();
@@ -262,7 +249,6 @@ async fn main() {
     for node in &[&initiator, &responder] {
         node.enable_handshake_protocol(); // enable the pre-defined handshakes
         node.enable_messaging_protocol(); // enable the pre-defined messaging rules
-        node.enable_packeting_protocol(); // enable the pre-defined packeting scheme
     }
 
     // connect the initiator to the responder
