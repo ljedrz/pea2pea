@@ -54,10 +54,11 @@ where
                             node.register_received_message(addr, msg.len());
 
                             if let Some(ref inbound_messages) = node.inbound_messages() {
-                                if let Err(e) = inbound_messages.send((addr, msg.to_vec())).await {
-                                    error!(parent: node.span(), "can't process an inbound message: {}", e);
-                                    // TODO: how to proceed?
-                                }
+                                // can't recover from an error here
+                                inbound_messages
+                                    .send((addr, msg.to_vec()))
+                                    .await
+                                    .expect("the inbound message channel is closed")
                             }
                         }
                         Err(e) => {

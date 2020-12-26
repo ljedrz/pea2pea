@@ -189,10 +189,11 @@ impl Node {
             match handshake_task.await {
                 Ok(Ok((conn_reader, handshake_state))) => {
                     if let Some(ref sender) = handshake_setup.state_sender {
-                        if let Err(e) = sender.send((peer_addr, handshake_state)).await {
-                            error!(parent: self.span(), "couldn't registed handshake state: {}", e);
-                            // TODO: what to do?
-                        }
+                        // can't recover from an error here
+                        sender
+                            .send((peer_addr, handshake_state))
+                            .await
+                            .expect("the handshake state channel is closed")
                     }
 
                     conn_reader
