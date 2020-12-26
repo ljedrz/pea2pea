@@ -39,7 +39,7 @@ impl KnownPeers {
 
 #[derive(Debug, Clone)]
 pub struct PeerStats {
-    pub times_connected: usize, // TODO: can be NonZeroUsize
+    pub times_connected: usize,
     pub first_seen: Instant,
     pub last_seen: Instant,
     pub msgs_received: usize,

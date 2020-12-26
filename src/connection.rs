@@ -78,7 +78,6 @@ impl Connection {
         }
     }
 
-    // TODO: add and use a persistent write buffer if possible
     pub async fn send_message(&self, header: Option<&[u8]>, payload: &[u8]) -> io::Result<()> {
         let mut writer = self.writer.lock().await;
         if let Some(header) = header {
