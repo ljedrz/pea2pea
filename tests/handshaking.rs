@@ -4,8 +4,8 @@ use tracing::*;
 
 mod common;
 use pea2pea::{
-    Connection, ConnectionReader, ContainsNode, HandshakeProtocol, HandshakeSetup, HandshakeState,
-    MessagingProtocol, Node, NodeConfig,
+    Connection, ConnectionReader, ContainsNode, HandshakeSetup, HandshakeState, Handshaking,
+    Messaging, Node, NodeConfig,
 };
 
 use parking_lot::RwLock;
@@ -97,10 +97,10 @@ macro_rules! send_handshake_message {
     }
 }
 
-impl_messaging_protocol!(SecureishNode);
+impl_messaging!(SecureishNode);
 
-impl HandshakeProtocol for SecureishNode {
-    fn enable_handshake_protocol(&self) {
+impl Handshaking for SecureishNode {
+    fn enable_handshaking(&self) {
         let (state_sender, mut state_receiver) = channel::<(SocketAddr, HandshakeState)>(64);
 
         let self_clone = self.clone();
@@ -189,11 +189,11 @@ async fn handshake_protocol() {
 
     // not required for the handshake; it's enabled only so that its relationship with the
     // handshake protocol can be tested too; it should kick in only after the handshake
-    initiator.enable_messaging_protocol();
-    responder.enable_messaging_protocol();
+    initiator.enable_messaging();
+    responder.enable_messaging();
 
-    initiator.enable_handshake_protocol();
-    responder.enable_handshake_protocol();
+    initiator.enable_handshaking();
+    responder.enable_handshaking();
 
     initiator
         .node

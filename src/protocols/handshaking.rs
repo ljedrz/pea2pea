@@ -4,9 +4,9 @@ use tokio::{sync::mpsc::Sender, task::JoinHandle};
 
 use std::{any::Any, io, net::SocketAddr, sync::Arc};
 
-pub trait HandshakeProtocol {
+pub trait Handshaking {
     // prepare the Node to produce and handle handshakes
-    fn enable_handshake_protocol(&self);
+    fn enable_handshaking(&self);
 }
 
 pub type HandshakeState = Box<dyn Any + Send>;

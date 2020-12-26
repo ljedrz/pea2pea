@@ -3,7 +3,7 @@ use tokio::time::sleep;
 use tracing::*;
 
 mod common;
-use pea2pea::{ContainsNode, MessagingProtocol, Node, NodeConfig};
+use pea2pea::{ContainsNode, Messaging, Node, NodeConfig};
 
 use std::{sync::Arc, time::Duration};
 
@@ -52,7 +52,7 @@ async fn broadcast_protocol() {
         .map(common::RandomNode)
         .collect::<Vec<_>>();
     for rando in &random_nodes {
-        rando.enable_messaging_protocol();
+        rando.enable_messaging();
     }
 
     let mut broadcaster_config = NodeConfig::default();

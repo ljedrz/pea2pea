@@ -3,8 +3,8 @@ use once_cell::sync::OnceCell;
 mod handshaking;
 mod messaging;
 
-pub use handshaking::{HandshakeProtocol, HandshakeSetup, HandshakeState};
-pub use messaging::{InboundMessage, MessagingProtocol, ReadingClosure};
+pub use handshaking::{HandshakeSetup, HandshakeState, Handshaking};
+pub use messaging::{InboundMessage, Messaging, ReadingClosure};
 
 pub(crate) use messaging::InboundMessages;
 

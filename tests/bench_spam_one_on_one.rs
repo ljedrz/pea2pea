@@ -1,7 +1,7 @@
 use bytes::Bytes;
 use tokio::time::sleep;
 
-use pea2pea::{ConnectionReader, ContainsNode, MessagingProtocol, Node, NodeConfig};
+use pea2pea::{ConnectionReader, ContainsNode, Messaging, Node, NodeConfig};
 
 use std::{
     convert::TryInto,
@@ -29,7 +29,7 @@ impl ContainsNode for VictimBot {
 }
 
 #[async_trait::async_trait]
-impl MessagingProtocol for VictimBot {
+impl Messaging for VictimBot {
     type Message = ();
 
     async fn receive_message(connection_reader: &mut ConnectionReader) -> std::io::Result<&[u8]> {
@@ -60,7 +60,7 @@ async fn bench_spam_one_on_one() {
     config.conn_read_buffer_size = MSG_SIZE + 4;
     let victim = VictimBot(Node::new(Some(config)).await.unwrap());
 
-    victim.enable_messaging_protocol();
+    victim.enable_messaging();
 
     spammer
         .node()

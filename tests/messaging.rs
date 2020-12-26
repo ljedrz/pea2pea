@@ -4,7 +4,7 @@ use tokio::time::sleep;
 use tracing::*;
 
 mod common;
-use pea2pea::{ConnectionReader, ContainsNode, MessagingProtocol, Node, NodeConfig};
+use pea2pea::{ConnectionReader, ContainsNode, Messaging, Node, NodeConfig};
 
 use std::{collections::HashSet, convert::TryInto, io, net::SocketAddr, sync::Arc, time::Duration};
 
@@ -36,7 +36,7 @@ fn packet_message(message: TestMessage) -> Bytes {
 }
 
 #[async_trait::async_trait]
-impl MessagingProtocol for EchoNode {
+impl Messaging for EchoNode {
     type Message = TestMessage;
 
     async fn receive_message(connection_reader: &mut ConnectionReader) -> std::io::Result<&[u8]> {
@@ -85,7 +85,7 @@ async fn messaging_protocol() {
     tracing_subscriber::fmt::init();
 
     let shouter = common::RandomNode::new("shout").await;
-    shouter.enable_messaging_protocol();
+    shouter.enable_messaging();
 
     let mut picky_echo_config = NodeConfig::default();
     picky_echo_config.name = Some("picky_echo".into());
@@ -94,7 +94,7 @@ async fn messaging_protocol() {
         echoed: Default::default(),
     };
 
-    picky_echo.enable_messaging_protocol();
+    picky_echo.enable_messaging();
 
     let picky_echo_addr = picky_echo.node().listening_addr;
 

@@ -77,8 +77,8 @@ async fn receive_message(connection_reader: &mut ConnectionReader) -> std::io::R
     connection_reader.read_bytes(msg_len).await
 }
 
-impl HandshakeProtocol for SecureNode {
-    fn enable_handshake_protocol(&self) {
+impl Handshaking for SecureNode {
+    fn enable_handshaking(&self) {
         // a channel used to register handshake states
         let (state_sender, mut state_receiver) = channel::<(SocketAddr, HandshakeState)>(64);
 
@@ -191,7 +191,7 @@ impl HandshakeProtocol for SecureNode {
 }
 
 #[async_trait::async_trait]
-impl MessagingProtocol for SecureNode {
+impl Messaging for SecureNode {
     type Message = String; // the encrypted messages are strings
 
     async fn receive_message(connection_reader: &mut ConnectionReader) -> std::io::Result<&[u8]> {
@@ -221,8 +221,8 @@ async fn main() {
     let responder = SecureNode::new("responder").await.unwrap();
 
     for node in &[&initiator, &responder] {
-        node.enable_handshake_protocol(); // enable the pre-defined handshakes
-        node.enable_messaging_protocol(); // enable the pre-defined messaging rules
+        node.enable_handshaking(); // enable the pre-defined handshakes
+        node.enable_messaging(); // enable the pre-defined messaging rules
     }
 
     // connect the initiator to the responder

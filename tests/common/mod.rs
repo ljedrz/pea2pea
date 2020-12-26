@@ -1,6 +1,6 @@
 use tracing::*;
 
-use pea2pea::{ConnectionReader, ContainsNode, MessagingProtocol, Node, NodeConfig};
+use pea2pea::{ConnectionReader, ContainsNode, Messaging, Node, NodeConfig};
 
 use std::{convert::TryInto, net::SocketAddr, sync::Arc};
 
@@ -37,10 +37,10 @@ impl ContainsNode for RandomNode {
 }
 
 #[macro_export]
-macro_rules! impl_messaging_protocol {
+macro_rules! impl_messaging {
     ($target: ty) => {
         #[async_trait::async_trait]
-        impl MessagingProtocol for $target {
+        impl Messaging for $target {
             type Message = ();
 
             async fn receive_message(
@@ -64,4 +64,4 @@ macro_rules! impl_messaging_protocol {
     };
 }
 
-impl_messaging_protocol!(RandomNode);
+impl_messaging!(RandomNode);
