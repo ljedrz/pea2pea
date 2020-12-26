@@ -32,11 +32,10 @@ impl Not for ConnectionSide {
     }
 }
 
-// FIXME: these pubs are not ideal
 pub struct ConnectionReader {
     pub node: Arc<Node>,
-    pub buffer: Vec<u8>,
-    pub reader: OwnedReadHalf,
+    buffer: Vec<u8>,
+    reader: OwnedReadHalf,
 }
 
 impl ConnectionReader {
@@ -48,8 +47,7 @@ impl ConnectionReader {
         }
     }
 
-    // FIXME: this pub is not ideal
-    pub async fn read_bytes(&mut self, num: usize) -> io::Result<usize> {
+    pub async fn read_bytes(&mut self, num: usize) -> io::Result<&[u8]> {
         let buffer = &mut self.buffer;
 
         if num > buffer.len() {
@@ -57,7 +55,9 @@ impl ConnectionReader {
             return Err(ErrorKind::Other.into());
         }
 
-        self.reader.read_exact(&mut buffer[..num]).await
+        self.reader.read_exact(&mut buffer[..num]).await?;
+
+        Ok(&buffer[..num])
     }
 }
 

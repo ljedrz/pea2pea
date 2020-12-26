@@ -1,5 +1,5 @@
 use parking_lot::{Mutex, RwLock};
-use tokio::{io::AsyncReadExt, sync::mpsc::channel, task::JoinHandle, time::sleep};
+use tokio::{sync::mpsc::channel, task::JoinHandle, time::sleep};
 use tracing::*;
 
 use pea2pea::*;
@@ -62,20 +62,10 @@ impl SecureNode {
 // read a packeted message
 async fn receive_message(connection_reader: &mut ConnectionReader) -> std::io::Result<&[u8]> {
     // expecting the messages to be prefixed with their length encoded as a BE u16
-    let msg_len_size: usize = 2;
+    let msg_len = connection_reader.read_bytes(2).await?;
+    let msg_len = u16::from_be_bytes(msg_len.try_into().unwrap()) as usize;
 
-    let buffer = &mut connection_reader.buffer;
-    connection_reader
-        .reader
-        .read_exact(&mut buffer[..msg_len_size])
-        .await?;
-    let msg_len = u16::from_be_bytes(buffer[..msg_len_size].try_into().unwrap()) as usize;
-    connection_reader
-        .reader
-        .read_exact(&mut buffer[..msg_len])
-        .await?;
-
-    Ok(&buffer[..msg_len])
+    connection_reader.read_bytes(msg_len).await
 }
 
 impl HandshakeProtocol for SecureNode {

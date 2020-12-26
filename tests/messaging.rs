@@ -1,5 +1,5 @@
 use parking_lot::Mutex;
-use tokio::{io::AsyncReadExt, time::sleep};
+use tokio::time::sleep;
 use tracing::*;
 
 mod common;
@@ -31,20 +31,10 @@ impl MessagingProtocol for EchoNode {
 
     async fn receive_message(connection_reader: &mut ConnectionReader) -> std::io::Result<&[u8]> {
         // expecting the test messages to be prefixed with their length encoded as a LE u16
-        let msg_len_size: usize = 2;
+        let msg_len = connection_reader.read_bytes(2).await?;
+        let msg_len = u16::from_le_bytes(msg_len.try_into().unwrap()) as usize;
 
-        let buffer = &mut connection_reader.buffer;
-        connection_reader
-            .reader
-            .read_exact(&mut buffer[..msg_len_size])
-            .await?;
-        let msg_len = u16::from_le_bytes(buffer[..msg_len_size].try_into().unwrap()) as usize;
-        connection_reader
-            .reader
-            .read_exact(&mut buffer[..msg_len])
-            .await?;
-
-        Ok(&buffer[..msg_len])
+        connection_reader.read_bytes(msg_len).await
     }
 
     fn parse_message(&self, _source: SocketAddr, buffer: &[u8]) -> Option<Self::Message> {

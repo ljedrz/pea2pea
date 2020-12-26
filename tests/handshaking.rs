@@ -1,4 +1,4 @@
-use tokio::{io::AsyncReadExt, sync::mpsc::channel, task::JoinHandle, time::sleep};
+use tokio::{sync::mpsc::channel, task::JoinHandle, time::sleep};
 use tracing::*;
 
 mod common;
@@ -68,23 +68,20 @@ impl ContainsNode for SecureishNode {
 
 macro_rules! read_handshake_message {
     ($expected: path, $node: expr, $connection_reader: expr, $addr: expr) => {
-        match $connection_reader.read_bytes(9).await {
-            Ok(9) => {
-                $node.register_received_message($addr, 9);
-                let msg = HandshakeMsg::deserialize(&$connection_reader.buffer[..9]);
+        if let Ok(bytes) = $connection_reader.read_bytes(9).await {
+            $node.register_received_message($addr, 9);
+            let msg = HandshakeMsg::deserialize(bytes);
 
-                if let $expected(nonce) = msg {
-                    debug!(parent: $node.span(), "received handshake message B from {}", $addr);
-                    nonce
-                } else {
-                    error!(parent: $node.span(), "received an invalid handshake message from {} (expected B)", $addr);
-                    return Err(ErrorKind::Other.into());
-                }
-            }
-            _ => {
-                error!(parent: $node.span(), "couldn't read handshake message B");
+            if let $expected(nonce) = msg {
+                debug!(parent: $node.span(), "received handshake message B from {}", $addr);
+                nonce
+            } else {
+                error!(parent: $node.span(), "received an invalid handshake message from {} (expected B)", $addr);
                 return Err(ErrorKind::Other.into());
             }
+        } else {
+            error!(parent: $node.span(), "couldn't read handshake message B");
+            return Err(ErrorKind::Other.into());
         }
     }
 }
