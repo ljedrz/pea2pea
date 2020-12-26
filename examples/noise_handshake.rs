@@ -13,7 +13,7 @@ const NOISE_BUF_LEN: usize = 65535;
 
 struct NoiseState {
     state: snow::TransportState,
-    buffer: Vec<u8>, // an encryption/decryption buffer
+    buffer: Box<[u8]>, // an encryption/decryption buffer
 }
 
 #[derive(Clone)]
@@ -106,6 +106,7 @@ impl HandshakeProtocol for SecureNode {
          -> JoinHandle<io::Result<(ConnectionReader, HandshakeState)>> {
             tokio::spawn(async move {
                 info!(parent: connection_reader.node.span(), "handshaking with {} as the initiator", addr);
+
                 let builder = snow::Builder::new(HANDSHAKE_PATTERN.parse().unwrap());
                 let static_key = builder.generate_keypair().unwrap().private;
                 let mut noise = builder
@@ -113,40 +114,25 @@ impl HandshakeProtocol for SecureNode {
                     .psk(3, PRE_SHARED_KEY)
                     .build_initiator()
                     .unwrap();
+                let mut buffer: Box<[u8]> = vec![0u8; NOISE_BUF_LEN].into();
 
                 // -> e
-                // we can use the reader's buffer for both reads and writes for the purposes of the handshake
-                let len = noise
-                    .write_message(&[], &mut connection_reader.buffer[2..])
-                    .unwrap();
-                connection_reader.buffer[..2].copy_from_slice(&(len as u16).to_be_bytes());
-                connection
-                    .write_bytes(&connection_reader.buffer[..len + 2])
-                    .await
-                    .unwrap();
+                let len = noise.write_message(&[], &mut buffer[2..]).unwrap();
+                buffer[..2].copy_from_slice(&(len as u16).to_be_bytes());
+                connection.write_bytes(&buffer[..len + 2]).await.unwrap();
 
                 // <- e, ee, s, es
-                let message = receive_message(&mut connection_reader)
-                    .await
-                    .unwrap()
-                    .to_vec();
-                noise
-                    .read_message(&message, &mut connection_reader.buffer)
-                    .unwrap();
+                let message = receive_message(&mut connection_reader).await.unwrap();
+                noise.read_message(message, &mut buffer).unwrap();
 
                 // -> s, se, psk
-                let len = noise
-                    .write_message(&[], &mut connection_reader.buffer[2..])
-                    .unwrap();
-                connection_reader.buffer[..2].copy_from_slice(&(len as u16).to_be_bytes());
-                connection
-                    .write_bytes(&connection_reader.buffer[..len + 2])
-                    .await
-                    .unwrap();
+                let len = noise.write_message(&[], &mut buffer[2..]).unwrap();
+                buffer[..2].copy_from_slice(&(len as u16).to_be_bytes());
+                connection.write_bytes(&buffer[..len + 2]).await.unwrap();
 
                 let noise = NoiseState {
                     state: noise.into_transport_mode().unwrap(),
-                    buffer: vec![0u8; NOISE_BUF_LEN],
+                    buffer,
                 };
 
                 Ok((connection_reader, Box::new(noise) as HandshakeState))
@@ -160,6 +146,7 @@ impl HandshakeProtocol for SecureNode {
          -> JoinHandle<io::Result<(ConnectionReader, HandshakeState)>> {
             tokio::spawn(async move {
                 info!(parent: connection_reader.node.span(), "handshaking with {} as the responder", addr);
+
                 let builder = snow::Builder::new(HANDSHAKE_PATTERN.parse().unwrap());
                 let static_key = builder.generate_keypair().unwrap().private;
                 let mut noise = builder
@@ -167,39 +154,24 @@ impl HandshakeProtocol for SecureNode {
                     .psk(3, PRE_SHARED_KEY)
                     .build_responder()
                     .unwrap();
+                let mut buffer: Box<[u8]> = vec![0u8; NOISE_BUF_LEN].into();
 
                 // <- e
-                let message = receive_message(&mut connection_reader)
-                    .await
-                    .unwrap()
-                    .to_vec();
-                noise
-                    .read_message(&message, &mut connection_reader.buffer)
-                    .unwrap();
+                let message = receive_message(&mut connection_reader).await.unwrap();
+                noise.read_message(message, &mut buffer).unwrap();
 
                 // -> e, ee, s, es
-                // we can use the reader's buffer for both reads and writes for the purposes of the handshake
-                let len = noise
-                    .write_message(&[], &mut connection_reader.buffer[2..])
-                    .unwrap();
-                connection_reader.buffer[..2].copy_from_slice(&(len as u16).to_be_bytes());
-                connection
-                    .write_bytes(&connection_reader.buffer[..len + 2])
-                    .await
-                    .unwrap();
+                let len = noise.write_message(&[], &mut buffer[2..]).unwrap();
+                buffer[..2].copy_from_slice(&(len as u16).to_be_bytes());
+                connection.write_bytes(&buffer[..len + 2]).await.unwrap();
 
                 // <- s, se, psk
-                let message = receive_message(&mut connection_reader)
-                    .await
-                    .unwrap()
-                    .to_vec();
-                noise
-                    .read_message(&message, &mut connection_reader.buffer)
-                    .unwrap();
+                let message = receive_message(&mut connection_reader).await.unwrap();
+                noise.read_message(message, &mut buffer).unwrap();
 
                 let noise = NoiseState {
                     state: noise.into_transport_mode().unwrap(),
-                    buffer: vec![0u8; NOISE_BUF_LEN],
+                    buffer,
                 };
 
                 Ok((connection_reader, Box::new(noise) as HandshakeState))
