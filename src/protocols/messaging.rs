@@ -2,6 +2,7 @@ use crate::{ConnectionReader, ContainsNode};
 
 use async_trait::async_trait;
 use tokio::{
+    io::AsyncReadExt,
     sync::mpsc::{channel, Sender},
     task::JoinHandle,
     time::sleep,
@@ -42,42 +43,63 @@ where
             }
         });
 
-        let reading_closure = |mut connection_reader: ConnectionReader,
-                               addr: SocketAddr|
-         -> JoinHandle<()> {
-            tokio::spawn(async move {
-                let node = connection_reader.node.clone();
-                debug!(parent: node.span(), "spawned a task reading messages from {}", addr);
-                loop {
-                    match Self::receive_message(&mut connection_reader).await {
-                        Ok(msg) => {
-                            node.register_received_message(addr, msg.len());
+        let reading_closure =
+            |mut connection_reader: ConnectionReader, addr: SocketAddr| -> JoinHandle<()> {
+                tokio::spawn(async move {
+                    let node = connection_reader.node.clone();
+                    debug!(parent: node.span(), "spawned a task reading messages from {}", addr);
 
-                            if let Some(ref inbound_messages) = node.inbound_messages() {
-                                // can't recover from an error here
-                                inbound_messages
-                                    .send((addr, msg.to_vec()))
-                                    .await
-                                    .expect("the inbound message channel is closed")
+                    // the number of bytes carried over from an incomplete message
+                    let mut carry = 0;
+
+                    loop {
+                        match connection_reader
+                            .reader
+                            .read(&mut connection_reader.buffer[carry..])
+                            .await
+                        {
+                            Ok(n) => {
+                                let mut processed = 0;
+                                let mut left = carry + n;
+
+                                while let Some(msg) = Self::read_message(
+                                    &connection_reader.buffer[processed..processed + left],
+                                ) {
+                                    node.register_received_message(addr, msg.len());
+
+                                    if let Some(ref inbound_messages) = node.inbound_messages() {
+                                        // can't recover from an error here
+                                        inbound_messages
+                                            .send((addr, msg.to_vec()))
+                                            .await
+                                            .expect("the inbound message channel is closed")
+                                    }
+
+                                    processed += msg.len();
+                                    left -= msg.len();
+                                }
+                                connection_reader
+                                    .buffer
+                                    .copy_within(processed..processed + left, 0);
+                                carry = left;
+                            }
+                            Err(e) => {
+                                node.register_failure(addr);
+                                error!(parent: node.span(), "can't read from {}: {}", addr, e);
+                                sleep(Duration::from_secs(
+                                    node.config.invalid_message_penalty_secs,
+                                ))
+                                .await;
                             }
                         }
-                        Err(e) => {
-                            node.register_failure(addr);
-                            error!(parent: node.span(), "can't read a message from {}: {}", addr, e);
-                            sleep(Duration::from_secs(
-                                node.config.invalid_message_penalty_secs,
-                            ))
-                            .await;
-                        }
                     }
-                }
-            })
-        };
+                })
+            };
 
         self.node().set_reading_closure(Box::new(reading_closure));
     }
 
-    async fn receive_message(conn_reader: &mut ConnectionReader) -> io::Result<&[u8]>;
+    fn read_message(buffer: &[u8]) -> Option<&[u8]>;
 
     fn parse_message(&self, source: SocketAddr, buffer: &[u8]) -> Option<Self::Message>;
 

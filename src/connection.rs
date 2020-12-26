@@ -36,8 +36,8 @@ impl Not for ConnectionSide {
 
 pub struct ConnectionReader {
     pub node: Arc<Node>,
-    buffer: Box<[u8]>,
-    reader: OwnedReadHalf,
+    pub buffer: Box<[u8]>,
+    pub reader: OwnedReadHalf,
 }
 
 impl ConnectionReader {
@@ -47,6 +47,12 @@ impl ConnectionReader {
             node,
             reader,
         }
+    }
+
+    pub async fn read_queued_bytes(&mut self) -> io::Result<&[u8]> {
+        let len = self.reader.read(&mut self.buffer).await?;
+
+        Ok(&self.buffer[..len])
     }
 
     pub async fn read_bytes(&mut self, num: usize) -> io::Result<&[u8]> {

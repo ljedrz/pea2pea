@@ -69,12 +69,19 @@ impl SecureNode {
 }
 
 // read a packeted message
-async fn receive_message(connection_reader: &mut ConnectionReader) -> std::io::Result<&[u8]> {
-    // expecting the messages to be prefixed with their length encoded as a BE u16
-    let msg_len = connection_reader.read_bytes(2).await?;
-    let msg_len = u16::from_be_bytes(msg_len.try_into().unwrap()) as usize;
+fn read_message(buffer: &[u8]) -> Option<&[u8]> {
+    // expecting the test messages to be prefixed with their length encoded as a BE u16
+    if buffer.len() >= 2 {
+        let payload_len = u16::from_be_bytes(buffer[..2].try_into().unwrap()) as usize;
 
-    connection_reader.read_bytes(msg_len).await
+        if buffer[2..].len() >= payload_len {
+            Some(&buffer[..2 + payload_len])
+        } else {
+            None
+        }
+    } else {
+        None
+    }
 }
 
 impl Handshaking for SecureNode {
@@ -122,8 +129,9 @@ impl Handshaking for SecureNode {
                     .await;
 
                 // <- e, ee, s, es
-                let message = receive_message(&mut connection_reader).await.unwrap();
-                noise.read_message(message, &mut buffer).unwrap();
+                let queued_bytes = connection_reader.read_queued_bytes().await.unwrap();
+                let message = read_message(queued_bytes).unwrap();
+                noise.read_message(&message[2..], &mut buffer).unwrap();
 
                 // -> s, se, psk
                 let len = noise.write_message(&[], &mut buffer).unwrap();
@@ -158,8 +166,9 @@ impl Handshaking for SecureNode {
                 let mut buffer: Box<[u8]> = vec![0u8; NOISE_BUF_LEN].into();
 
                 // <- e
-                let message = receive_message(&mut connection_reader).await.unwrap();
-                noise.read_message(message, &mut buffer).unwrap();
+                let queued_bytes = connection_reader.read_queued_bytes().await.unwrap();
+                let message = read_message(queued_bytes).unwrap();
+                noise.read_message(&message[2..], &mut buffer).unwrap();
 
                 // -> e, ee, s, es
                 let len = noise.write_message(&[], &mut buffer).unwrap();
@@ -168,8 +177,9 @@ impl Handshaking for SecureNode {
                     .await;
 
                 // <- s, se, psk
-                let message = receive_message(&mut connection_reader).await.unwrap();
-                noise.read_message(message, &mut buffer).unwrap();
+                let queued_bytes = connection_reader.read_queued_bytes().await.unwrap();
+                let message = read_message(queued_bytes).unwrap();
+                noise.read_message(&message[2..], &mut buffer).unwrap();
 
                 let noise = NoiseState {
                     state: noise.into_transport_mode().unwrap(),
@@ -194,11 +204,14 @@ impl Handshaking for SecureNode {
 impl Messaging for SecureNode {
     type Message = String; // the encrypted messages are strings
 
-    async fn receive_message(connection_reader: &mut ConnectionReader) -> std::io::Result<&[u8]> {
-        receive_message(connection_reader).await
+    fn read_message(buffer: &[u8]) -> Option<&[u8]> {
+        read_message(buffer)
     }
 
     fn parse_message(&self, source: SocketAddr, message: &[u8]) -> Option<Self::Message> {
+        // disregard the length prefix
+        let message = &message[2..];
+
         let noise = Arc::clone(self.noise_states.read().get(&source)?);
         let NoiseState { state, buffer } = &mut *noise.lock();
 

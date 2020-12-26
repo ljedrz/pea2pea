@@ -1,6 +1,6 @@
 use tracing::*;
 
-use pea2pea::{ConnectionReader, ContainsNode, Messaging, Node, NodeConfig};
+use pea2pea::{ContainsNode, Messaging, Node, NodeConfig};
 
 use std::{convert::TryInto, net::SocketAddr, sync::Arc};
 
@@ -43,14 +43,19 @@ macro_rules! impl_messaging {
         impl Messaging for $target {
             type Message = ();
 
-            async fn receive_message(
-                connection_reader: &mut ConnectionReader,
-            ) -> std::io::Result<&[u8]> {
+            fn read_message(buffer: &[u8]) -> Option<&[u8]> {
                 // expecting the test messages to be prefixed with their length encoded as a LE u16
-                let msg_len = connection_reader.read_bytes(2).await?;
-                let msg_len = u16::from_le_bytes(msg_len.try_into().unwrap()) as usize;
+                if buffer.len() >= 2 {
+                    let payload_len = u16::from_le_bytes(buffer[..2].try_into().unwrap()) as usize;
 
-                connection_reader.read_bytes(msg_len).await
+                    if buffer[2..].len() >= payload_len {
+                        Some(&buffer[..2 + payload_len])
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
             }
 
             fn parse_message(&self, _source: SocketAddr, _message: &[u8]) -> Option<Self::Message> {

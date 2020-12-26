@@ -1,7 +1,7 @@
 use bytes::Bytes;
 use tokio::time::sleep;
 
-use pea2pea::{ConnectionReader, ContainsNode, Messaging, Node, NodeConfig};
+use pea2pea::{ContainsNode, Messaging, Node, NodeConfig};
 
 use std::{
     convert::TryInto,
@@ -32,12 +32,19 @@ impl ContainsNode for VictimBot {
 impl Messaging for VictimBot {
     type Message = ();
 
-    async fn receive_message(connection_reader: &mut ConnectionReader) -> std::io::Result<&[u8]> {
-        // expecting the test messages to be prefixed with their length encoded as a LE u32
-        let msg_len = connection_reader.read_bytes(4).await?;
-        let msg_len = u32::from_le_bytes(msg_len.try_into().unwrap()) as usize;
+    fn read_message(buffer: &[u8]) -> Option<&[u8]> {
+        // expecting the test messages to be prefixed with their length encoded as a LE u16
+        if buffer.len() >= 4 {
+            let payload_len = u32::from_le_bytes(buffer[..4].try_into().unwrap()) as usize;
 
-        connection_reader.read_bytes(msg_len).await
+            if buffer[4..].len() >= payload_len {
+                Some(&buffer[..4 + payload_len])
+            } else {
+                None
+            }
+        } else {
+            None
+        }
     }
 
     fn parse_message(&self, _source: SocketAddr, _buffer: &[u8]) -> Option<Self::Message> {

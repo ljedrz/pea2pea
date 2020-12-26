@@ -70,7 +70,7 @@ impl PeerStats {
     }
 
     pub(crate) fn register_received_message(&mut self, msg_len: usize) {
-        self.last_seen = Instant::now();
+        //self.last_seen = Instant::now(); // TODO: split out into own method; call just once on every stream read
         self.msgs_received += 1;
         self.bytes_received += msg_len as u64;
     }
