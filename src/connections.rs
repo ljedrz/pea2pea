@@ -3,14 +3,14 @@ use tokio::task::JoinHandle;
 
 use crate::connection::Connection;
 
+use fxhash::FxHashMap;
 use std::{
-    collections::HashMap,
     io::{self, ErrorKind},
     net::SocketAddr,
     sync::Arc,
 };
 
-type ConnectionMap = HashMap<SocketAddr, Arc<Connection>>;
+type ConnectionMap = FxHashMap<SocketAddr, Arc<Connection>>;
 
 #[derive(Default)]
 pub(crate) struct Connections {
