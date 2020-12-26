@@ -92,7 +92,7 @@ macro_rules! read_handshake_message {
 macro_rules! send_handshake_message {
     ($msg: expr, $node: expr, $connection: expr, $addr: expr) => {
         if let Err(e) = $connection
-            .write_bytes(&$msg.serialize())
+            .send_message(None, &$msg.serialize())
             .await
         {
             error!(parent: $node.span(), "can't send handshake message A to {}: {}", $addr, e);

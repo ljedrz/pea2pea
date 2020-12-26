@@ -79,23 +79,13 @@ impl Connection {
     }
 
     // TODO: add and use a persistent write buffer if possible
-    pub(crate) async fn send_message(
-        &self,
-        header: Option<&[u8]>,
-        payload: &[u8],
-    ) -> io::Result<()> {
+    pub async fn send_message(&self, header: Option<&[u8]>, payload: &[u8]) -> io::Result<()> {
         let mut writer = self.writer.lock().await;
         if let Some(header) = header {
             writer.write_all(header).await?;
         }
         writer.write_all(payload).await?;
         writer.flush().await
-    }
-
-    // FIXME: this pub is not ideal
-    pub async fn write_bytes(&self, bytes: &[u8]) -> io::Result<()> {
-        let mut writer = self.writer.lock().await;
-        writer.write_all(bytes).await
     }
 }
 

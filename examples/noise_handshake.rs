@@ -117,18 +117,24 @@ impl HandshakeProtocol for SecureNode {
                 let mut buffer: Box<[u8]> = vec![0u8; NOISE_BUF_LEN].into();
 
                 // -> e
-                let len = noise.write_message(&[], &mut buffer[2..]).unwrap();
-                buffer[..2].copy_from_slice(&(len as u16).to_be_bytes());
-                connection.write_bytes(&buffer[..len + 2]).await.unwrap();
+                let len = noise.write_message(&[], &mut buffer).unwrap();
+                let header = (len as u16).to_be_bytes();
+                connection
+                    .send_message(Some(&header[..]), &buffer[..len])
+                    .await
+                    .unwrap();
 
                 // <- e, ee, s, es
                 let message = receive_message(&mut connection_reader).await.unwrap();
                 noise.read_message(message, &mut buffer).unwrap();
 
                 // -> s, se, psk
-                let len = noise.write_message(&[], &mut buffer[2..]).unwrap();
-                buffer[..2].copy_from_slice(&(len as u16).to_be_bytes());
-                connection.write_bytes(&buffer[..len + 2]).await.unwrap();
+                let len = noise.write_message(&[], &mut buffer).unwrap();
+                let header = (len as u16).to_be_bytes();
+                connection
+                    .send_message(Some(&header[..]), &buffer[..len])
+                    .await
+                    .unwrap();
 
                 let noise = NoiseState {
                     state: noise.into_transport_mode().unwrap(),
@@ -161,9 +167,12 @@ impl HandshakeProtocol for SecureNode {
                 noise.read_message(message, &mut buffer).unwrap();
 
                 // -> e, ee, s, es
-                let len = noise.write_message(&[], &mut buffer[2..]).unwrap();
-                buffer[..2].copy_from_slice(&(len as u16).to_be_bytes());
-                connection.write_bytes(&buffer[..len + 2]).await.unwrap();
+                let len = noise.write_message(&[], &mut buffer).unwrap();
+                let header = (len as u16).to_be_bytes();
+                connection
+                    .send_message(Some(&header[..]), &buffer[..len])
+                    .await
+                    .unwrap();
 
                 // <- s, se, psk
                 let message = receive_message(&mut connection_reader).await.unwrap();
