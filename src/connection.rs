@@ -86,16 +86,16 @@ impl Connection {
     ) -> io::Result<()> {
         let mut writer = self.writer.lock().await;
         if let Some(header) = header {
-            writer.write(header).await?;
+            writer.write_all(header).await?;
         }
-        writer.write(payload).await?;
+        writer.write_all(payload).await?;
         writer.flush().await
     }
 
     // FIXME: this pub is not ideal
-    pub async fn write_bytes(&self, bytes: &[u8]) -> io::Result<usize> {
+    pub async fn write_bytes(&self, bytes: &[u8]) -> io::Result<()> {
         let mut writer = self.writer.lock().await;
-        writer.write(bytes).await
+        writer.write_all(bytes).await
     }
 }
 
