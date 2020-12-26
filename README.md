@@ -22,13 +22,13 @@
 
 ## current state: _alpha_
 - the basic functionalities are available and seem to be working
-- the documentation is pretty much non-existent
-- plenty of FIXMEs and TODOs left to iron out
-- the public APIs are a bit messy and definitely subject to change
+- the documentation is a work in progress
+- some minor FIXMEs are left to iron out
+- the public APIs are a bit messy and subject to change
 - the tests need to be extended
 
 ## how to use it
-1. define a custom struct containing an `Arc<Node>` and any extra state you'd like to carry
+1. define a clonable custom struct containing an `Arc<Node>` and any extra state you'd like to carry
 2. `impl ContainsNode` for it
 3. make it implement any/all of the protocols
 4. create that struct (or as many of them as you like)
