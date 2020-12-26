@@ -47,7 +47,7 @@ impl PacketingProtocol for ChattyNode {
 async fn broadcast_protocol() {
     tracing_subscriber::fmt::init();
 
-    let random_nodes = Node::spawn_multiple(4, None)
+    let random_nodes = Node::new_multiple(4, None)
         .await
         .unwrap()
         .into_iter()

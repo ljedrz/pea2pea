@@ -111,7 +111,7 @@ impl Node {
         Ok(node)
     }
 
-    pub async fn spawn_multiple(
+    pub async fn new_multiple(
         count: usize,
         config: Option<NodeConfig>,
     ) -> io::Result<Vec<Arc<Self>>> {
