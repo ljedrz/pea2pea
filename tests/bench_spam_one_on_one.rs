@@ -1,3 +1,4 @@
+use bytes::Bytes;
 use tokio::time::sleep;
 
 use pea2pea::{ConnectionReader, ContainsNode, MessagingProtocol, Node, NodeConfig};
@@ -50,7 +51,10 @@ async fn bench_spam_one_on_one() {
     const MSG_COUNT: usize = 100_000;
     const MSG_SIZE: usize = 128;
 
-    let spammer = SpamBot(Node::new(None).await.unwrap());
+    let mut config = NodeConfig::default();
+    config.outbound_message_queue_depth = MSG_COUNT;
+    let spammer = SpamBot(Node::new(Some(config)).await.unwrap());
+
     let mut config = NodeConfig::default();
     config.inbound_message_queue_depth = MSG_COUNT;
     config.conn_read_buffer_size = MSG_SIZE + 4;
@@ -66,19 +70,21 @@ async fn bench_spam_one_on_one() {
     sleep(Duration::from_millis(100)).await;
 
     let victim_addr = victim.node().listening_addr;
-    let msg = vec![0u8; MSG_SIZE];
+    let mut msg = vec![0u8; MSG_SIZE + 4];
     let msg_len = (MSG_SIZE as u32).to_le_bytes();
+    msg[..4].copy_from_slice(&msg_len);
+    let msg = Bytes::from(msg);
 
     let start = Instant::now();
     for _ in 0..MSG_COUNT {
         spammer
             .node()
-            .send_direct_message(victim_addr, Some(&msg_len), &msg)
+            .send_direct_message(victim_addr, msg.clone())
             .await
             .unwrap();
     }
     while victim.node().num_messages_received() < MSG_COUNT {
-        sleep(Duration::from_millis(5)).await;
+        sleep(Duration::from_millis(1)).await;
     }
     let time_elapsed = start.elapsed().as_millis();
 

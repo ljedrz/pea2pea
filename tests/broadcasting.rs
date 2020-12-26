@@ -1,3 +1,4 @@
+use bytes::Bytes;
 use tokio::time::sleep;
 use tracing::*;
 
@@ -19,14 +20,17 @@ impl ChattyNode {
     fn send_periodic_broadcasts(&self) {
         let node = Arc::clone(&self.node());
         tokio::spawn(async move {
+            let message = "hello there ( ͡° ͜ʖ ͡°)";
+            let u16_len = (message.len() as u16).to_le_bytes();
+            let mut bytes = Vec::with_capacity(2 + message.len());
+            bytes.extend_from_slice(&u16_len);
+            bytes.extend_from_slice(message.as_bytes());
+            let bytes = Bytes::from(bytes);
+
             loop {
                 if !node.handshaken_addrs().is_empty() {
-                    let message = "hello there ( ͡° ͜ʖ ͡°)";
                     info!(parent: node.span(), "sending \"{}\" to all my frens", message);
-
-                    let u16_len = (message.len() as u16).to_le_bytes();
-                    node.send_broadcast(Some(&u16_len), message.as_bytes())
-                        .await;
+                    node.send_broadcast(bytes.clone()).await;
                 } else {
                     info!(parent: node.span(), "meh, I have no frens to chat with",);
                 }

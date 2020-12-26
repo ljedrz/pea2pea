@@ -4,6 +4,7 @@ use crate::connections::Connections;
 use crate::known_peers::KnownPeers;
 use crate::protocols::{HandshakeSetup, InboundMessages, Protocols, ReadingClosure};
 
+use bytes::Bytes;
 use tokio::net::{TcpListener, TcpStream};
 use tracing::*;
 
@@ -169,7 +170,12 @@ impl Node {
         let (reader, writer) = stream.into_split();
 
         let connection_reader = ConnectionReader::new(reader, Arc::clone(&self));
-        let connection = Arc::new(Connection::new(writer, Arc::clone(&self), !own_side));
+        let connection = Arc::new(Connection::new(
+            peer_addr,
+            writer,
+            Arc::clone(&self),
+            !own_side,
+        ));
 
         self.connections
             .handshaking
@@ -261,17 +267,9 @@ impl Node {
         disconnected
     }
 
-    /// Sends the provided message (optional header followed by a payload) to the specified `SocketAddr`.
-    pub async fn send_direct_message(
-        &self,
-        addr: SocketAddr,
-        header: Option<&[u8]>,
-        payload: &[u8],
-    ) -> io::Result<()> {
-        let ret = self
-            .connections
-            .send_direct_message(addr, header, payload)
-            .await;
+    /// Sends the provided message to the specified `SocketAddr`.
+    pub async fn send_direct_message(&self, addr: SocketAddr, message: Bytes) -> io::Result<()> {
+        let ret = self.connections.send_direct_message(addr, message).await;
 
         if let Err(ref e) = ret {
             error!(parent: self.span(), "couldn't send a direct message to {}: {}", addr, e);
@@ -280,12 +278,10 @@ impl Node {
         ret
     }
 
-    /// Broadcasts the provided message (optional header followed by a payload).
-    pub async fn send_broadcast(&self, header: Option<&[u8]>, payload: &[u8]) {
-        for (addr, conn) in self.connections.handshaken_connections().iter() {
-            if let Err(e) = conn.send_message(header, payload).await {
-                error!(parent: self.span(), "couldn't send a broadcast to {}: {}", addr, e);
-            }
+    /// Broadcasts the provided message to all handshaken peers.
+    pub async fn send_broadcast(&self, message: Bytes) {
+        for conn in self.connections.handshaken_connections().iter() {
+            conn.send_message(message.clone()).await;
         }
     }
 

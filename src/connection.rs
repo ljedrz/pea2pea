@@ -1,16 +1,18 @@
 use crate::Node;
 
+use bytes::Bytes;
 use once_cell::sync::OnceCell;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::tcp::{OwnedReadHalf, OwnedWriteHalf},
-    sync::Mutex,
+    sync::mpsc::{channel, Sender},
     task::JoinHandle,
 };
 use tracing::*;
 
 use std::{
     io::{self, ErrorKind},
+    net::SocketAddr,
     ops::Not,
     sync::Arc,
 };
@@ -63,47 +65,64 @@ impl ConnectionReader {
 
 pub struct Connection {
     node: Arc<Node>,
+    peer_addr: SocketAddr,
     pub(crate) reader_task: OnceCell<JoinHandle<()>>,
-    writer: Mutex<OwnedWriteHalf>,
+    _writer_task: JoinHandle<()>,
+    message_sender: Sender<Bytes>,
     side: ConnectionSide,
 }
 
 impl Connection {
-    pub(crate) fn new(writer: OwnedWriteHalf, node: Arc<Node>, side: ConnectionSide) -> Self {
+    pub(crate) fn new(
+        peer_addr: SocketAddr,
+        mut writer: OwnedWriteHalf,
+        node: Arc<Node>,
+        side: ConnectionSide,
+    ) -> Self {
+        let (message_sender, mut message_receiver) =
+            channel::<Bytes>(node.config.outbound_message_queue_depth);
+
+        let _writer_task = tokio::spawn(async move {
+            loop {
+                while let Some(msg) = message_receiver.recv().await {
+                    writer.write_all(&msg).await.unwrap(); // FIXME
+                }
+                writer.flush().await.unwrap(); // FIXME
+            }
+        });
+        debug!(parent: node.span(), "spawned a task for writing messages to {}", peer_addr);
+
         Self {
             node,
+            peer_addr,
             reader_task: Default::default(),
-            writer: Mutex::new(writer),
+            _writer_task,
+            message_sender,
             side,
         }
     }
 
-    pub async fn send_message(&self, header: Option<&[u8]>, payload: &[u8]) -> io::Result<()> {
-        let mut writer = self.writer.lock().await;
-        if let Some(header) = header {
-            writer.write_all(header).await?;
-        }
-        writer.write_all(payload).await?;
-        writer.flush().await
+    pub async fn send_message(&self, message: Bytes) {
+        // can't recover if this happens
+        self.message_sender
+            .send(message)
+            .await
+            .expect("the connection writer task is closed");
     }
 }
 
 impl Drop for Connection {
     fn drop(&mut self) {
-        if let Ok(peer_addr) = self.writer.get_mut().as_ref().peer_addr() {
-            debug!(parent: self.node.span(), "disconnecting from {}", peer_addr);
-            // if the (owning) node was not the initiator of the connection, it doesn't know the listening address
-            // of the associated peer, so the related stats are unreliable; the next connection initiated by the
-            // peer could be bound to an entirely different port number
-            if matches!(self.side, ConnectionSide::Initiator) {
-                self.node
-                    .known_peers
-                    .peer_stats()
-                    .write()
-                    .remove(&peer_addr);
-            }
-        } else {
-            warn!(parent: self.node.span(), "couldn't remove the stats of an obsolete peer");
+        debug!(parent: self.node.span(), "disconnecting from {}", self.peer_addr);
+        // if the (owning) node was not the initiator of the connection, it doesn't know the listening address
+        // of the associated peer, so the related stats are unreliable; the next connection initiated by the
+        // peer could be bound to an entirely different port number
+        if matches!(self.side, ConnectionSide::Initiator) {
+            self.node
+                .known_peers
+                .peer_stats()
+                .write()
+                .remove(&self.peer_addr);
         }
     }
 }

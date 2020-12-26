@@ -1,3 +1,4 @@
+use bytes::Bytes;
 use parking_lot::{Mutex, RwLock};
 use tokio::{sync::mpsc::channel, task::JoinHandle, time::sleep};
 use tracing::*;
@@ -28,6 +29,15 @@ impl ContainsNode for SecureNode {
     }
 }
 
+fn packet_message(message: &[u8]) -> Bytes {
+    let mut bytes = Vec::with_capacity(2 + message.len());
+    let u16_len_header = (message.len() as u16).to_be_bytes();
+    bytes.extend_from_slice(&u16_len_header);
+    bytes.extend_from_slice(message);
+
+    bytes.into()
+}
+
 impl SecureNode {
     // create a SecureNode
     async fn new(name: &str) -> io::Result<Self> {
@@ -51,10 +61,9 @@ impl SecureNode {
 
         let len = state.write_message(message, buffer).unwrap();
         let encrypted_message = &buffer[..len];
-        let u16_len_header = (len as u16).to_be_bytes();
 
         self.node()
-            .send_direct_message(target, Some(&u16_len_header), encrypted_message)
+            .send_direct_message(target, packet_message(encrypted_message))
             .await
     }
 }
@@ -108,11 +117,9 @@ impl HandshakeProtocol for SecureNode {
 
                 // -> e
                 let len = noise.write_message(&[], &mut buffer).unwrap();
-                let header = (len as u16).to_be_bytes();
                 connection
-                    .send_message(Some(&header[..]), &buffer[..len])
-                    .await
-                    .unwrap();
+                    .send_message(packet_message(&buffer[..len]))
+                    .await;
 
                 // <- e, ee, s, es
                 let message = receive_message(&mut connection_reader).await.unwrap();
@@ -120,11 +127,9 @@ impl HandshakeProtocol for SecureNode {
 
                 // -> s, se, psk
                 let len = noise.write_message(&[], &mut buffer).unwrap();
-                let header = (len as u16).to_be_bytes();
                 connection
-                    .send_message(Some(&header[..]), &buffer[..len])
-                    .await
-                    .unwrap();
+                    .send_message(packet_message(&buffer[..len]))
+                    .await;
 
                 let noise = NoiseState {
                     state: noise.into_transport_mode().unwrap(),
@@ -158,11 +163,9 @@ impl HandshakeProtocol for SecureNode {
 
                 // -> e, ee, s, es
                 let len = noise.write_message(&[], &mut buffer).unwrap();
-                let header = (len as u16).to_be_bytes();
                 connection
-                    .send_message(Some(&header[..]), &buffer[..len])
-                    .await
-                    .unwrap();
+                    .send_message(packet_message(&buffer[..len]))
+                    .await;
 
                 // <- s, se, psk
                 let message = receive_message(&mut connection_reader).await.unwrap();

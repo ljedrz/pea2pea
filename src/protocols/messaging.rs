@@ -13,7 +13,7 @@ use std::{io, net::SocketAddr, time::Duration};
 #[async_trait]
 pub trait MessagingProtocol: ContainsNode
 where
-    Self: Clone + Send + 'static,
+    Self: Clone + Send + Sync + 'static,
     Self::Message: Send,
 {
     type Message;
@@ -30,7 +30,7 @@ where
                     if let Some(msg) = self_clone.parse_message(source, &msg) {
                         self_clone.process_message(source, &msg);
 
-                        if let Err(e) = self_clone.respond_to_message(source, msg) {
+                        if let Err(e) = self_clone.respond_to_message(source, msg).await {
                             error!(parent: node.span(), "failed to respond to an inbound message: {}", e);
                             node.register_failure(source);
                         }
@@ -87,7 +87,11 @@ where
     }
 
     #[allow(unused_variables)]
-    fn respond_to_message(&self, source: SocketAddr, message: Self::Message) -> io::Result<()> {
+    async fn respond_to_message(
+        &self,
+        source: SocketAddr,
+        message: Self::Message,
+    ) -> io::Result<()> {
         // don't do anything by default
         Ok(())
     }

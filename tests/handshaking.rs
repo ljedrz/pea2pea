@@ -1,3 +1,4 @@
+use bytes::Bytes;
 use tokio::{sync::mpsc::channel, task::JoinHandle, time::sleep};
 use tracing::*;
 
@@ -33,7 +34,7 @@ impl HandshakeMsg {
         }
     }
 
-    fn serialize(&self) -> Vec<u8> {
+    fn serialize(&self) -> Bytes {
         let mut ret = Vec::with_capacity(9);
 
         match self {
@@ -47,7 +48,7 @@ impl HandshakeMsg {
             }
         }
 
-        ret
+        ret.into()
     }
 }
 
@@ -88,15 +89,11 @@ macro_rules! read_handshake_message {
 
 macro_rules! send_handshake_message {
     ($msg: expr, $node: expr, $connection: expr, $addr: expr) => {
-        if let Err(e) = $connection
-            .send_message(None, &$msg.serialize())
-            .await
-        {
-            error!(parent: $node.span(), "can't send handshake message A to {}: {}", $addr, e);
-            return Err(ErrorKind::Other.into());
-        } else {
-            debug!(parent: $node.span(), "sent handshake message A to {}", $addr);
-        };
+        $connection
+            .send_message($msg.serialize())
+            .await;
+
+        debug!(parent: $node.span(), "sent handshake message A to {}", $addr);
     }
 }
 

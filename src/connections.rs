@@ -3,6 +3,7 @@ use tokio::task::JoinHandle;
 
 use crate::connection::Connection;
 
+use bytes::Bytes;
 use fxhash::FxHashMap;
 use std::{
     io::{self, ErrorKind},
@@ -43,12 +44,8 @@ impl Connections {
         self.handshaking.read().len() + self.handshaken.read().len()
     }
 
-    pub(crate) fn handshaken_connections(&self) -> Vec<(SocketAddr, Arc<Connection>)> {
-        self.handshaken
-            .read()
-            .iter()
-            .map(|(addr, conn)| (*addr, Arc::clone(conn)))
-            .collect()
+    pub(crate) fn handshaken_connections(&self) -> Vec<Arc<Connection>> {
+        self.handshaken.read().values().cloned().collect()
     }
 
     pub(crate) async fn mark_as_handshaken(
@@ -70,13 +67,13 @@ impl Connections {
     pub(crate) async fn send_direct_message(
         &self,
         target: SocketAddr,
-        header: Option<&[u8]>,
-        payload: &[u8],
+        message: Bytes,
     ) -> io::Result<()> {
         let conn = self.handshaken.read().get(&target).cloned();
 
         if let Some(ref conn) = conn {
-            conn.send_message(header, payload).await
+            conn.send_message(message).await;
+            Ok(())
         } else {
             Err(ErrorKind::NotConnected.into())
         }

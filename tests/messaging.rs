@@ -1,3 +1,4 @@
+use bytes::Bytes;
 use parking_lot::Mutex;
 use tokio::time::sleep;
 use tracing::*;
@@ -25,6 +26,15 @@ impl ContainsNode for EchoNode {
     }
 }
 
+fn packet_message(message: TestMessage) -> Bytes {
+    let mut bytes = Vec::with_capacity(3);
+    let u16_len = 1u16.to_le_bytes();
+    bytes.extend_from_slice(&u16_len);
+    bytes.push(message as u8);
+
+    bytes.into()
+}
+
 #[async_trait::async_trait]
 impl MessagingProtocol for EchoNode {
     type Message = TestMessage;
@@ -49,20 +59,19 @@ impl MessagingProtocol for EchoNode {
         }
     }
 
-    fn respond_to_message(&self, source: SocketAddr, message: Self::Message) -> io::Result<()> {
+    async fn respond_to_message(
+        &self,
+        source: SocketAddr,
+        message: Self::Message,
+    ) -> io::Result<()> {
         info!(parent: self.node().span(), "got a {:?} from {}", message, source);
         if self.echoed.lock().insert(message) {
             info!(parent: self.node().span(), "it was new! echoing it");
 
-            let self_clone = self.clone();
-            tokio::spawn(async move {
-                let u16_len = 1u16.to_le_bytes();
-                self_clone
-                    .node()
-                    .send_direct_message(source, Some(&u16_len), &[message as u8])
-                    .await
-                    .unwrap();
-            });
+            self.node()
+                .send_direct_message(source, packet_message(message))
+                .await
+                .unwrap();
         } else {
             debug!(parent: self.node().span(), "I've already heard {:?}! not echoing", message);
         }
@@ -96,30 +105,22 @@ async fn messaging_protocol() {
         .unwrap();
     sleep(Duration::from_millis(100)).await;
 
-    let u16_len = 1u16.to_le_bytes();
-
     shouter
-        .node()
-        .send_direct_message(picky_echo_addr, Some(&u16_len), &[TestMessage::Herp as u8])
-        .await
-        .unwrap();
+        .send_direct_message_with_len(picky_echo_addr, &[TestMessage::Herp as u8])
+        .await;
     shouter
-        .node()
-        .send_direct_message(picky_echo_addr, Some(&u16_len), &[TestMessage::Derp as u8])
-        .await
-        .unwrap();
+        .send_direct_message_with_len(picky_echo_addr, &[TestMessage::Derp as u8])
+        .await;
     shouter
-        .node()
-        .send_direct_message(picky_echo_addr, Some(&u16_len), &[TestMessage::Herp as u8])
-        .await
-        .unwrap();
+        .send_direct_message_with_len(picky_echo_addr, &[TestMessage::Herp as u8])
+        .await;
 
     // let echo send one message on its own too, for good measure
     let shouter_addr = picky_echo.node().handshaken_addrs()[0];
 
     picky_echo
         .node()
-        .send_direct_message(shouter_addr, Some(&u16_len), &[TestMessage::Herp as u8])
+        .send_direct_message(shouter_addr, packet_message(TestMessage::Herp))
         .await
         .unwrap();
 

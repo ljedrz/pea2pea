@@ -16,11 +16,15 @@ impl RandomNode {
     }
 
     #[allow(dead_code)]
-    pub async fn send_direct_message(&self, target: SocketAddr, message: &[u8]) {
+    pub async fn send_direct_message_with_len(&self, target: SocketAddr, message: &[u8]) {
         // prepend the message with its length in LE u16
+        let mut bytes = Vec::with_capacity(2 + message.len());
         let u16_len = (message.len() as u16).to_le_bytes();
+        bytes.extend_from_slice(&u16_len);
+        bytes.extend_from_slice(message);
+
         self.node()
-            .send_direct_message(target, Some(&u16_len), message)
+            .send_direct_message(target, bytes.into())
             .await
             .unwrap();
     }
