@@ -16,22 +16,32 @@ use std::{
     },
 };
 
+// A seuential numeric identifier assigned to `Node`s that were not provided with a name.
 static SEQUENTIAL_NODE_ID: AtomicUsize = AtomicUsize::new(0);
 
+/// A trait for objects containing a `Node`; it is required to implement `protocols`.
 pub trait ContainsNode {
     fn node(&self) -> &Arc<Node>;
 }
 
+/// The central object responsible for handling all the connections.
 pub struct Node {
+    /// The tracing span.
     span: Span,
+    /// The node's configuration.
     pub config: NodeConfig,
+    /// The node's listening address.
     pub listening_addr: SocketAddr,
+    /// Contains objects used by the protocols implemented by the node.
     protocols: Protocols,
+    /// Contains objects related to the node's active connections.
     connections: Connections,
+    /// Collects statistics related to the node's connections.
     pub known_peers: KnownPeers,
 }
 
 impl Node {
+    /// Returns a `Node` wrapped in an `Arc`.
     pub async fn new(config: Option<NodeConfig>) -> io::Result<Arc<Self>> {
         let local_ip = IpAddr::V4(Ipv4Addr::LOCALHOST);
         let mut config = config.unwrap_or_default();
@@ -109,6 +119,7 @@ impl Node {
         Ok(node)
     }
 
+    /// Returns a vector of `Node`s wrapped in `Arc`s.
     pub async fn new_multiple(
         count: usize,
         config: Option<NodeConfig>,
@@ -123,15 +134,18 @@ impl Node {
         Ok(nodes)
     }
 
+    /// Returns the name assigned to the node.
     pub fn name(&self) -> &str {
         // safe; can be set as None in NodeConfig, but receives a default value on Node creation
         self.config.name.as_deref().unwrap()
     }
 
+    /// Returns the tracing `Span` associated with the node.
     pub fn span(&self) -> Span {
         self.span.clone()
     }
 
+    /// Prepares the freshly acquired connection to handle the protocols it implements.
     async fn adapt_stream(
         self: &Arc<Self>,
         stream: TcpStream,
@@ -139,6 +153,8 @@ impl Node {
         own_side: ConnectionSide,
     ) -> io::Result<()> {
         debug!(parent: self.span(), "establishing connection with {}", peer_addr);
+
+        self.known_peers.add(peer_addr);
 
         // register the port seen by the peer
         let port_seen_by_peer = if let ConnectionSide::Responder = own_side {
@@ -219,16 +235,17 @@ impl Node {
         }
     }
 
+    /// Forwards an accepted connection to `adapt_stream`
     async fn accept_connection(
         self: Arc<Self>,
         stream: TcpStream,
         addr: SocketAddr,
     ) -> io::Result<()> {
-        self.known_peers.add(addr);
         self.adapt_stream(stream, addr, ConnectionSide::Responder)
             .await
     }
 
+    /// Connects to the provided `SocketAddr`.
     pub async fn initiate_connection(self: &Arc<Self>, addr: SocketAddr) -> io::Result<()> {
         if self.connections.is_connected(addr) {
             warn!(parent: self.span(), "already connecting/connected to {}", addr);
@@ -236,11 +253,11 @@ impl Node {
         }
 
         let stream = TcpStream::connect(addr).await?;
-        self.known_peers.add(addr);
         self.adapt_stream(stream, addr, ConnectionSide::Initiator)
             .await
     }
 
+    /// Disconnects from the provided `SocketAddr`.
     pub fn disconnect(&self, addr: SocketAddr) -> bool {
         let disconnected = self.connections.disconnect(addr);
 
@@ -253,6 +270,7 @@ impl Node {
         disconnected
     }
 
+    /// Sends the provided message (optional header followed by a payload) to the specified `SocketAddr`.
     pub async fn send_direct_message(
         &self,
         addr: SocketAddr,
@@ -271,6 +289,7 @@ impl Node {
         ret
     }
 
+    /// Broadcasts the provided message (optional header followed by a payload).
     pub async fn send_broadcast(&self, header: Option<&[u8]>, payload: &[u8]) {
         for (addr, conn) in self.connections.handshaken_connections().iter() {
             // FIXME: it would be nice not to clone the message
