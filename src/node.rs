@@ -292,7 +292,6 @@ impl Node {
     /// Broadcasts the provided message (optional header followed by a payload).
     pub async fn send_broadcast(&self, header: Option<&[u8]>, payload: &[u8]) {
         for (addr, conn) in self.connections.handshaken_connections().iter() {
-            // FIXME: it would be nice not to clone the message
             if let Err(e) = conn.send_message(header, payload).await {
                 error!(parent: self.span(), "couldn't send a broadcast to {}: {}", addr, e);
             }
