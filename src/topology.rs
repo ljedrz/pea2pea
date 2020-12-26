@@ -5,8 +5,6 @@ use std::{collections::HashSet, io};
 /// The way in which nodes are connected to each other; used in connect_nodes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Topology {
-    /// no connections
-    None,
     /// a > b > c
     Line,
     /// a > b > c > a
@@ -56,7 +54,6 @@ pub async fn connect_nodes<T: ContainsNode>(nodes: &[T], topology: Topology) -> 
                     .await?;
             }
         }
-        Topology::None => {}
     }
 
     Ok(())
