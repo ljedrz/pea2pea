@@ -96,8 +96,8 @@ impl Node {
             loop {
                 match listener.accept().await {
                     Ok((stream, addr)) => {
-                        if let Err(e) = Arc::clone(&node_clone)
-                            .accept_connection(stream, addr)
+                        if let Err(e) = node_clone
+                            .adapt_stream(stream, addr, ConnectionSide::Responder)
                             .await
                         {
                             error!(parent: node_clone.span(), "couldn't accept a connection: {}", e);
@@ -233,16 +233,6 @@ impl Node {
             );
             Ok(())
         }
-    }
-
-    /// Forwards an accepted connection to `adapt_stream`
-    async fn accept_connection(
-        self: Arc<Self>,
-        stream: TcpStream,
-        addr: SocketAddr,
-    ) -> io::Result<()> {
-        self.adapt_stream(stream, addr, ConnectionSide::Responder)
-            .await
     }
 
     /// Connects to the provided `SocketAddr`.
