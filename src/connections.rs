@@ -75,16 +75,10 @@ impl Connections {
     ) -> io::Result<()> {
         let conn = self.handshaken.read().get(&target).cloned();
 
-        let conn = if conn.is_some() {
-            conn
-        } else {
-            return Err(ErrorKind::NotConnected.into());
-        };
-
         if let Some(ref conn) = conn {
             conn.send_message(header, payload).await
         } else {
-            Err(io::ErrorKind::NotConnected.into())
+            Err(ErrorKind::NotConnected.into())
         }
     }
 }
