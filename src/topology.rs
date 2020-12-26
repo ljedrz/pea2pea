@@ -1,21 +1,29 @@
 use crate::ContainsNode;
 
-use std::{collections::HashSet, io};
+use std::{
+    collections::HashSet,
+    io::{self, ErrorKind},
+};
 
 /// The way in which nodes are connected to each other; used in connect_nodes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Topology {
-    /// a > b > c
+    /// each node - except the last one - connects to the next one in a linear fashion
     Line,
-    /// a > b > c > a
+    /// like the `Line`, but the last node connects to the first one, forming a rign
     Ring,
-    /// a <> b <> c <> a
+    /// all the nodes are become connected to one another, forming a full mesh
     Mesh,
-    /// a > b, a > c
+    /// the first node is the central one (the hub); all the other nodes connect to it
     Star,
 }
 
 pub async fn connect_nodes<T: ContainsNode>(nodes: &[T], topology: Topology) -> io::Result<()> {
+    if nodes.len() < 2 {
+        // there must be more than one node in order to have any connections
+        return Err(ErrorKind::Other.into());
+    }
+
     let count = nodes.len();
 
     match topology {
@@ -47,11 +55,9 @@ pub async fn connect_nodes<T: ContainsNode>(nodes: &[T], topology: Topology) -> 
             }
         }
         Topology::Star => {
+            let hub_addr = nodes[0].node().listening_addr;
             for node in nodes.iter().skip(1) {
-                nodes[0]
-                    .node()
-                    .initiate_connection(node.node().listening_addr)
-                    .await?;
+                node.node().initiate_connection(hub_addr).await?;
             }
         }
     }
