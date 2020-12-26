@@ -2,9 +2,9 @@ use tokio::time::sleep;
 use tracing::*;
 
 mod common;
-use pea2pea::{BroadcastProtocol, ContainsNode, MessagingProtocol, Node, NodeConfig};
+use pea2pea::{ContainsNode, MessagingProtocol, Node, NodeConfig};
 
-use std::{io, sync::Arc, time::Duration};
+use std::{sync::Arc, time::Duration};
 
 #[derive(Clone)]
 struct ChattyNode(Arc<Node>);
@@ -15,24 +15,25 @@ impl ContainsNode for ChattyNode {
     }
 }
 
-#[async_trait::async_trait]
-impl BroadcastProtocol for ChattyNode {
-    const INTERVAL_MS: u64 = 50;
+impl ChattyNode {
+    fn send_periodic_broadcasts(&self) {
+        let node = Arc::clone(&self.node());
+        tokio::spawn(async move {
+            loop {
+                if !node.handshaken_addrs().is_empty() {
+                    let message = "hello there ( ͡° ͜ʖ ͡°)";
+                    info!(parent: node.span(), "sending \"{}\" to all my frens", message);
 
-    async fn perform_broadcast(&self) -> io::Result<()> {
-        if !self.node().handshaken_addrs().is_empty() {
-            let message = "hello there ( ͡° ͜ʖ ͡°)";
-            info!(parent: self.node().span(), "sending \"{}\" to all my frens", message);
+                    let u16_len = (message.len() as u16).to_le_bytes();
+                    node.send_broadcast(Some(&u16_len), message.as_bytes())
+                        .await;
+                } else {
+                    info!(parent: node.span(), "meh, I have no frens to chat with",);
+                }
 
-            let u16_len = (message.len() as u16).to_le_bytes();
-            self.node()
-                .send_broadcast(Some(&u16_len), message.as_bytes())
-                .await;
-        } else {
-            info!(parent: self.node().span(), "meh, I have no frens to chat with",);
-        }
-
-        Ok(())
+                sleep(Duration::from_millis(50)).await;
+            }
+        });
     }
 }
 
@@ -55,7 +56,7 @@ async fn broadcast_protocol() {
     let broadcaster = Node::new(Some(broadcaster_config)).await.unwrap();
     let broadcaster = ChattyNode(broadcaster);
 
-    broadcaster.enable_broadcast_protocol();
+    broadcaster.send_periodic_broadcasts();
 
     for rando in &random_nodes {
         broadcaster
