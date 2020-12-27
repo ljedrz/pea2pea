@@ -29,6 +29,23 @@ impl ContainsNode for SecureNode {
     }
 }
 
+// read the first message from the provided buffer
+fn read_message(buffer: &[u8]) -> Option<&[u8]> {
+    // expecting the test messages to be prefixed with their length encoded as a BE u16
+    if buffer.len() >= 2 {
+        let payload_len = u16::from_be_bytes(buffer[..2].try_into().unwrap()) as usize;
+
+        if buffer[2..].len() >= payload_len {
+            Some(&buffer[..2 + payload_len])
+        } else {
+            None
+        }
+    } else {
+        None
+    }
+}
+
+// prepend the given message with its length encoded as a BE u16
 fn packet_message(message: &[u8]) -> Bytes {
     let mut bytes = Vec::with_capacity(2 + message.len());
     let u16_len_header = (message.len() as u16).to_be_bytes();
@@ -65,22 +82,6 @@ impl SecureNode {
         self.node()
             .send_direct_message(target, packet_message(encrypted_message))
             .await
-    }
-}
-
-// read a packeted message
-fn read_message(buffer: &[u8]) -> Option<&[u8]> {
-    // expecting the test messages to be prefixed with their length encoded as a BE u16
-    if buffer.len() >= 2 {
-        let payload_len = u16::from_be_bytes(buffer[..2].try_into().unwrap()) as usize;
-
-        if buffer[2..].len() >= payload_len {
-            Some(&buffer[..2 + payload_len])
-        } else {
-            None
-        }
-    } else {
-        None
     }
 }
 
