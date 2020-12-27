@@ -67,6 +67,7 @@ where
                         .await
                     {
                         Ok(n) => {
+                            trace!(parent: node.span(), "read {}B from {}", n, addr);
                             let mut processed = 0;
                             let mut left = carry + n;
 

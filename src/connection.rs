@@ -102,12 +102,14 @@ impl Connection {
         let (message_sender, mut message_receiver) =
             channel::<Bytes>(node.config.outbound_message_queue_depth);
 
+        let span = node.span();
         let _writer_task = tokio::spawn(async move {
             loop {
                 // TODO: when try_recv is available in tokio again (https://github.com/tokio-rs/tokio/issues/3350),
                 // try adding a buffer for extra writing perf
                 while let Some(msg) = message_receiver.recv().await {
                     writer.write_all(&msg).await.unwrap(); // FIXME
+                    trace!(parent: &span, "sent {}B to {}", msg.len(), peer_addr);
                 }
                 writer.flush().await.unwrap(); // FIXME
             }
