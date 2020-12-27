@@ -18,6 +18,12 @@ impl KnownPeers {
         }
     }
 
+    pub(crate) fn register_sent_message(&self, to: SocketAddr, len: usize) {
+        if let Some(ref mut stats) = self.0.write().get_mut(&to) {
+            stats.register_sent_message(len)
+        }
+    }
+
     pub(crate) fn register_received_message(&self, from: SocketAddr, len: usize) {
         if let Some(ref mut stats) = self.0.write().get_mut(&from) {
             stats.register_received_message(len)
@@ -55,8 +61,12 @@ pub struct PeerStats {
     pub last_connected: Instant,
     /// The timestamp of the connection's last activity.
     pub last_seen: Instant,
+    /// The number of messages sent to the connection.
+    pub msgs_sent: usize,
     /// The number of messages received from the connection.
     pub msgs_received: usize,
+    /// The number of bytes sent to the connection.
+    pub bytes_sent: u64,
     /// The number of bytes received from the connection.
     pub bytes_received: u64,
     /// The number of failures related to the connection.
@@ -72,7 +82,9 @@ impl Default for PeerStats {
             first_seen: now,
             last_connected: now,
             last_seen: now,
+            msgs_sent: 0,
             msgs_received: 0,
+            bytes_sent: 0,
             bytes_received: 0,
             failures: 0,
         }
@@ -91,6 +103,11 @@ impl PeerStats {
     pub(crate) fn new_connection(&mut self) {
         self.last_connected = Instant::now();
         self.times_connected += 1;
+    }
+
+    pub(crate) fn register_sent_message(&mut self, msg_len: usize) {
+        self.msgs_sent += 1;
+        self.bytes_sent += msg_len as u64;
     }
 
     pub(crate) fn register_received_message(&mut self, msg_len: usize) {

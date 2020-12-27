@@ -112,6 +112,7 @@ impl Connection {
                         node_clone.register_failure(peer_addr);
                         error!(parent: node_clone.span(), "couldn't send {}B to {}: {}", msg.len(), peer_addr, e);
                     } else {
+                        node_clone.register_sent_message(peer_addr, msg.len());
                         trace!(parent: node_clone.span(), "sent {}B to {}", msg.len(), peer_addr);
                     }
                 }

@@ -286,6 +286,11 @@ impl Node {
         self.connections.handshaken.read().keys().copied().collect()
     }
 
+    /// Updates the peer's statistics upon successful submission of a message.
+    pub fn register_sent_message(&self, from: SocketAddr, len: usize) {
+        self.known_peers.register_sent_message(from, len)
+    }
+
     /// Updates the peer's statistics upon successful receipt of a message.
     pub fn register_received_message(&self, from: SocketAddr, len: usize) {
         self.known_peers.register_received_message(from, len)
