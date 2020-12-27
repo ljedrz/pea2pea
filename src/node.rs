@@ -94,7 +94,7 @@ impl Node {
 
         let node_clone = Arc::clone(&node);
         tokio::spawn(async move {
-            debug!(parent: node_clone.span(), "spawned a listening task");
+            trace!(parent: node_clone.span(), "spawned a listening task");
             loop {
                 match listener.accept().await {
                     Ok((stream, addr)) => {
