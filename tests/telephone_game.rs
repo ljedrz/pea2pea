@@ -34,7 +34,7 @@ impl Messaging for Player {
         if buffer.len() >= 2 {
             let payload_len = u16::from_le_bytes(buffer[..2].try_into().unwrap()) as usize;
 
-            if buffer[2..].len() >= payload_len {
+            if payload_len != 0 && buffer[2..].len() >= payload_len {
                 Some(&buffer[..2 + payload_len])
             } else {
                 None

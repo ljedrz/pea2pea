@@ -37,7 +37,7 @@ impl Messaging for VictimBot {
         if buffer.len() >= 4 {
             let payload_len = u32::from_le_bytes(buffer[..4].try_into().unwrap()) as usize;
 
-            if buffer[4..].len() >= payload_len {
+            if payload_len != 0 && buffer[4..].len() >= payload_len {
                 Some(&buffer[..4 + payload_len])
             } else {
                 None

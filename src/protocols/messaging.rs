@@ -87,6 +87,13 @@ where
                                 processed += msg.len();
                                 left -= msg.len();
                             }
+                            // if no bytes were processed, there must have been invalid messages;
+                            // register an error, set carry to zero and move to the next read
+                            if processed == 0 {
+                                node.register_failure(addr);
+                                carry = 0;
+                                continue;
+                            }
                             connection_reader
                                 .buffer
                                 .copy_within(processed..processed + left, 0);
