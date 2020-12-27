@@ -69,7 +69,7 @@ impl ContainsNode for SecureishNode {
 
 macro_rules! read_handshake_message {
     ($expected: path, $node: expr, $connection_reader: expr, $addr: expr) => {
-        if let Ok(bytes) = $connection_reader.read_bytes(9).await {
+        if let Ok(bytes) = $connection_reader.read_exact(9).await {
             $node.register_received_message($addr, 9);
             let msg = HandshakeMsg::deserialize(bytes);
 

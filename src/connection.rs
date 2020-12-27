@@ -55,7 +55,7 @@ impl ConnectionReader {
         Ok(&self.buffer[..len])
     }
 
-    pub async fn read_bytes(&mut self, num: usize) -> io::Result<&[u8]> {
+    pub async fn read_exact(&mut self, num: usize) -> io::Result<&[u8]> {
         let buffer = &mut self.buffer;
 
         if num > buffer.len() {
