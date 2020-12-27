@@ -317,6 +317,10 @@ impl Node {
         self.known_peers.num_messages_received()
     }
 
+    pub fn update_last_seen(&self, addr: SocketAddr) {
+        self.known_peers.update_last_seen(addr);
+    }
+
     pub async fn mark_as_handshaken(&self, addr: SocketAddr) -> io::Result<()> {
         self.connections.mark_as_handshaken(addr, None).await
     }

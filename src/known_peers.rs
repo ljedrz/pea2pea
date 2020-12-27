@@ -11,12 +11,16 @@ impl KnownPeers {
         self.0.write().entry(addr).or_default().new_connection();
     }
 
+    pub(crate) fn update_last_seen(&self, addr: SocketAddr) {
+        if let Some(ref mut stats) = self.0.write().get_mut(&addr) {
+            stats.update_last_seen();
+        }
+    }
+
     pub(crate) fn register_received_message(&self, from: SocketAddr, len: usize) {
-        self.0
-            .write()
-            .get_mut(&from)
-            .unwrap()
-            .register_received_message(len)
+        if let Some(ref mut stats) = self.0.write().get_mut(&from) {
+            stats.register_received_message(len)
+        }
     }
 
     pub(crate) fn register_failure(&self, from: SocketAddr) {
@@ -64,19 +68,24 @@ impl Default for PeerStats {
 }
 
 impl PeerStats {
-    pub(crate) fn new_connection(&mut self) {
+    pub(crate) fn update_last_seen(&mut self) {
+        // last_seen is not updated automatically, as many messages can be read
+        // from the stream at once, and each one would cause a costly system call;
+        // since it is a costly operation, it is opt-in; it can be included in
+        // one of the methods provided by the Messaging protocol
         self.last_seen = Instant::now();
+    }
+
+    pub(crate) fn new_connection(&mut self) {
         self.times_connected += 1;
     }
 
     pub(crate) fn register_received_message(&mut self, msg_len: usize) {
-        //self.last_seen = Instant::now(); // TODO: split out into own method; call just once on every stream read
         self.msgs_received += 1;
         self.bytes_received += msg_len as u64;
     }
 
     pub(crate) fn register_failure(&mut self) {
-        self.last_seen = Instant::now();
         self.failures += 1;
     }
 }
