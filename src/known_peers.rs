@@ -51,6 +51,8 @@ pub struct PeerStats {
     pub times_connected: usize,
     /// The timestamp of the first connection.
     pub first_seen: Instant,
+    /// The timestamp of the current connection.
+    pub last_connected: Instant,
     /// The timestamp of the connection's last activity.
     pub last_seen: Instant,
     /// The number of messages received from the connection.
@@ -68,6 +70,7 @@ impl Default for PeerStats {
         Self {
             times_connected: 1,
             first_seen: now,
+            last_connected: now,
             last_seen: now,
             msgs_received: 0,
             bytes_received: 0,
@@ -86,6 +89,7 @@ impl PeerStats {
     }
 
     pub(crate) fn new_connection(&mut self) {
+        self.last_connected = Instant::now();
         self.times_connected += 1;
     }
 
