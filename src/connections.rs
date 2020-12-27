@@ -16,7 +16,7 @@ pub(crate) struct Connections {
 
 impl Connections {
     pub(crate) fn is_connected(&self, addr: SocketAddr) -> bool {
-        self.is_handshaking(addr) || self.is_handshaken(addr)
+        self.is_handshaken(addr) || self.is_handshaking(addr)
     }
 
     pub(crate) fn is_handshaking(&self, addr: SocketAddr) -> bool {
@@ -28,8 +28,8 @@ impl Connections {
     }
 
     pub(crate) fn disconnect(&self, addr: SocketAddr) -> bool {
-        if self.handshaking.write().remove(&addr).is_none() {
-            self.handshaken.write().remove(&addr).is_some()
+        if self.handshaken.write().remove(&addr).is_none() {
+            self.handshaking.write().remove(&addr).is_some()
         } else {
             true
         }
