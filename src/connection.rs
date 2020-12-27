@@ -90,6 +90,8 @@ impl Connection {
 
         let _writer_task = tokio::spawn(async move {
             loop {
+                // TODO: when try_recv is available in tokio again (https://github.com/tokio-rs/tokio/issues/3350),
+                // try adding a buffer for extra writing perf
                 while let Some(msg) = message_receiver.recv().await {
                     writer.write_all(&msg).await.unwrap(); // FIXME
                 }
