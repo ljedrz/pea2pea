@@ -25,20 +25,23 @@ where
 
         let self_clone = self.clone();
         tokio::spawn(async move {
-            let node = self_clone.node();
             loop {
                 if let Some((source, msg)) = receiver.recv().await {
-                    if let Some(msg) = self_clone.parse_message(source, &msg) {
-                        self_clone.process_message(source, &msg);
+                    let self_clone = self_clone.clone();
+                    tokio::spawn(async move {
+                        let node = self_clone.node();
+                        if let Some(msg) = self_clone.parse_message(source, &msg) {
+                            self_clone.process_message(source, &msg);
 
-                        if let Err(e) = self_clone.respond_to_message(source, msg).await {
-                            error!(parent: node.span(), "failed to respond to an inbound message: {}", e);
+                            if let Err(e) = self_clone.respond_to_message(source, msg).await {
+                                error!(parent: node.span(), "failed to respond to an inbound message: {}", e);
+                                node.register_failure(source);
+                            }
+                        } else {
+                            error!(parent: node.span(), "can't parse an inbound message");
                             node.register_failure(source);
                         }
-                    } else {
-                        error!(parent: node.span(), "can't parse an inbound message");
-                        node.register_failure(source);
-                    }
+                    });
                 }
             }
         });
