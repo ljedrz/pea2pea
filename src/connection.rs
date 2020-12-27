@@ -17,6 +17,7 @@ use std::{
     sync::Arc,
 };
 
+/// Indicates who was the initiator and who was the responder when the connection was established.
 #[derive(Clone, Copy)]
 pub(crate) enum ConnectionSide {
     Initiator,
@@ -34,9 +35,13 @@ impl Not for ConnectionSide {
     }
 }
 
+/// An object dedicated to performing reads from a connection's stream.
 pub struct ConnectionReader {
+    /// A reference to the owning node.
     pub node: Arc<Node>,
+    /// A buffer dedicated to reading from the stream.
     pub buffer: Box<[u8]>,
+    /// The read half of the stream.
     pub reader: OwnedReadHalf,
 }
 
@@ -49,12 +54,14 @@ impl ConnectionReader {
         }
     }
 
+    /// Reads as many bytes as there are queued to be read from the stream.
     pub async fn read_queued_bytes(&mut self) -> io::Result<&[u8]> {
         let len = self.reader.read(&mut self.buffer).await?;
 
         Ok(&self.buffer[..len])
     }
 
+    /// Reads the specified number of bytes from the stream.
     pub async fn read_exact(&mut self, num: usize) -> io::Result<&[u8]> {
         let buffer = &mut self.buffer;
 
@@ -69,12 +76,19 @@ impl ConnectionReader {
     }
 }
 
+/// An object dedicated to performing writes to the stream
 pub struct Connection {
+    /// A reference to the owning node.
     node: Arc<Node>,
+    /// The address of the connection.
     peer_addr: SocketAddr,
+    /// The handle to the task performing reads from the stream.
     pub(crate) reader_task: OnceCell<JoinHandle<()>>,
+    /// The handle to the task performing writes to the stream.
     _writer_task: JoinHandle<()>,
+    /// Used to queue writes to the stream.
     message_sender: Sender<Bytes>,
+    /// The connection's side in relation to the node.
     side: ConnectionSide,
 }
 
@@ -110,6 +124,7 @@ impl Connection {
         }
     }
 
+    /// Sends the given message to the peer associated with the connection.
     pub async fn send_message(&self, message: Bytes) {
         // can't recover if this happens
         self.message_sender
