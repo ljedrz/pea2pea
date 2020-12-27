@@ -220,11 +220,7 @@ impl Node {
             None
         };
 
-        if let Err(e) = self
-            .connections
-            .mark_as_handshaken(peer_addr, reader_task)
-            .await
-        {
+        if let Err(e) = self.connections.mark_as_handshaken(peer_addr, reader_task) {
             error!(parent: self.span(), "can't mark {} as handshaken: {}", peer_addr, e);
             Err(ErrorKind::Other.into())
         } else {
@@ -321,8 +317,8 @@ impl Node {
         self.known_peers.update_last_seen(addr);
     }
 
-    pub async fn mark_as_handshaken(&self, addr: SocketAddr) -> io::Result<()> {
-        self.connections.mark_as_handshaken(addr, None).await
+    pub fn mark_as_handshaken(&self, addr: SocketAddr) -> io::Result<()> {
+        self.connections.mark_as_handshaken(addr, None)
     }
 
     pub fn inbound_messages(&self) -> Option<&InboundMessages> {

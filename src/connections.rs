@@ -48,7 +48,7 @@ impl Connections {
         self.handshaken.read().values().cloned().collect()
     }
 
-    pub(crate) async fn mark_as_handshaken(
+    pub(crate) fn mark_as_handshaken(
         &self,
         addr: SocketAddr,
         reader_task: Option<JoinHandle<()>>,
