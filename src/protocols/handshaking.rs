@@ -6,7 +6,7 @@ use std::{any::Any, io, net::SocketAddr, sync::Arc};
 
 /// This protocol can be used to specify and enable network handshakes. Upon establishing a connection, both sides will
 /// need to adhere to the specified handshake rules in order to finalize the connection and be able to transmit any
-/// messages.
+/// messages. Note: if not implemented, the nodes unconditionally mark their connections as handshaken.
 pub trait Handshaking {
     /// Prepares the node to produce and handle network handshakes.
     fn enable_handshaking(&self);
