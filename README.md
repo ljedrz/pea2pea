@@ -32,7 +32,7 @@
 2. `impl ContainsNode` for it
 3. make it implement any/all of the protocols
 4. create that struct (or as many of them as you like)
-5. `enable_X_protocol` for all the protocols you want it to activate
+5. enable the `protocols` you'd like the node(s) to utilize
 
 that's it!
 
