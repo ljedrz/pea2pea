@@ -51,7 +51,7 @@ where
          -> JoinHandle<()> {
             tokio::spawn(async move {
                 let node = connection_reader.node.clone();
-                debug!(parent: node.span(), "spawned a task for reading messages from {}", addr);
+                trace!(parent: node.span(), "spawned a task for reading messages from {}", addr);
 
                 // the number of bytes carried over from an incomplete message
                 let mut carry = 0;

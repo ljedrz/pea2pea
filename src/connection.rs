@@ -98,7 +98,7 @@ impl Connection {
                 writer.flush().await.unwrap(); // FIXME
             }
         });
-        debug!(parent: node.span(), "spawned a task for writing messages to {}", peer_addr);
+        trace!(parent: node.span(), "spawned a task for writing messages to {}", peer_addr);
 
         Self {
             node,
