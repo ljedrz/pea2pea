@@ -263,20 +263,19 @@ impl Node {
         disconnected
     }
 
-    /// Sends the provided message to the specified `SocketAddr`.
+    /// Sends the provided message to the specified, handshaken `SocketAddr`.
     pub async fn send_direct_message(&self, addr: SocketAddr, message: Bytes) -> io::Result<()> {
-        let ret = self.connections.send_direct_message(addr, message).await;
-
-        if let Err(ref e) = ret {
-            error!(parent: self.span(), "couldn't send a direct message to {}: {}", addr, e);
+        if let Some(conn) = self.connections.get_handshaken(addr) {
+            conn.send_message(message).await;
+            Ok(())
+        } else {
+            Err(ErrorKind::NotConnected.into())
         }
-
-        ret
     }
 
     /// Broadcasts the provided message to all handshaken peers.
     pub async fn send_broadcast(&self, message: Bytes) {
-        for conn in self.connections.handshaken_connections().iter() {
+        for conn in self.connections.all_handshaken() {
             conn.send_message(message.clone()).await;
         }
     }
