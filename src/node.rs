@@ -321,6 +321,11 @@ impl Node {
         self.connections.is_handshaken(addr)
     }
 
+    /// Returns the number of all sent messages.
+    pub fn num_messages_sent(&self) -> usize {
+        self.known_peers.num_messages_sent()
+    }
+
     /// Returns the number of all received messages.
     pub fn num_messages_received(&self) -> usize {
         self.known_peers.num_messages_received()

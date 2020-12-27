@@ -36,6 +36,14 @@ impl KnownPeers {
         }
     }
 
+    pub(crate) fn num_messages_sent(&self) -> usize {
+        self.0
+            .read()
+            .values()
+            .map(|peer_stats| peer_stats.msgs_sent)
+            .sum()
+    }
+
     pub(crate) fn num_messages_received(&self) -> usize {
         self.0
             .read()
