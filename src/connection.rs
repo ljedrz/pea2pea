@@ -39,6 +39,8 @@ impl Not for ConnectionSide {
 pub struct ConnectionReader {
     /// A reference to the owning node.
     pub node: Arc<Node>,
+    /// The address of the connection.
+    peer_addr: SocketAddr,
     /// A buffer dedicated to reading from the stream.
     pub buffer: Box<[u8]>,
     /// The read half of the stream.
@@ -46,10 +48,11 @@ pub struct ConnectionReader {
 }
 
 impl ConnectionReader {
-    pub(crate) fn new(reader: OwnedReadHalf, node: Arc<Node>) -> Self {
+    pub(crate) fn new(peer_addr: SocketAddr, reader: OwnedReadHalf, node: Arc<Node>) -> Self {
         Self {
             buffer: vec![0; node.config.conn_read_buffer_size].into(),
             node,
+            peer_addr,
             reader,
         }
     }
@@ -57,6 +60,7 @@ impl ConnectionReader {
     /// Reads as many bytes as there are queued to be read from the stream.
     pub async fn read_queued_bytes(&mut self) -> io::Result<&[u8]> {
         let len = self.reader.read(&mut self.buffer).await?;
+        trace!(parent: self.node.span(), "read {}B from {}", len, self.peer_addr);
 
         Ok(&self.buffer[..len])
     }
@@ -71,6 +75,7 @@ impl ConnectionReader {
         }
 
         self.reader.read_exact(&mut buffer[..num]).await?;
+        trace!(parent: self.node.span(), "read {}B from {}", num, self.peer_addr);
 
         Ok(&buffer[..num])
     }

@@ -170,7 +170,7 @@ impl Node {
 
         let (reader, writer) = stream.into_split();
 
-        let connection_reader = ConnectionReader::new(reader, Arc::clone(&self));
+        let connection_reader = ConnectionReader::new(peer_addr, reader, Arc::clone(&self));
         let connection = Arc::new(Connection::new(
             peer_addr,
             writer,
