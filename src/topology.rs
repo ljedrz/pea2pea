@@ -18,6 +18,7 @@ pub enum Topology {
     Star,
 }
 
+/// Connects the provided list of nodes in order to form the given `Topology`.
 pub async fn connect_nodes<T: ContainsNode>(nodes: &[T], topology: Topology) -> io::Result<()> {
     if nodes.len() < 2 {
         // there must be more than one node in order to have any connections

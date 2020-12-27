@@ -3,6 +3,7 @@ use parking_lot::RwLock;
 use fxhash::FxHashMap;
 use std::{net::SocketAddr, time::Instant};
 
+/// Contains statistics related to node's connections.
 #[derive(Default)]
 pub struct KnownPeers(RwLock<FxHashMap<SocketAddr, PeerStats>>);
 
@@ -37,18 +38,26 @@ impl KnownPeers {
             .sum()
     }
 
+    /// Provides access to the collection of node's connection statistics.
     pub fn peer_stats(&self) -> &RwLock<FxHashMap<SocketAddr, PeerStats>> {
         &self.0
     }
 }
 
+/// Contains statistics related to a single connection.
 #[derive(Debug, Clone)]
 pub struct PeerStats {
+    /// The number of times the connection has been established.
     pub times_connected: usize,
+    /// The timestamp of the first connection.
     pub first_seen: Instant,
+    /// The timestamp of the connection's last activity.
     pub last_seen: Instant,
+    /// The number of messages received from the connection.
     pub msgs_received: usize,
+    /// The number of bytes received from the connection.
     pub bytes_received: u64,
+    /// The number of failures related to the connection.
     pub failures: u8, // FIXME: consider some public "reset" method instead
 }
 

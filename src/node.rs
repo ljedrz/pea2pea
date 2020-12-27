@@ -280,58 +280,74 @@ impl Node {
         }
     }
 
+    /// Returns a list containing addresses of handshaken connections.
     pub fn handshaken_addrs(&self) -> Vec<SocketAddr> {
         self.connections.handshaken.read().keys().copied().collect()
     }
 
+    /// Updates the peer's statistics upon successful receipt of a message.
     pub fn register_received_message(&self, from: SocketAddr, len: usize) {
         self.known_peers.register_received_message(from, len)
     }
 
+    /// Updates the peer's statistics upon a failure.
     pub fn register_failure(&self, from: SocketAddr) {
         self.known_peers.register_failure(from)
     }
 
+    /// Checks whether the provided address is connected, regardless of its handshake status.
     pub fn is_connected(&self, addr: SocketAddr) -> bool {
         self.connections.is_connected(addr)
     }
 
+    /// Returns the number of active connections, regardless of their handshake status.
     pub fn num_connected(&self) -> usize {
         self.connections.num_connected()
     }
 
+    /// Checks whether a connection with the given address is currently in the process of handshaking.
     pub fn is_handshaking(&self, addr: SocketAddr) -> bool {
         self.connections.is_handshaking(addr)
     }
 
+    /// Checks whether a connection with the given address has been handshaken.
     pub fn is_handshaken(&self, addr: SocketAddr) -> bool {
         self.connections.is_handshaken(addr)
     }
 
+    /// Returns the number of all received messages.
     pub fn num_messages_received(&self) -> usize {
         self.known_peers.num_messages_received()
     }
 
+    /// Updates the "last seen" timestamp of a connection with the given address.
     pub fn update_last_seen(&self, addr: SocketAddr) {
         self.known_peers.update_last_seen(addr);
     }
 
+    /// Changes a connection's status from handshaking to handshaken.
     pub fn mark_as_handshaken(&self, addr: SocketAddr) -> io::Result<()> {
         self.connections.mark_as_handshaken(addr, None)
     }
 
+    /// Returns a `Sender` for the channel handling all the
+    /// incoming messages, if Messaging is enabled.
     pub fn inbound_messages(&self) -> Option<&InboundMessages> {
         self.protocols.inbound_messages.get()
     }
 
-    pub fn reading_closure(&self) -> Option<&ReadingClosure> {
+    /// Returns the closure responsible for spawning per-connection
+    /// tasks for handling inbound messages, if Messaging is enabled.
+    fn reading_closure(&self) -> Option<&ReadingClosure> {
         self.protocols.reading_closure.get()
     }
 
-    pub fn handshake_setup(&self) -> Option<&HandshakeSetup> {
+    /// Returns a handle to the handshake-relevant objects, if Handshaking is enabled.
+    fn handshake_setup(&self) -> Option<&HandshakeSetup> {
         self.protocols.handshake_setup.get()
     }
 
+    /// Sets up the `Sender` for handling all incoming messages, as part of the Messaging protocol.
     pub fn set_inbound_messages(&self, sender: InboundMessages) {
         self.protocols
             .inbound_messages
@@ -339,12 +355,15 @@ impl Node {
             .expect("the inbound_messages field was set more than once!");
     }
 
+    /// Sets up the closure responsible for spawning per-connection
+    /// tasks for handling inbound messages, as part of the Messaging protocol.
     pub fn set_reading_closure(&self, closure: ReadingClosure) {
         if self.protocols.reading_closure.set(closure).is_err() {
             panic!("the reading_closure field was set more than once!");
         }
     }
 
+    /// Sets up the handshake-relevant objects, as part of the Handshaking protocol.
     pub fn set_handshake_setup(&self, closures: HandshakeSetup) {
         if self.protocols.handshake_setup.set(closures).is_err() {
             panic!("the handshake_setup field was set more than once!");
@@ -359,6 +378,7 @@ impl ContainsNode for Arc<Node> {
 }
 
 // FIXME: this can probably be done more elegantly
+/// Creates the node's tracing span based on its name.
 fn create_span(node_name: &str) -> Span {
     let span = trace_span!("node", name = node_name);
     let span = if span.is_disabled() {
