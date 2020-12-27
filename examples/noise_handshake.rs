@@ -209,7 +209,7 @@ impl Messaging for SecureNode {
         read_message(buffer)
     }
 
-    fn parse_message(&self, source: SocketAddr, message: &[u8]) -> Option<Self::Message> {
+    fn parse_message(&self, source: SocketAddr, message: Vec<u8>) -> Option<Self::Message> {
         // disregard the length prefix
         let message = &message[2..];
 

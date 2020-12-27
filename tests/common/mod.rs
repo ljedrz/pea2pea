@@ -58,7 +58,7 @@ macro_rules! impl_messaging {
                 }
             }
 
-            fn parse_message(&self, _source: SocketAddr, _message: &[u8]) -> Option<Self::Message> {
+            fn parse_message(&self, _source: SocketAddr, _message: Vec<u8>) -> Option<Self::Message> {
                 Some(())
             }
 

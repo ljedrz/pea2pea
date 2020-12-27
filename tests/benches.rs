@@ -47,7 +47,7 @@ impl Messaging for VictimBot {
         }
     }
 
-    fn parse_message(&self, _source: SocketAddr, _buffer: &[u8]) -> Option<Self::Message> {
+    fn parse_message(&self, _source: SocketAddr, _message: Vec<u8>) -> Option<Self::Message> {
         Some(())
     }
 }

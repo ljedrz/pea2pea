@@ -34,7 +34,7 @@ where
                     let self_clone = self_clone.clone();
                     tokio::spawn(async move {
                         let node = self_clone.node();
-                        if let Some(msg) = self_clone.parse_message(source, &msg) {
+                        if let Some(msg) = self_clone.parse_message(source, msg) {
                             self_clone.process_message(source, &msg);
 
                             if let Err(e) = self_clone.respond_to_message(source, msg).await {
@@ -111,7 +111,7 @@ where
     fn read_message(buffer: &[u8]) -> Option<&[u8]>;
 
     /// Deserializes a message from bytes.
-    fn parse_message(&self, source: SocketAddr, message: &[u8]) -> Option<Self::Message>;
+    fn parse_message(&self, source: SocketAddr, message: Vec<u8>) -> Option<Self::Message>;
 
     /// Processes an inbound message.
     #[allow(unused_variables)]

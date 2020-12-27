@@ -54,10 +54,10 @@ impl Messaging for EchoNode {
         }
     }
 
-    fn parse_message(&self, _source: SocketAddr, buffer: &[u8]) -> Option<Self::Message> {
+    fn parse_message(&self, _source: SocketAddr, message: Vec<u8>) -> Option<Self::Message> {
         // the first 2B are the u16 length, last one is the payload
-        if buffer.len() == 3 {
-            match buffer[2] {
+        if message.len() == 3 {
+            match message[2] {
                 0 => Some(TestMessage::Herp),
                 1 => Some(TestMessage::Derp),
                 _ => None,
