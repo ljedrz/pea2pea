@@ -20,8 +20,9 @@ use std::{
 // A seuential numeric identifier assigned to `Node`s that were not provided with a name.
 static SEQUENTIAL_NODE_ID: AtomicUsize = AtomicUsize::new(0);
 
-/// A trait for objects containing a `Node`; it is required to implement `protocols`.
+/// A trait for objects containing a `Node`; it is required to implement protocols.
 pub trait ContainsNode {
+    /// Returns a clonable reference to the node.
     fn node(&self) -> &Arc<Node>;
 }
 

@@ -11,14 +11,18 @@ use tracing::*;
 
 use std::{io, net::SocketAddr, time::Duration};
 
+/// This protocol can be used to specify and enable messaging, i.e. handling of inbound messages and replying to them.
+/// If handshaking is enabled too, it goes into force only after the handshake has been concluded.
 #[async_trait]
 pub trait Messaging: ContainsNode
 where
     Self: Clone + Send + Sync + 'static,
     Self::Message: Send,
 {
+    /// The (final) type of the inbound messages.
     type Message;
 
+    /// Prepares the node to receive messages and optionally respond to them.
     fn enable_messaging(&self) {
         let (sender, mut receiver) = channel(self.node().config.inbound_message_queue_depth);
         self.node().set_inbound_messages(sender);
@@ -103,15 +107,19 @@ where
         self.node().set_reading_closure(Box::new(reading_closure));
     }
 
+    /// Reads a single inbound message from the given buffer.
     fn read_message(buffer: &[u8]) -> Option<&[u8]>;
 
-    fn parse_message(&self, source: SocketAddr, buffer: &[u8]) -> Option<Self::Message>;
+    /// Deserializes a message from bytes.
+    fn parse_message(&self, source: SocketAddr, message: &[u8]) -> Option<Self::Message>;
 
+    /// Processes an inbound message.
     #[allow(unused_variables)]
     fn process_message(&self, source: SocketAddr, message: &Self::Message) {
         // do nothing by default
     }
 
+    /// Responds to an inbound message.
     #[allow(unused_variables)]
     async fn respond_to_message(
         &self,
@@ -123,6 +131,11 @@ where
     }
 }
 
+/// The type transmitted using the `InboundMessages` sender.
 pub type InboundMessage = Vec<u8>;
+
+/// A sender used to transmit inbound messages from the reader task for further handling by the node.
 pub type InboundMessages = Sender<(SocketAddr, InboundMessage)>;
+
+/// The closure used to receive inbound messages from every connection.
 pub type ReadingClosure = Box<dyn Fn(ConnectionReader, SocketAddr) -> JoinHandle<()> + Send + Sync>;
