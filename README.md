@@ -20,19 +20,16 @@
 - becoming a framework
 - support for multiple `async` runtimes
 
-## current state: _alpha_
-- the basic functionalities are available and seem to be working
-- the documentation is a work in progress
-- some minor FIXMEs are left to iron out
-- the public APIs are a bit messy and subject to change
-- the tests need to be extended
+## current state: _beta_
+- the public APIs are unstable
+- more tests, benches and examples wouldn't hurt
 
 ## how to use it
-1. define a clonable custom struct containing an `Arc<Node>` and any extra state you'd like to carry
+1. define a clonable struct containing an `Arc<Node>` and any extra state you'd like to carry
 2. `impl ContainsNode` for it
 3. make it implement any/all of the protocols
 4. create that struct (or as many of them as you like)
-5. enable the `protocols` you'd like the node(s) to utilize
+5. enable protocols you'd like the node(s) to utilize
 
 that's it!
 
