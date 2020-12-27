@@ -26,7 +26,6 @@ type HandshakeClosure = Box<
         + Sync,
 >;
 
-// FIXME: the pub for members is not ideal
 /// An object dedicated to handling connection handshakes.
 pub struct HandshakeSetup {
     /// The closure for performing handshakes as the connection initiator.

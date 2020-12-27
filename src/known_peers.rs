@@ -60,7 +60,7 @@ pub struct PeerStats {
     /// The number of bytes received from the connection.
     pub bytes_received: u64,
     /// The number of failures related to the connection.
-    pub failures: u8, // FIXME: consider some public "reset" method instead
+    pub failures: u8,
 }
 
 impl Default for PeerStats {
