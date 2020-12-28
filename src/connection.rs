@@ -40,9 +40,11 @@ pub struct ConnectionReader {
     /// A reference to the owning node.
     pub node: Arc<Node>,
     /// The address of the connection.
-    peer_addr: SocketAddr,
+    pub peer_addr: SocketAddr,
     /// A buffer dedicated to reading from the stream.
     pub buffer: Box<[u8]>,
+    /// The number of bytes from an incomplete read carried over in the buffer.
+    pub carry: usize,
     /// The read half of the stream.
     pub reader: OwnedReadHalf,
 }
@@ -50,10 +52,11 @@ pub struct ConnectionReader {
 impl ConnectionReader {
     pub(crate) fn new(peer_addr: SocketAddr, reader: OwnedReadHalf, node: Arc<Node>) -> Self {
         Self {
-            buffer: vec![0; node.config.conn_read_buffer_size].into(),
-            node,
             peer_addr,
+            buffer: vec![0; node.config.conn_read_buffer_size].into(),
+            carry: 0,
             reader,
+            node,
         }
     }
 
