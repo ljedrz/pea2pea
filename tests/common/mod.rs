@@ -74,3 +74,19 @@ macro_rules! impl_messaging {
 }
 
 impl_messaging!(RandomNode);
+
+#[macro_export]
+macro_rules! wait_until {
+    ($limit_secs: expr, $condition: expr) => {
+        let now = std::time::Instant::now();
+        loop {
+            if $condition {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+            if now.elapsed() > std::time::Duration::from_secs($limit_secs) {
+                panic!("timed out!");
+            }
+        }
+    };
+}

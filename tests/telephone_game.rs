@@ -1,11 +1,10 @@
 use bytes::Bytes;
-use tokio::time::sleep;
 use tracing::*;
 
 mod common;
 use pea2pea::{connect_nodes, ContainsNode, Messaging, Node, Topology};
 
-use std::{convert::TryInto, io, net::SocketAddr, sync::Arc, time::Duration};
+use std::{convert::TryInto, io, net::SocketAddr, sync::Arc};
 
 #[derive(Clone)]
 struct Player(Arc<Node>);
@@ -89,8 +88,6 @@ async fn telephone_game() {
     }
     connect_nodes(&players, Topology::Line).await.unwrap();
 
-    sleep(Duration::from_millis(100)).await;
-
     let message = "when we can't think for ourselves, we can always quote";
 
     players[0]
@@ -102,7 +99,8 @@ async fn telephone_game() {
         .await
         .unwrap();
 
-    sleep(Duration::from_millis(100)).await;
-
-    assert_eq!(players.last().unwrap().node().num_messages_received(), 1);
+    wait_until!(
+        1,
+        players.last().unwrap().node().num_messages_received() == 1
+    );
 }

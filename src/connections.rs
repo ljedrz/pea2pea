@@ -35,8 +35,12 @@ impl Connections {
         }
     }
 
+    pub(crate) fn num_handshaken(&self) -> usize {
+        self.handshaken.read().len()
+    }
+
     pub(crate) fn num_connected(&self) -> usize {
-        self.handshaking.read().len() + self.handshaken.read().len()
+        self.handshaking.read().len() + self.num_handshaken()
     }
 
     pub(crate) fn mark_as_handshaken(

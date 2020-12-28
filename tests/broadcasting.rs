@@ -28,7 +28,7 @@ impl ChattyNode {
             let bytes = Bytes::from(bytes);
 
             loop {
-                if !node.handshaken_addrs().is_empty() {
+                if node.num_handshaken() != 0 {
                     info!(parent: node.span(), "sending \"{}\" to all my frens", message);
                     node.send_broadcast(bytes.clone()).await;
                 } else {
@@ -70,9 +70,10 @@ async fn broadcast_example() {
             .unwrap();
     }
 
-    sleep(Duration::from_millis(50)).await;
-
-    for rando in &random_nodes {
-        assert!(rando.node().num_messages_received() != 0);
-    }
+    wait_until!(
+        1,
+        random_nodes
+            .iter()
+            .all(|rando| rando.node().num_messages_received() > 0)
+    );
 }

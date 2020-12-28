@@ -1,14 +1,9 @@
 use bytes::Bytes;
-use tokio::time::sleep;
 
+mod common;
 use pea2pea::{ContainsNode, Messaging, Node, NodeConfig};
 
-use std::{
-    convert::TryInto,
-    io,
-    sync::Arc,
-    time::{Duration, Instant},
-};
+use std::{convert::TryInto, io, sync::Arc, time::Instant};
 
 #[derive(Clone)]
 struct Sink(Arc<Node>);
@@ -107,7 +102,8 @@ async fn run_bench_scenario(params: BenchParams) {
             .await
             .unwrap();
     }
-    sleep(Duration::from_millis(10)).await;
+
+    wait_until!(1, sink.node().num_handshaken() == spammer_count);
 
     let sink_addr = sink.node().listening_addr;
     let mut msg = vec![0u8; msg_size];
@@ -128,9 +124,10 @@ async fn run_bench_scenario(params: BenchParams) {
         });
     }
 
-    while sink.node().num_messages_received() < spammer_count * msg_count {
-        sleep(Duration::from_millis(1)).await;
-    }
+    wait_until!(
+        10,
+        sink.node().num_messages_received() == spammer_count * msg_count
+    );
     let time_elapsed = start.elapsed().as_millis();
 
     let bytes_received = sink

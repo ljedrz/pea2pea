@@ -1,12 +1,11 @@
 use bytes::Bytes;
 use parking_lot::Mutex;
-use tokio::time::sleep;
 use tracing::*;
 
 mod common;
 use pea2pea::{ContainsNode, Messaging, Node, NodeConfig};
 
-use std::{collections::HashSet, convert::TryInto, io, net::SocketAddr, sync::Arc, time::Duration};
+use std::{collections::HashSet, convert::TryInto, io, net::SocketAddr, sync::Arc};
 
 #[derive(PartialEq, Eq, Hash, Debug, Clone, Copy)]
 enum TestMessage {
@@ -108,7 +107,8 @@ async fn messaging_example() {
         .initiate_connection(picky_echo_addr)
         .await
         .unwrap();
-    sleep(Duration::from_millis(10)).await;
+
+    wait_until!(1, picky_echo.node().num_handshaken() == 1);
 
     shouter
         .send_direct_message_with_len(picky_echo_addr, &[TestMessage::Herp as u8])
@@ -129,9 +129,8 @@ async fn messaging_example() {
         .await
         .unwrap();
 
-    sleep(Duration::from_millis(10)).await;
     // check if the shouter heard the (non-duplicate) echoes and the last, non-reply one
-    assert_eq!(shouter.node().num_messages_received(), 3);
+    wait_until!(1, shouter.node().num_messages_received() == 3);
 }
 
 #[tokio::test]
@@ -146,8 +145,7 @@ async fn drop_connection_on_invalid_message() {
         .await
         .unwrap();
 
-    sleep(Duration::from_millis(10)).await;
-    assert!(reader.node().num_connected() == 1);
+    wait_until!(1, reader.node().num_handshaken() == 1);
 
     // an invalid message: a header indicating a zero-length payload
     let bad_message: &'static [u8] = &[0, 0];
@@ -157,9 +155,8 @@ async fn drop_connection_on_invalid_message() {
         .send_direct_message(reader.node().listening_addr, bad_message.into())
         .await
         .unwrap();
-    sleep(Duration::from_millis(10)).await;
 
-    assert!(reader.node().num_connected() == 0);
+    wait_until!(1, reader.node().num_connected() == 0);
 }
 
 #[tokio::test]
@@ -180,8 +177,7 @@ async fn drop_connection_on_oversized_message() {
         .await
         .unwrap();
 
-    sleep(Duration::from_millis(10)).await;
-    assert!(reader.node().num_connected() == 1);
+    wait_until!(1, reader.node().num_handshaken() == 1);
 
     // when prefixed with length, it'll exceed MSG_SIZE_LIMIT, i.e. the read buffer size of the reader
     let oversized_payload = vec![0u8; MSG_SIZE_LIMIT];
@@ -189,7 +185,6 @@ async fn drop_connection_on_oversized_message() {
     writer
         .send_direct_message_with_len(reader.node().listening_addr, &oversized_payload)
         .await;
-    sleep(Duration::from_millis(10)).await;
 
-    assert!(reader.node().num_connected() == 0);
+    wait_until!(1, reader.node().num_connected() == 0);
 }

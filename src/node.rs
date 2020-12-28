@@ -312,6 +312,11 @@ impl Node {
         self.connections.num_connected()
     }
 
+    /// Returns the number of active handshaken connections.
+    pub fn num_handshaken(&self) -> usize {
+        self.connections.num_handshaken()
+    }
+
     /// Checks whether a connection with the given address is currently in the process of handshaking.
     pub fn is_handshaking(&self, addr: SocketAddr) -> bool {
         self.connections.is_handshaking(addr)

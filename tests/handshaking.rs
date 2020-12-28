@@ -1,5 +1,5 @@
 use bytes::Bytes;
-use tokio::{sync::mpsc::channel, task::JoinHandle, time::sleep};
+use tokio::{sync::mpsc::channel, task::JoinHandle};
 use tracing::*;
 
 mod common;
@@ -15,7 +15,6 @@ use std::{
     io::{self, ErrorKind},
     net::SocketAddr,
     sync::Arc,
-    time::Duration,
 };
 
 enum HandshakeMsg {
@@ -206,13 +205,11 @@ async fn handshake_example() {
         .await
         .unwrap();
 
-    sleep(Duration::from_millis(10)).await;
-
-    assert!(initiator.node().handshaken_addrs().len() == 1);
-    assert!(responder.node().handshaken_addrs().len() == 1);
-
-    assert!(initiator.handshakes.read().values().next() == Some(&NoncePair(0, 1)));
-    assert!(responder.handshakes.read().values().next() == Some(&NoncePair(1, 0)));
+    wait_until!(
+        1,
+        initiator.handshakes.read().values().next() == Some(&NoncePair(0, 1))
+            && responder.handshakes.read().values().next() == Some(&NoncePair(1, 0))
+    );
 }
 
 #[tokio::test]
@@ -244,7 +241,6 @@ async fn no_handshake_no_messaging() {
         .initiate_connection(responder.node().listening_addr)
         .await
         .unwrap();
-    sleep(Duration::from_millis(10)).await;
 
     let message = b"this won't get through, as there was no handshake".to_vec();
     initiator
@@ -252,7 +248,6 @@ async fn no_handshake_no_messaging() {
         .send_direct_message(responder.node().listening_addr, Bytes::from(message))
         .await
         .unwrap();
-    sleep(Duration::from_millis(10)).await;
 
-    assert!(responder.node().num_connected() == 0);
+    wait_until!(1, responder.node().num_connected() == 0);
 }

@@ -1,9 +1,7 @@
 use bytes::Bytes;
-use tokio::time::sleep;
 
+mod common;
 use pea2pea::Node;
-
-use std::time::Duration;
 
 #[tokio::test]
 async fn no_protocols_usage() {
@@ -16,7 +14,8 @@ async fn no_protocols_usage() {
         .initiate_connection(bore2.listening_addr)
         .await
         .unwrap();
-    sleep(Duration::from_millis(10)).await;
+
+    wait_until!(1, bore2.num_handshaken() == 1);
 
     let message = Bytes::from("I may implement nothing, but I can still send stuff out!");
 
@@ -25,8 +24,9 @@ async fn no_protocols_usage() {
         .send_direct_message(bore2.listening_addr, message.clone())
         .await
         .unwrap();
-    sleep(Duration::from_millis(10)).await;
 
-    assert_eq!(bore1.num_messages_sent(), 1);
-    assert_eq!(bore2.num_messages_received(), 0);
+    wait_until!(
+        1,
+        bore1.num_messages_sent() == 1 && bore2.num_messages_received() == 0
+    );
 }

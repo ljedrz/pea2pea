@@ -1,9 +1,9 @@
 use rand::{distributions::Standard, rngs::SmallRng, Rng, SeedableRng};
-use tokio::time::sleep;
 
+mod common;
 use pea2pea::{ContainsNode, Messaging, Node, NodeConfig};
 
-use std::{convert::TryInto, io, sync::Arc, time::Duration};
+use std::{convert::TryInto, io, sync::Arc};
 
 #[derive(Clone)]
 struct Tester(Arc<Node>);
@@ -52,7 +52,8 @@ async fn fuzzing() {
         .initiate_connection(tester.node().listening_addr)
         .await
         .unwrap();
-    sleep(Duration::from_millis(10)).await;
+
+    wait_until!(1, tester.node().num_handshaken() == 1);
 
     let mut rng = SmallRng::from_entropy();
 
