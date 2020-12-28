@@ -12,15 +12,6 @@ use std::{
 };
 
 #[derive(Clone)]
-struct SpamBot(Arc<Node>);
-
-impl ContainsNode for SpamBot {
-    fn node(&self) -> &Arc<Node> {
-        &self.0
-    }
-}
-
-#[derive(Clone)]
 struct VictimBot(Arc<Node>);
 
 impl ContainsNode for VictimBot {
@@ -85,7 +76,6 @@ async fn bench_spam_to_one() {
     let spammers = Node::new_multiple(SPAMMER_COUNT, Some(config))
         .await
         .unwrap();
-    let spammers = spammers.into_iter().map(SpamBot).collect::<Vec<_>>();
 
     let mut config = NodeConfig::default();
     config.inbound_message_queue_depth = SPAMMER_COUNT * MSG_COUNT;
@@ -115,7 +105,6 @@ async fn bench_spam_to_one() {
         tokio::spawn(async move {
             for _ in 0..MSG_COUNT {
                 spammer
-                    .node()
                     .send_direct_message(victim_addr, msg.clone())
                     .await
                     .unwrap();
