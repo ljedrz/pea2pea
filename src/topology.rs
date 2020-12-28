@@ -8,13 +8,13 @@ use std::{
 /// The way in which nodes are connected to each other; used in connect_nodes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Topology {
-    /// each node - except the last one - connects to the next one in a linear fashion
+    /// Each node - except the last one - connects to the next one in a linear fashion.
     Line,
-    /// like the `Line`, but the last node connects to the first one, forming a rign
+    /// Like the `Line`, but the last node connects to the first one, forming a ring.
     Ring,
-    /// all the nodes are become connected to one another, forming a full mesh
+    /// All the nodes become connected to one another, forming a full mesh.
     Mesh,
-    /// the first node is the central one (the hub); all the other nodes connect to it
+    /// The first node is the central one (the hub); all the other nodes connect to it.
     Star,
 }
 
