@@ -95,6 +95,7 @@ where
                     match Self::read_message(&buffer[processed..processed + left]) {
                         // a full message was read successfully
                         Ok(Some(msg)) => {
+                            trace!("isolated a {}B message from {}", msg.len(), peer_addr);
                             node.register_received_message(*peer_addr, msg.len());
 
                             // send the message for further processing
