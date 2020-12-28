@@ -54,32 +54,55 @@ fn display_throughput(bytes: f64) {
     const KB: f64 = 1_000.0;
 
     if bytes >= GB {
-        println!("throughput: {:.2} GB/s", bytes / GB);
+        println!("\tthroughput: {:.2} GB/s", bytes / GB);
     } else if bytes >= MB {
-        println!("throughput: {:.2} MB/s", bytes / MB);
+        println!("\tthroughput: {:.2} MB/s", bytes / MB);
     } else if bytes >= KB {
-        println!("throughput: {:.2} KB/s", bytes / KB);
+        println!("\tthroughput: {:.2} KB/s", bytes / KB);
     } else {
-        println!("throughput: {:.2} B/s", bytes);
+        println!("\tthroughput: {:.2} B/s", bytes);
     }
 }
 
-#[ignore]
-#[tokio::test]
-async fn bench_spam_to_one() {
-    const SPAMMER_COUNT: usize = 1;
-    const MSG_COUNT: usize = 100_000;
-    const MSG_SIZE: usize = 128;
+#[derive(Debug)]
+struct BenchParams {
+    spammer_count: usize,
+    msg_count: usize,
+    msg_size: usize,
+    conn_read_buffer_size: usize,
+    inbound_channel_depth: usize,
+}
+
+impl From<[usize; 5]> for BenchParams {
+    fn from(params: [usize; 5]) -> Self {
+        Self {
+            spammer_count: params[0],
+            msg_count: params[1],
+            msg_size: params[2],
+            conn_read_buffer_size: params[3],
+            inbound_channel_depth: params[4],
+        }
+    }
+}
+
+async fn run_bench_scenario(params: BenchParams) {
+    let BenchParams {
+        spammer_count,
+        msg_count,
+        msg_size,
+        conn_read_buffer_size,
+        inbound_channel_depth,
+    } = params;
 
     let mut config = NodeConfig::default();
-    config.outbound_message_queue_depth = MSG_COUNT;
-    let spammers = Node::new_multiple(SPAMMER_COUNT, Some(config))
+    config.outbound_message_queue_depth = msg_count;
+    let spammers = Node::new_multiple(spammer_count, Some(config))
         .await
         .unwrap();
 
     let mut config = NodeConfig::default();
-    config.inbound_message_queue_depth = SPAMMER_COUNT * MSG_COUNT;
-    config.conn_read_buffer_size = MSG_SIZE + 4;
+    config.inbound_message_queue_depth = inbound_channel_depth;
+    config.conn_read_buffer_size = conn_read_buffer_size;
     let sink = Sink(Node::new(Some(config)).await.unwrap());
 
     sink.enable_messaging();
@@ -94,8 +117,8 @@ async fn bench_spam_to_one() {
     sleep(Duration::from_millis(100)).await;
 
     let sink_addr = sink.node().listening_addr;
-    let mut msg = vec![0u8; MSG_SIZE + 4];
-    let msg_len = (MSG_SIZE as u32).to_le_bytes();
+    let mut msg = vec![0u8; msg_size];
+    let msg_len = (msg_size as u32 - 4).to_le_bytes();
     msg[..4].copy_from_slice(&msg_len);
     let msg = Bytes::from(msg);
 
@@ -103,7 +126,7 @@ async fn bench_spam_to_one() {
     for spammer in spammers {
         let msg = msg.clone();
         tokio::spawn(async move {
-            for _ in 0..MSG_COUNT {
+            for _ in 0..msg_count {
                 spammer
                     .send_direct_message(sink_addr, msg.clone())
                     .await
@@ -112,7 +135,7 @@ async fn bench_spam_to_one() {
         });
     }
 
-    while sink.node().num_messages_received() < SPAMMER_COUNT * MSG_COUNT {
+    while sink.node().num_messages_received() < spammer_count * msg_count {
         sleep(Duration::from_millis(1)).await;
     }
     let time_elapsed = start.elapsed().as_millis();
@@ -128,4 +151,51 @@ async fn bench_spam_to_one() {
 
     let throughput = (bytes_received as f64) / (time_elapsed as f64 / 100.0);
     display_throughput(throughput);
+}
+
+#[ignore]
+#[tokio::test]
+async fn bench_spam_to_one() {
+    const KIB: usize = 1024;
+    const MIB: usize = 1024 * 1024;
+
+    let spammer_counts = [1, 2, 5];
+    let msg_sizes = [256, 1 * KIB, 64 * KIB, 1 * MIB];
+    let conn_read_buffer_sizes = [1 * MIB, 4 * MIB, 8 * MIB];
+    let inbound_channel_depths = [100, 250, 1000];
+
+    let mut scenarios = Vec::new();
+    for spammer_count in spammer_counts.iter().copied() {
+        for inbound_channel_depth in inbound_channel_depths.iter().copied() {
+            for conn_read_buffer_size in conn_read_buffer_sizes.iter().copied() {
+                for msg_size in msg_sizes
+                    .iter()
+                    .filter(|&msg_size| *msg_size <= conn_read_buffer_size)
+                    .copied()
+                {
+                    let msg_count = if msg_size < 64 * KIB {
+                        100_000
+                    } else if msg_size < 1 * MIB {
+                        10_000
+                    } else {
+                        1000
+                    };
+
+                    scenarios.push(BenchParams {
+                        spammer_count,
+                        msg_count,
+                        msg_size,
+                        conn_read_buffer_size,
+                        inbound_channel_depth,
+                    });
+                }
+            }
+        }
+    }
+
+    println!("benchmarking {} scenarios", scenarios.len());
+    for params in scenarios.into_iter() {
+        println!("using {:?}", params);
+        run_bench_scenario(params).await
+    }
 }
