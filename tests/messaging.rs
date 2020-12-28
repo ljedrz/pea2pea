@@ -5,7 +5,7 @@ use tracing::*;
 mod common;
 use pea2pea::{ContainsNode, Messaging, Node, NodeConfig};
 
-use std::{collections::HashSet, convert::TryInto, io, net::SocketAddr, sync::Arc};
+use std::{collections::HashSet, io, net::SocketAddr, sync::Arc};
 
 #[derive(PartialEq, Eq, Hash, Debug, Clone, Copy)]
 enum TestMessage {
@@ -37,22 +37,7 @@ fn packet_message(message: TestMessage) -> Bytes {
 #[async_trait::async_trait]
 impl Messaging for EchoNode {
     fn read_message(buffer: &[u8]) -> io::Result<Option<&[u8]>> {
-        // expecting the test messages to be prefixed with their length encoded as a LE u16
-        if buffer.len() >= 2 {
-            let payload_len = u16::from_le_bytes(buffer[..2].try_into().unwrap()) as usize;
-
-            if payload_len == 0 {
-                return Err(io::ErrorKind::InvalidData.into());
-            }
-
-            if buffer[2..].len() >= payload_len {
-                Ok(Some(&buffer[..2 + payload_len]))
-            } else {
-                Ok(None)
-            }
-        } else {
-            Ok(None)
-        }
+        common::read_len_prefixed_message(2, buffer)
     }
 
     async fn process_message(&self, source: SocketAddr, message: Vec<u8>) -> io::Result<()> {

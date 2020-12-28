@@ -3,7 +3,7 @@ use rand::{distributions::Standard, rngs::SmallRng, Rng, SeedableRng};
 mod common;
 use pea2pea::{ContainsNode, Messaging, Node, NodeConfig};
 
-use std::{convert::TryInto, io, sync::Arc};
+use std::{io, sync::Arc};
 
 #[derive(Clone)]
 struct Tester(Arc<Node>);
@@ -17,22 +17,7 @@ impl ContainsNode for Tester {
 #[async_trait::async_trait]
 impl Messaging for Tester {
     fn read_message(buffer: &[u8]) -> io::Result<Option<&[u8]>> {
-        // expecting the test messages to be prefixed with their length encoded as a LE u32
-        if buffer.len() >= 4 {
-            let payload_len = u32::from_le_bytes(buffer[..4].try_into().unwrap()) as usize;
-
-            if payload_len == 0 {
-                return Err(io::ErrorKind::InvalidData.into());
-            }
-
-            if buffer[4..].len() >= payload_len {
-                Ok(Some(&buffer[..4 + payload_len]))
-            } else {
-                Ok(None)
-            }
-        } else {
-            Ok(None)
-        }
+        common::read_len_prefixed_message(4, buffer)
     }
 }
 

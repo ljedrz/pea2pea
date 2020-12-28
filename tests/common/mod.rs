@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use tracing::*;
 
 use pea2pea::{ContainsNode, Messaging, Node, NodeConfig};
@@ -13,14 +15,12 @@ use std::{
 pub struct RandomNode(pub Arc<Node>);
 
 impl RandomNode {
-    #[allow(dead_code)]
     pub async fn new<T: AsRef<str>>(name: T) -> Self {
         let mut config = NodeConfig::default();
         config.name = Some(name.as_ref().into());
         Self(Node::new(Some(config)).await.unwrap())
     }
 
-    #[allow(dead_code)]
     pub async fn send_direct_message_with_len(&self, target: SocketAddr, message: &[u8]) {
         // prepend the message with its length in LE u16
         let mut bytes = Vec::with_capacity(2 + message.len());
@@ -41,28 +41,35 @@ impl ContainsNode for RandomNode {
     }
 }
 
+pub fn read_len_prefixed_message(len_size: usize, buffer: &[u8]) -> io::Result<Option<&[u8]>> {
+    if buffer.len() >= 2 {
+        let payload_len = match len_size {
+            2 => u16::from_le_bytes(buffer[..len_size].try_into().unwrap()) as usize,
+            4 => u32::from_le_bytes(buffer[..len_size].try_into().unwrap()) as usize,
+            _ => unimplemented!(),
+        };
+
+        if payload_len == 0 {
+            return Err(ErrorKind::InvalidData.into());
+        }
+
+        if buffer[len_size..].len() >= payload_len {
+            Ok(Some(&buffer[..len_size + payload_len]))
+        } else {
+            Ok(None)
+        }
+    } else {
+        Ok(None)
+    }
+}
+
 #[macro_export]
 macro_rules! impl_messaging {
     ($target: ty) => {
         #[async_trait::async_trait]
         impl Messaging for $target {
             fn read_message(buffer: &[u8]) -> io::Result<Option<&[u8]>> {
-                // expecting the test messages to be prefixed with their length encoded as a LE u16
-                if buffer.len() >= 2 {
-                    let payload_len = u16::from_le_bytes(buffer[..2].try_into().unwrap()) as usize;
-
-                    if payload_len == 0 {
-                        return Err(ErrorKind::InvalidData.into());
-                    }
-
-                    if buffer[2..].len() >= payload_len {
-                        Ok(Some(&buffer[..2 + payload_len]))
-                    } else {
-                        Ok(None)
-                    }
-                } else {
-                    Ok(None)
-                }
+                crate::common::read_len_prefixed_message(2, buffer)
             }
 
             async fn process_message(&self, source: SocketAddr, _message: Vec<u8>) -> io::Result<()> {
