@@ -140,3 +140,63 @@ async fn messaging_protocol() {
     // check if the shouter heard the (non-duplicate) echoes and the last, non-reply one
     assert_eq!(shouter.node().num_messages_received(), 3);
 }
+
+#[tokio::test]
+async fn drop_connection_on_invalid_message() {
+    let writer = common::RandomNode::new("writer").await;
+    let reader = common::RandomNode::new("reader").await;
+    reader.enable_messaging();
+
+    writer
+        .node()
+        .initiate_connection(reader.node().listening_addr)
+        .await
+        .unwrap();
+
+    sleep(Duration::from_millis(10)).await;
+    assert!(reader.node().num_connected() == 1);
+
+    // an invalid message: a header indicating a zero-length payload
+    let bad_message: &'static [u8] = &[0, 0];
+
+    writer
+        .node()
+        .send_direct_message(reader.node().listening_addr, bad_message.into())
+        .await
+        .unwrap();
+    sleep(Duration::from_millis(10)).await;
+
+    assert!(reader.node().num_connected() == 0);
+}
+
+#[tokio::test]
+async fn drop_connection_on_oversized_message() {
+    const MSG_SIZE_LIMIT: usize = 10;
+
+    let writer = common::RandomNode::new("writer").await;
+
+    let mut config = NodeConfig::default();
+    config.name = Some("reader".into());
+    config.conn_read_buffer_size = MSG_SIZE_LIMIT;
+    let reader = common::RandomNode(Node::new(Some(config)).await.unwrap());
+    reader.enable_messaging();
+
+    writer
+        .node()
+        .initiate_connection(reader.node().listening_addr)
+        .await
+        .unwrap();
+
+    sleep(Duration::from_millis(10)).await;
+    assert!(reader.node().num_connected() == 1);
+
+    // when prefixed with length, it'll exceed MSG_SIZE_LIMIT, i.e. the read buffer size of the reader
+    let oversized_payload = vec![0u8; MSG_SIZE_LIMIT];
+
+    writer
+        .send_direct_message_with_len(reader.node().listening_addr, &oversized_payload)
+        .await;
+    sleep(Duration::from_millis(10)).await;
+
+    assert!(reader.node().num_connected() == 0);
+}
