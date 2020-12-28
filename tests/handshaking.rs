@@ -117,12 +117,12 @@ impl Handshaking for SecureishNode {
             }
         });
 
-        let initiator = |addr: SocketAddr,
-                         mut connection_reader: ConnectionReader,
+        let initiator = |mut connection_reader: ConnectionReader,
                          connection: Arc<Connection>|
          -> JoinHandle<io::Result<(ConnectionReader, HandshakeState)>> {
             tokio::spawn(async move {
                 let node = Arc::clone(&connection_reader.node);
+                let addr = connection_reader.addr;
                 debug!(parent: node.span(), "handshaking with {} as the initiator", addr);
 
                 // send A
@@ -139,12 +139,12 @@ impl Handshaking for SecureishNode {
             })
         };
 
-        let responder = |addr: SocketAddr,
-                         mut connection_reader: ConnectionReader,
+        let responder = |mut connection_reader: ConnectionReader,
                          connection: Arc<Connection>|
          -> JoinHandle<io::Result<(ConnectionReader, HandshakeState)>> {
             tokio::spawn(async move {
                 let node = Arc::clone(&connection_reader.node);
+                let addr = connection_reader.addr;
                 debug!(parent: node.span(), "handshaking with {} as the responder", addr);
 
                 // read A

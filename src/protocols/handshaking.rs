@@ -18,7 +18,6 @@ pub type HandshakeState = Box<dyn Any + Send>;
 // FIXME; simplify
 type HandshakeClosure = Box<
     dyn Fn(
-            SocketAddr,
             ConnectionReader,
             Arc<Connection>,
         ) -> JoinHandle<io::Result<(ConnectionReader, HandshakeState)>>

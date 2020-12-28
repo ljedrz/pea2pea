@@ -40,7 +40,7 @@ pub struct ConnectionReader {
     /// A reference to the owning node.
     pub node: Arc<Node>,
     /// The address of the connection.
-    pub peer_addr: SocketAddr,
+    pub addr: SocketAddr,
     /// A buffer dedicated to reading from the stream.
     pub buffer: Box<[u8]>,
     /// The number of bytes from an incomplete read carried over in the buffer.
@@ -50,9 +50,9 @@ pub struct ConnectionReader {
 }
 
 impl ConnectionReader {
-    pub(crate) fn new(peer_addr: SocketAddr, reader: OwnedReadHalf, node: Arc<Node>) -> Self {
+    pub(crate) fn new(addr: SocketAddr, reader: OwnedReadHalf, node: Arc<Node>) -> Self {
         Self {
-            peer_addr,
+            addr,
             buffer: vec![0; node.config.conn_read_buffer_size].into(),
             carry: 0,
             reader,
@@ -63,7 +63,7 @@ impl ConnectionReader {
     /// Reads as many bytes as there are queued to be read from the stream.
     pub async fn read_queued_bytes(&mut self) -> io::Result<&[u8]> {
         let len = self.reader.read(&mut self.buffer).await?;
-        trace!(parent: self.node.span(), "read {}B from {}", len, self.peer_addr);
+        trace!(parent: self.node.span(), "read {}B from {}", len, self.addr);
 
         Ok(&self.buffer[..len])
     }
@@ -78,7 +78,7 @@ impl ConnectionReader {
         }
 
         self.reader.read_exact(&mut buffer[..num]).await?;
-        trace!(parent: self.node.span(), "read {}B from {}", num, self.peer_addr);
+        trace!(parent: self.node.span(), "read {}B from {}", num, self.addr);
 
         Ok(&buffer[..num])
     }
@@ -89,7 +89,7 @@ pub struct Connection {
     /// A reference to the owning node.
     node: Arc<Node>,
     /// The address of the connection.
-    peer_addr: SocketAddr,
+    addr: SocketAddr,
     /// The handle to the task performing reads from the stream.
     pub(crate) reader_task: OnceCell<JoinHandle<()>>,
     /// The handle to the task performing writes to the stream.
@@ -102,7 +102,7 @@ pub struct Connection {
 
 impl Connection {
     pub(crate) fn new(
-        peer_addr: SocketAddr,
+        addr: SocketAddr,
         mut writer: OwnedWriteHalf,
         node: Arc<Node>,
         side: ConnectionSide,
@@ -117,24 +117,24 @@ impl Connection {
                 // try adding a buffer for extra writing perf
                 while let Some(msg) = message_receiver.recv().await {
                     if let Err(e) = writer.write_all(&msg).await {
-                        node_clone.register_failure(peer_addr);
-                        error!(parent: node_clone.span(), "couldn't send {}B to {}: {}", msg.len(), peer_addr, e);
+                        node_clone.register_failure(addr);
+                        error!(parent: node_clone.span(), "couldn't send {}B to {}: {}", msg.len(), addr, e);
                     } else {
-                        node_clone.register_sent_message(peer_addr, msg.len());
-                        trace!(parent: node_clone.span(), "sent {}B to {}", msg.len(), peer_addr);
+                        node_clone.register_sent_message(addr, msg.len());
+                        trace!(parent: node_clone.span(), "sent {}B to {}", msg.len(), addr);
                     }
                 }
                 if let Err(e) = writer.flush().await {
-                    node_clone.register_failure(peer_addr);
-                    error!(parent: node_clone.span(), "couldn't flush the stream to {}: {}", peer_addr, e);
+                    node_clone.register_failure(addr);
+                    error!(parent: node_clone.span(), "couldn't flush the stream to {}: {}", addr, e);
                 }
             }
         });
-        trace!(parent: node.span(), "spawned a task for writing messages to {}", peer_addr);
+        trace!(parent: node.span(), "spawned a task for writing messages to {}", addr);
 
         Self {
             node,
-            peer_addr,
+            addr,
             reader_task: Default::default(),
             _writer_task,
             message_sender,
@@ -154,7 +154,7 @@ impl Connection {
 
 impl Drop for Connection {
     fn drop(&mut self) {
-        debug!(parent: self.node.span(), "disconnecting from {}", self.peer_addr);
+        debug!(parent: self.node.span(), "disconnecting from {}", self.addr);
         // if the (owning) node was not the initiator of the connection, it doesn't know the listening address
         // of the associated peer, so the related stats are unreliable; the next connection initiated by the
         // peer could be bound to an entirely different port number
@@ -163,7 +163,7 @@ impl Drop for Connection {
                 .known_peers
                 .peer_stats()
                 .write()
-                .remove(&self.peer_addr);
+                .remove(&self.addr);
         }
     }
 }

@@ -186,10 +186,10 @@ impl Node {
         let connection_reader = if let Some(ref handshake_setup) = self.handshake_setup() {
             let handshake_task = match own_side {
                 ConnectionSide::Initiator => {
-                    (handshake_setup.initiator_closure)(peer_addr, connection_reader, connection)
+                    (handshake_setup.initiator_closure)(connection_reader, connection)
                 }
                 ConnectionSide::Responder => {
-                    (handshake_setup.responder_closure)(peer_addr, connection_reader, connection)
+                    (handshake_setup.responder_closure)(connection_reader, connection)
                 }
             };
 

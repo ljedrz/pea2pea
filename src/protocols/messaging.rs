@@ -41,7 +41,7 @@ where
         let reading_closure = |mut connection_reader: ConnectionReader| -> JoinHandle<()> {
             tokio::spawn(async move {
                 let node = Arc::clone(&connection_reader.node);
-                let addr = connection_reader.peer_addr;
+                let addr = connection_reader.addr;
                 trace!(parent: node.span(), "spawned a task for reading messages from {}", addr);
 
                 loop {
@@ -78,7 +78,7 @@ where
     async fn read_from_stream(conn_reader: &mut ConnectionReader) -> io::Result<()> {
         let ConnectionReader {
             node,
-            peer_addr,
+            addr,
             reader,
             buffer,
             carry,
@@ -86,7 +86,7 @@ where
 
         match reader.read(&mut buffer[*carry..]).await {
             Ok(n) => {
-                trace!(parent: node.span(), "read {}B from {}", n, peer_addr);
+                trace!(parent: node.span(), "read {}B from {}", n, addr);
                 let mut processed = 0;
                 let mut left = *carry + n;
 
@@ -102,16 +102,16 @@ where
                             trace!(
                                 "isolated {}B as a message from {}; {}B left to process",
                                 msg.len(),
-                                peer_addr,
+                                addr,
                                 left
                             );
-                            node.register_received_message(*peer_addr, msg.len());
+                            node.register_received_message(*addr, msg.len());
 
                             // send the message for further processing
                             if let Some(ref inbound_messages) = node.inbound_messages() {
                                 // can't recover from an error here
                                 inbound_messages
-                                    .send((*peer_addr, msg.to_vec()))
+                                    .send((*addr, msg.to_vec()))
                                     .await
                                     .expect("the inbound message channel is closed")
                             }
@@ -126,13 +126,13 @@ where
                         Ok(None) => {
                             // forbid messages that are larger than the read buffer
                             if left >= buffer.len() {
-                                error!(parent: node.span(), "a message from {} is too large", peer_addr);
+                                error!(parent: node.span(), "a message from {} is too large", addr);
                                 return Err(io::ErrorKind::InvalidData.into());
                             }
 
                             trace!(
                                 "a message from {} is incomplete; carrying {}B over",
-                                peer_addr,
+                                addr,
                                 left
                             );
                             *carry = left;
@@ -145,14 +145,14 @@ where
                         }
                         // an erroneous message (e.g. an unexpected zero-length payload)
                         Err(_) => {
-                            error!(parent: node.span(), "a message from {} is invalid", peer_addr);
+                            error!(parent: node.span(), "a message from {} is invalid", addr);
                             return Err(io::ErrorKind::InvalidData.into());
                         }
                     }
                 }
             }
             Err(e) => {
-                error!(parent: node.span(), "can't read from {}: {}", peer_addr, e);
+                error!(parent: node.span(), "can't read from {}: {}", addr, e);
                 Err(io::ErrorKind::Other.into())
             }
         }

@@ -111,11 +111,11 @@ impl Handshaking for SecureNode {
         const PRE_SHARED_KEY: &[u8] = b"I dont care for codes of conduct"; // the PSK must be 32B
 
         // the initiator's handshake closure
-        let initiator = |addr: SocketAddr,
-                         mut connection_reader: ConnectionReader,
+        let initiator = |mut connection_reader: ConnectionReader,
                          connection: Arc<Connection>|
          -> JoinHandle<io::Result<(ConnectionReader, HandshakeState)>> {
             tokio::spawn(async move {
+                let addr = connection_reader.addr;
                 info!(parent: connection_reader.node.span(), "handshaking with {} as the initiator", addr);
 
                 let builder = snow::Builder::new(HANDSHAKE_PATTERN.parse().unwrap());
@@ -154,11 +154,11 @@ impl Handshaking for SecureNode {
         };
 
         // the responder's handshake closure
-        let responder = |addr: SocketAddr,
-                         mut connection_reader: ConnectionReader,
+        let responder = |mut connection_reader: ConnectionReader,
                          connection: Arc<Connection>|
          -> JoinHandle<io::Result<(ConnectionReader, HandshakeState)>> {
             tokio::spawn(async move {
+                let addr = connection_reader.addr;
                 info!(parent: connection_reader.node.span(), "handshaking with {} as the responder", addr);
 
                 let builder = snow::Builder::new(HANDSHAKE_PATTERN.parse().unwrap());
