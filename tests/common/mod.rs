@@ -21,19 +21,6 @@ impl RandomNode {
         config.name = Some(name.as_ref().into());
         Self(Node::new(Some(config)).await.unwrap())
     }
-
-    pub async fn send_direct_message_with_len(&self, target: SocketAddr, message: &[u8]) {
-        // prepend the message with its length in LE u16
-        let mut bytes = Vec::with_capacity(2 + message.len());
-        let u16_len = (message.len() as u16).to_le_bytes();
-        bytes.extend_from_slice(&u16_len);
-        bytes.extend_from_slice(message);
-
-        self.node()
-            .send_direct_message(target, bytes.into())
-            .await
-            .unwrap();
-    }
 }
 
 impl ContainsNode for RandomNode {

@@ -3,6 +3,7 @@ use tracing::*;
 
 mod common;
 use pea2pea::{ContainsNode, Messaging, Node, NodeConfig};
+use TestMessage::*;
 
 use std::{collections::HashSet, io, net::SocketAddr, sync::Arc};
 
@@ -34,8 +35,8 @@ impl Messaging for EchoNode {
         // the first 2B are the u16 length, last one is the payload
         let deserialized_message = if message.len() == 3 {
             match message[2] {
-                0 => TestMessage::Herp,
-                1 => TestMessage::Derp,
+                0 => Herp,
+                1 => Derp,
                 _ => return Err(io::ErrorKind::InvalidData.into()),
             }
         } else {
@@ -86,14 +87,29 @@ async fn messaging_example() {
     wait_until!(1, picky_echo.node().num_connected() == 1);
 
     shouter
-        .send_direct_message_with_len(picky_echo_addr, &[TestMessage::Herp as u8])
-        .await;
+        .node()
+        .send_direct_message(
+            picky_echo_addr,
+            common::prefix_message_with_len(2, &[Herp as u8]),
+        )
+        .await
+        .unwrap();
     shouter
-        .send_direct_message_with_len(picky_echo_addr, &[TestMessage::Derp as u8])
-        .await;
+        .node()
+        .send_direct_message(
+            picky_echo_addr,
+            common::prefix_message_with_len(2, &[Derp as u8]),
+        )
+        .await
+        .unwrap();
     shouter
-        .send_direct_message_with_len(picky_echo_addr, &[TestMessage::Herp as u8])
-        .await;
+        .node()
+        .send_direct_message(
+            picky_echo_addr,
+            common::prefix_message_with_len(2, &[Herp as u8]),
+        )
+        .await
+        .unwrap();
 
     // let echo send one message on its own too, for good measure
     let shouter_addr = picky_echo.node().connected_addrs()[0];
@@ -102,7 +118,7 @@ async fn messaging_example() {
         .node()
         .send_direct_message(
             shouter_addr,
-            common::prefix_message_with_len(2, &[TestMessage::Herp as u8]),
+            common::prefix_message_with_len(2, &[Herp as u8]),
         )
         .await
         .unwrap();
@@ -161,8 +177,13 @@ async fn drop_connection_on_oversized_message() {
     let oversized_payload = vec![0u8; MSG_SIZE_LIMIT];
 
     writer
-        .send_direct_message_with_len(reader.node().listening_addr, &oversized_payload)
-        .await;
+        .node()
+        .send_direct_message(
+            reader.node().listening_addr,
+            common::prefix_message_with_len(2, &oversized_payload),
+        )
+        .await
+        .unwrap();
 
     wait_until!(1, reader.node().num_connected() == 0);
 }
