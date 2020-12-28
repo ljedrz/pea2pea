@@ -143,8 +143,8 @@ impl Node {
     }
 
     /// Returns the tracing `Span` associated with the node.
-    pub fn span(&self) -> Span {
-        self.span.clone()
+    pub fn span(&self) -> &Span {
+        &self.span
     }
 
     /// Prepares the freshly acquired connection to handle the protocols it implements.
