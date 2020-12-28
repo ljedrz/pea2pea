@@ -12,16 +12,16 @@ use std::{
 };
 
 #[derive(Clone)]
-struct VictimBot(Arc<Node>);
+struct Sink(Arc<Node>);
 
-impl ContainsNode for VictimBot {
+impl ContainsNode for Sink {
     fn node(&self) -> &Arc<Node> {
         &self.0
     }
 }
 
 #[async_trait::async_trait]
-impl Messaging for VictimBot {
+impl Messaging for Sink {
     type Message = ();
 
     fn read_message(buffer: &[u8]) -> io::Result<Option<&[u8]>> {
@@ -80,20 +80,20 @@ async fn bench_spam_to_one() {
     let mut config = NodeConfig::default();
     config.inbound_message_queue_depth = SPAMMER_COUNT * MSG_COUNT;
     config.conn_read_buffer_size = MSG_SIZE + 4;
-    let victim = VictimBot(Node::new(Some(config)).await.unwrap());
+    let sink = Sink(Node::new(Some(config)).await.unwrap());
 
-    victim.enable_messaging();
+    sink.enable_messaging();
 
     for spammer in &spammers {
         spammer
             .node()
-            .initiate_connection(victim.node().listening_addr)
+            .initiate_connection(sink.node().listening_addr)
             .await
             .unwrap();
     }
     sleep(Duration::from_millis(100)).await;
 
-    let victim_addr = victim.node().listening_addr;
+    let sink_addr = sink.node().listening_addr;
     let mut msg = vec![0u8; MSG_SIZE + 4];
     let msg_len = (MSG_SIZE as u32).to_le_bytes();
     msg[..4].copy_from_slice(&msg_len);
@@ -105,19 +105,19 @@ async fn bench_spam_to_one() {
         tokio::spawn(async move {
             for _ in 0..MSG_COUNT {
                 spammer
-                    .send_direct_message(victim_addr, msg.clone())
+                    .send_direct_message(sink_addr, msg.clone())
                     .await
                     .unwrap();
             }
         });
     }
 
-    while victim.node().num_messages_received() < SPAMMER_COUNT * MSG_COUNT {
+    while sink.node().num_messages_received() < SPAMMER_COUNT * MSG_COUNT {
         sleep(Duration::from_millis(1)).await;
     }
     let time_elapsed = start.elapsed().as_millis();
 
-    let bytes_received = victim
+    let bytes_received = sink
         .node()
         .known_peers
         .peer_stats()
