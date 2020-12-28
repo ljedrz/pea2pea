@@ -51,7 +51,7 @@ pub fn read_len_prefixed_message(len_size: usize, buffer: &[u8]) -> io::Result<O
     }
 }
 
-pub fn prefix_message_with_len(len_size: usize, message: &[u8]) -> Bytes {
+pub fn prefix_with_len(len_size: usize, message: &[u8]) -> Bytes {
     let mut bytes = Vec::with_capacity(len_size + message.len());
 
     match len_size {

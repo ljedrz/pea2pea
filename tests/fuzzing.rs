@@ -45,7 +45,7 @@ async fn fuzzing() {
     loop {
         let random_len: usize = rng.gen_range(1..MAX_MSG_SIZE - 2); // account for the length prefix
         let random_message: Vec<u8> = (&mut rng).sample_iter(Standard).take(random_len).collect();
-        let bytes = common::prefix_message_with_len(2, &random_message);
+        let bytes = common::prefix_with_len(2, &random_message);
         sender
             .send_direct_message(tester.node().listening_addr, bytes)
             .await

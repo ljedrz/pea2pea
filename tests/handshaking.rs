@@ -252,8 +252,7 @@ async fn no_handshake_no_messaging() {
         .await
         .unwrap();
 
-    let message =
-        common::prefix_message_with_len(2, b"this won't get through, as there was no handshake");
+    let message = common::prefix_with_len(2, b"this won't get through, as there was no handshake");
 
     initiator
         .node()

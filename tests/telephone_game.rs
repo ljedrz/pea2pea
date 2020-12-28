@@ -37,7 +37,7 @@ impl Messaging for Player {
         // there are just a maximum of 2 connections, so this is sufficient
         for addr in connected_addrs.into_iter().filter(|addr| *addr != source) {
             self.node()
-                .send_direct_message(addr, common::prefix_message_with_len(2, message.as_bytes()))
+                .send_direct_message(addr, common::prefix_with_len(2, message.as_bytes()))
                 .await
                 .unwrap();
         }
@@ -69,7 +69,7 @@ async fn telephone_game() {
         .node()
         .send_direct_message(
             players[1].node().listening_addr,
-            common::prefix_message_with_len(2, message.as_bytes()),
+            common::prefix_with_len(2, message.as_bytes()),
         )
         .await
         .unwrap();

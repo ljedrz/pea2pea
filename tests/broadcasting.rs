@@ -20,7 +20,7 @@ impl ChattyNode {
         let node = Arc::clone(&self.node());
         tokio::spawn(async move {
             let message = "hello there ( ͡° ͜ʖ ͡°)";
-            let bytes = common::prefix_message_with_len(2, message.as_bytes());
+            let bytes = common::prefix_with_len(2, message.as_bytes());
 
             loop {
                 if node.num_connected() != 0 {

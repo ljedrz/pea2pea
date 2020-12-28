@@ -88,26 +88,17 @@ async fn messaging_example() {
 
     shouter
         .node()
-        .send_direct_message(
-            picky_echo_addr,
-            common::prefix_message_with_len(2, &[Herp as u8]),
-        )
+        .send_direct_message(picky_echo_addr, common::prefix_with_len(2, &[Herp as u8]))
         .await
         .unwrap();
     shouter
         .node()
-        .send_direct_message(
-            picky_echo_addr,
-            common::prefix_message_with_len(2, &[Derp as u8]),
-        )
+        .send_direct_message(picky_echo_addr, common::prefix_with_len(2, &[Derp as u8]))
         .await
         .unwrap();
     shouter
         .node()
-        .send_direct_message(
-            picky_echo_addr,
-            common::prefix_message_with_len(2, &[Herp as u8]),
-        )
+        .send_direct_message(picky_echo_addr, common::prefix_with_len(2, &[Herp as u8]))
         .await
         .unwrap();
 
@@ -116,10 +107,7 @@ async fn messaging_example() {
 
     picky_echo
         .node()
-        .send_direct_message(
-            shouter_addr,
-            common::prefix_message_with_len(2, &[Herp as u8]),
-        )
+        .send_direct_message(shouter_addr, common::prefix_with_len(2, &[Herp as u8]))
         .await
         .unwrap();
 
@@ -180,7 +168,7 @@ async fn drop_connection_on_oversized_message() {
         .node()
         .send_direct_message(
             reader.node().listening_addr,
-            common::prefix_message_with_len(2, &oversized_payload),
+            common::prefix_with_len(2, &oversized_payload),
         )
         .await
         .unwrap();
