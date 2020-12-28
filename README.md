@@ -21,6 +21,8 @@
 - support for multiple `async` runtimes
 
 ## current state: _beta_
+- all the planned functionalities are operational
+- benchmarks demonstrate _very_ good performance (over 1GB/s in favorable scenarios)
 - the public APIs are unstable
 - more tests, benches and examples wouldn't hurt
 
