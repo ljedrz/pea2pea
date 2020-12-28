@@ -6,7 +6,7 @@ use pea2pea::Node;
 use std::time::Duration;
 
 #[tokio::test]
-async fn no_protocols() {
+async fn no_protocols_usage() {
     tracing_subscriber::fmt::init();
 
     let bore1 = Node::new(None).await.unwrap();

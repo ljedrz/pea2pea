@@ -93,7 +93,7 @@ impl Messaging for EchoNode {
 }
 
 #[tokio::test]
-async fn messaging_protocol() {
+async fn messaging_example() {
     tracing_subscriber::fmt::init();
 
     let shouter = common::RandomNode::new("shout").await;

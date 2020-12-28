@@ -42,7 +42,7 @@ impl ChattyNode {
 }
 
 #[tokio::test]
-async fn broadcast_protocol() {
+async fn broadcast_example() {
     tracing_subscriber::fmt::init();
 
     let random_nodes = Node::new_multiple(4, None)

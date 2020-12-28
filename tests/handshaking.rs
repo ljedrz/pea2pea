@@ -168,7 +168,7 @@ impl Handshaking for SecureishNode {
 }
 
 #[tokio::test]
-async fn handshake_protocol() {
+async fn handshake_example() {
     tracing_subscriber::fmt::init();
 
     let mut initiator_config = NodeConfig::default();

@@ -45,7 +45,7 @@ impl TidyNode {
 }
 
 #[tokio::test]
-async fn maintenance_protocol() {
+async fn maintenance_example() {
     tracing_subscriber::fmt::init();
 
     let rando = common::RandomNode::new("0").await;
