@@ -92,6 +92,11 @@ where
 
                 // several messages could have been read at once; process the contents of the bufer
                 loop {
+                    // if there are no more bytes left to process from the read, there's nothing left to do
+                    if left == 0 {
+                        return Ok(());
+                    }
+
                     match Self::read_message(&buffer[processed..processed + left]) {
                         // a full message was read successfully
                         Ok(Some(msg)) => {
