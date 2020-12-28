@@ -208,6 +208,7 @@ impl Node {
                 _ => {
                     error!(parent: self.span(), "handshake with {} failed; dropping the connection", peer_addr);
                     self.register_failure(peer_addr);
+                    self.connections.handshaking.write().remove(&peer_addr);
                     return Err(ErrorKind::Other.into());
                 }
             }

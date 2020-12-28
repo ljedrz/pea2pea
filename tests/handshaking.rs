@@ -24,13 +24,13 @@ enum HandshakeMsg {
 }
 
 impl HandshakeMsg {
-    fn deserialize(bytes: &[u8]) -> Self {
+    fn deserialize(bytes: &[u8]) -> io::Result<Self> {
         let value = u64::from_le_bytes(bytes[1..9].try_into().unwrap());
 
         match bytes[0] {
-            0 => HandshakeMsg::A(value),
-            1 => HandshakeMsg::B(value),
-            _ => unreachable!(),
+            0 => Ok(HandshakeMsg::A(value)),
+            1 => Ok(HandshakeMsg::B(value)),
+            _ => Err(ErrorKind::Other.into()),
         }
     }
 
@@ -71,7 +71,12 @@ macro_rules! read_handshake_message {
     ($expected: path, $node: expr, $connection_reader: expr, $addr: expr) => {
         if let Ok(bytes) = $connection_reader.read_exact(9).await {
             $node.register_received_message($addr, 9);
-            let msg = HandshakeMsg::deserialize(bytes);
+            let msg = if let Ok(msg) = HandshakeMsg::deserialize(bytes) {
+                msg
+            } else {
+                error!(parent: $node.span(), "unrecognized handshake message (neither A nor B)");
+                return Err(ErrorKind::Other.into());
+            };
 
             if let $expected(nonce) = msg {
                 debug!(parent: $node.span(), "received handshake message B from {}", $addr);
@@ -208,4 +213,48 @@ async fn handshake_example() {
 
     assert!(initiator.handshakes.read().values().next() == Some(&NoncePair(0, 1)));
     assert!(responder.handshakes.read().values().next() == Some(&NoncePair(1, 0)));
+}
+
+#[tokio::test]
+async fn no_handshake_no_messaging() {
+    tracing_subscriber::fmt::init();
+
+    let mut initiator_config = NodeConfig::default();
+    initiator_config.name = Some("initiator".into());
+    let initiator = Node::new(Some(initiator_config)).await.unwrap();
+    let initiator = SecureishNode {
+        node: initiator,
+        handshakes: Default::default(),
+    };
+
+    let mut responder_config = NodeConfig::default();
+    responder_config.name = Some("responder".into());
+    let responder = Node::new(Some(responder_config)).await.unwrap();
+    let responder = SecureishNode {
+        node: responder,
+        handshakes: Default::default(),
+    };
+
+    initiator.enable_messaging();
+    responder.enable_messaging();
+
+    // the initiator doesn't enable handshaking
+    responder.enable_handshaking();
+
+    initiator
+        .node
+        .initiate_connection(responder.node().listening_addr)
+        .await
+        .unwrap();
+    sleep(Duration::from_millis(10)).await;
+
+    let message = b"this won't get through, as there was no handshake".to_vec();
+    initiator
+        .node()
+        .send_direct_message(responder.node().listening_addr, Bytes::from(message))
+        .await
+        .unwrap();
+    sleep(Duration::from_millis(10)).await;
+
+    assert!(responder.node().num_connected() == 0);
 }
