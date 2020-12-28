@@ -1,4 +1,3 @@
-use bytes::Bytes;
 use tracing::*;
 
 mod common;
@@ -13,15 +12,6 @@ impl ContainsNode for Player {
     fn node(&self) -> &Arc<Node> {
         &self.0
     }
-}
-
-fn packet_message(message: &[u8]) -> Bytes {
-    let mut bytes = Vec::with_capacity(2 + message.len());
-    let u16_len = (message.len() as u16).to_le_bytes();
-    bytes.extend_from_slice(&u16_len);
-    bytes.extend_from_slice(message);
-
-    bytes.into()
 }
 
 #[async_trait::async_trait]
@@ -47,7 +37,7 @@ impl Messaging for Player {
         // there are just a maximum of 2 connections, so this is sufficient
         for addr in connected_addrs.into_iter().filter(|addr| *addr != source) {
             self.node()
-                .send_direct_message(addr, packet_message(message.as_bytes()))
+                .send_direct_message(addr, common::prefix_message_with_len(2, message.as_bytes()))
                 .await
                 .unwrap();
         }
@@ -79,7 +69,7 @@ async fn telephone_game() {
         .node()
         .send_direct_message(
             players[1].node().listening_addr,
-            packet_message(message.as_bytes()),
+            common::prefix_message_with_len(2, message.as_bytes()),
         )
         .await
         .unwrap();

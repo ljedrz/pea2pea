@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 
+use bytes::Bytes;
 use tracing::*;
 
 use pea2pea::{ContainsNode, Messaging, Node, NodeConfig};
@@ -61,6 +62,20 @@ pub fn read_len_prefixed_message(len_size: usize, buffer: &[u8]) -> io::Result<O
     } else {
         Ok(None)
     }
+}
+
+pub fn prefix_message_with_len(len_size: usize, message: &[u8]) -> Bytes {
+    let mut bytes = Vec::with_capacity(len_size + message.len());
+
+    match len_size {
+        2 => bytes.extend_from_slice(&(message.len() as u16).to_le_bytes()),
+        4 => bytes.extend_from_slice(&(message.len() as u32).to_le_bytes()),
+        _ => unimplemented!(),
+    }
+
+    bytes.extend_from_slice(message);
+
+    bytes.into()
 }
 
 #[macro_export]

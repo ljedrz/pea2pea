@@ -242,10 +242,12 @@ async fn no_handshake_no_messaging() {
         .await
         .unwrap();
 
-    let message = b"this won't get through, as there was no handshake".to_vec();
+    let message =
+        common::prefix_message_with_len(2, b"this won't get through, as there was no handshake");
+
     initiator
         .node()
-        .send_direct_message(responder.node().listening_addr, Bytes::from(message))
+        .send_direct_message(responder.node().listening_addr, message)
         .await
         .unwrap();
 

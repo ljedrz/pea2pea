@@ -1,4 +1,3 @@
-use bytes::Bytes;
 use parking_lot::Mutex;
 use tracing::*;
 
@@ -25,15 +24,6 @@ impl ContainsNode for EchoNode {
     }
 }
 
-fn packet_message(message: TestMessage) -> Bytes {
-    let mut bytes = Vec::with_capacity(3);
-    let u16_len = 1u16.to_le_bytes();
-    bytes.extend_from_slice(&u16_len);
-    bytes.push(message as u8);
-
-    bytes.into()
-}
-
 #[async_trait::async_trait]
 impl Messaging for EchoNode {
     fn read_message(buffer: &[u8]) -> io::Result<Option<&[u8]>> {
@@ -42,7 +32,7 @@ impl Messaging for EchoNode {
 
     async fn process_message(&self, source: SocketAddr, message: Vec<u8>) -> io::Result<()> {
         // the first 2B are the u16 length, last one is the payload
-        let message = if message.len() == 3 {
+        let deserialized_message = if message.len() == 3 {
             match message[2] {
                 0 => TestMessage::Herp,
                 1 => TestMessage::Derp,
@@ -52,17 +42,17 @@ impl Messaging for EchoNode {
             return Err(io::ErrorKind::InvalidData.into());
         };
 
-        info!(parent: self.node().span(), "got a {:?} from {}", message, source);
+        info!(parent: self.node().span(), "got a {:?} from {}", deserialized_message, source);
 
-        if self.echoed.lock().insert(message) {
+        if self.echoed.lock().insert(deserialized_message) {
             info!(parent: self.node().span(), "it was new! echoing it");
 
             self.node()
-                .send_direct_message(source, packet_message(message))
+                .send_direct_message(source, message.into())
                 .await
                 .unwrap();
         } else {
-            debug!(parent: self.node().span(), "I've already heard {:?}! not echoing", message);
+            debug!(parent: self.node().span(), "I've already heard {:?}! not echoing", deserialized_message);
         }
 
         Ok(())
@@ -110,7 +100,10 @@ async fn messaging_example() {
 
     picky_echo
         .node()
-        .send_direct_message(shouter_addr, packet_message(TestMessage::Herp))
+        .send_direct_message(
+            shouter_addr,
+            common::prefix_message_with_len(2, &[TestMessage::Herp as u8]),
+        )
         .await
         .unwrap();
 

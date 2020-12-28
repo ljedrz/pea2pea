@@ -17,7 +17,7 @@ impl ContainsNode for Tester {
 #[async_trait::async_trait]
 impl Messaging for Tester {
     fn read_message(buffer: &[u8]) -> io::Result<Option<&[u8]>> {
-        common::read_len_prefixed_message(4, buffer)
+        common::read_len_prefixed_message(2, buffer)
     }
 }
 
@@ -43,12 +43,11 @@ async fn fuzzing() {
     let mut rng = SmallRng::from_entropy();
 
     loop {
-        let random_len: usize = rng.gen_range(5..MAX_MSG_SIZE); // account for the length prefix
-        let mut random_message: Vec<u8> =
-            (&mut rng).sample_iter(Standard).take(random_len).collect();
-        random_message[0..4].copy_from_slice(&(random_len as u32 - 4).to_le_bytes());
+        let random_len: usize = rng.gen_range(1..MAX_MSG_SIZE - 2); // account for the length prefix
+        let random_message: Vec<u8> = (&mut rng).sample_iter(Standard).take(random_len).collect();
+        let bytes = common::prefix_message_with_len(2, &random_message);
         sender
-            .send_direct_message(tester.node().listening_addr, random_message.into())
+            .send_direct_message(tester.node().listening_addr, bytes)
             .await
             .unwrap();
 

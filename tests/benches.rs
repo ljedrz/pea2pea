@@ -1,5 +1,3 @@
-use bytes::Bytes;
-
 mod common;
 use pea2pea::{ContainsNode, Messaging, Node, NodeConfig};
 
@@ -91,10 +89,7 @@ async fn run_bench_scenario(params: BenchParams) {
     wait_until!(1, sink.node().num_handshaken() == spammer_count);
 
     let sink_addr = sink.node().listening_addr;
-    let mut msg = vec![0u8; msg_size];
-    let msg_len = (msg_size as u32 - 4).to_le_bytes();
-    msg[..4].copy_from_slice(&msg_len);
-    let msg = Bytes::from(msg);
+    let msg = common::prefix_message_with_len(4, &vec![0u8; msg_size - 4]);
 
     let start = Instant::now();
     for spammer in spammers {

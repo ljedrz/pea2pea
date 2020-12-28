@@ -21,7 +21,7 @@ async fn no_protocols_usage() {
 
     // bore2 won't receive it, as it doesn't implement Messaging
     bore1
-        .send_direct_message(bore2.listening_addr, message.clone())
+        .send_direct_message(bore2.listening_addr, message)
         .await
         .unwrap();
 

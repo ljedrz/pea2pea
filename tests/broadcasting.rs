@@ -1,4 +1,3 @@
-use bytes::Bytes;
 use tokio::time::sleep;
 use tracing::*;
 
@@ -21,11 +20,7 @@ impl ChattyNode {
         let node = Arc::clone(&self.node());
         tokio::spawn(async move {
             let message = "hello there ( ͡° ͜ʖ ͡°)";
-            let u16_len = (message.len() as u16).to_le_bytes();
-            let mut bytes = Vec::with_capacity(2 + message.len());
-            bytes.extend_from_slice(&u16_len);
-            bytes.extend_from_slice(message.as_bytes());
-            let bytes = Bytes::from(bytes);
+            let bytes = common::prefix_message_with_len(2, message.as_bytes());
 
             loop {
                 if node.num_handshaken() != 0 {
