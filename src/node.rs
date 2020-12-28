@@ -162,7 +162,7 @@ impl Node {
         } else if let Ok(addr) = stream.local_addr() {
             addr.port()
         } else {
-            error!(parent: self.span(), "couldn't determine the local address of a connection");
+            error!(parent: self.span(), "couldn't determine the connection responder's port");
             return Err(ErrorKind::Other.into());
         };
 
