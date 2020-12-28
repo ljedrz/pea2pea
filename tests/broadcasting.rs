@@ -70,7 +70,7 @@ async fn broadcast_example() {
             .unwrap();
     }
 
-    sleep(Duration::from_millis(100)).await;
+    sleep(Duration::from_millis(50)).await;
 
     for rando in &random_nodes {
         assert!(rando.node().num_messages_received() != 0);

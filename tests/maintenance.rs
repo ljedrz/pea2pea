@@ -38,7 +38,7 @@ impl TidyNode {
                     node.disconnect(addr);
                 }
 
-                sleep(Duration::from_millis(200)).await;
+                sleep(Duration::from_millis(10)).await;
             }
         });
     }
@@ -63,7 +63,7 @@ async fn maintenance_example() {
 
     tidy.perform_periodic_maintenance();
     tidy.node().register_failure(rando.node().listening_addr); // artificially report an issue with rando
-    sleep(Duration::from_millis(100)).await;
+    sleep(Duration::from_millis(10)).await;
 
     assert_eq!(tidy.node().num_connected(), 0);
 }

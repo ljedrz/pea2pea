@@ -206,7 +206,7 @@ async fn handshake_example() {
         .await
         .unwrap();
 
-    sleep(Duration::from_millis(100)).await;
+    sleep(Duration::from_millis(10)).await;
 
     assert!(initiator.node().handshaken_addrs().len() == 1);
     assert!(responder.node().handshaken_addrs().len() == 1);

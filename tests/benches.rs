@@ -107,7 +107,7 @@ async fn run_bench_scenario(params: BenchParams) {
             .await
             .unwrap();
     }
-    sleep(Duration::from_millis(100)).await;
+    sleep(Duration::from_millis(10)).await;
 
     let sink_addr = sink.node().listening_addr;
     let mut msg = vec![0u8; msg_size];

@@ -108,7 +108,7 @@ async fn messaging_example() {
         .initiate_connection(picky_echo_addr)
         .await
         .unwrap();
-    sleep(Duration::from_millis(100)).await;
+    sleep(Duration::from_millis(10)).await;
 
     shouter
         .send_direct_message_with_len(picky_echo_addr, &[TestMessage::Herp as u8])
@@ -129,7 +129,7 @@ async fn messaging_example() {
         .await
         .unwrap();
 
-    sleep(Duration::from_millis(100)).await;
+    sleep(Duration::from_millis(10)).await;
     // check if the shouter heard the (non-duplicate) echoes and the last, non-reply one
     assert_eq!(shouter.node().num_messages_received(), 3);
 }

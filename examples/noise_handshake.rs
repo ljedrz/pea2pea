@@ -247,7 +247,7 @@ async fn main() {
         .unwrap();
 
     // allow a bit of time for the handshake process to conclude
-    sleep(Duration::from_millis(100)).await;
+    sleep(Duration::from_millis(10)).await;
 
     // send a message from initiator to responder
     let msg = b"why hello there, fellow noise protocol user; I'm the initiator";
@@ -264,5 +264,5 @@ async fn main() {
         .await
         .unwrap();
 
-    sleep(Duration::from_millis(100)).await;
+    sleep(Duration::from_millis(10)).await;
 }

@@ -28,7 +28,7 @@ async fn node_creation_used_port_fails() {
 async fn node_connect_and_disconnect() {
     let nodes = Node::new_multiple(2, None).await.unwrap();
     connect_nodes(&nodes, Topology::Line).await.unwrap();
-    sleep(Duration::from_millis(100)).await;
+    sleep(Duration::from_millis(10)).await;
 
     assert!(nodes[0].disconnect(nodes[1].listening_addr));
     assert!(!nodes[0].is_connected(nodes[1].listening_addr));
