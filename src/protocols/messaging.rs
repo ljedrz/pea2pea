@@ -47,6 +47,7 @@ where
 
                 loop {
                     if let Err(e) = Self::read_from_stream(&mut connection_reader).await {
+                        node.register_failure(addr);
                         match e.kind() {
                             io::ErrorKind::InvalidData => {
                                 // drop the connection to avoid reading borked messages
@@ -126,9 +127,7 @@ where
                         Ok(None) => {
                             // forbid messages that are larger than the read buffer
                             if left >= buffer.len() {
-                                node.register_failure(*peer_addr);
                                 error!(parent: node.span(), "a message from {} is too large", peer_addr);
-
                                 return Err(io::ErrorKind::InvalidData.into());
                             }
 
@@ -147,18 +146,14 @@ where
                         }
                         // an erroneous message (e.g. an unexpected zero-length payload)
                         Err(_) => {
-                            node.register_failure(*peer_addr);
                             error!(parent: node.span(), "a message from {} is invalid", peer_addr);
-
                             return Err(io::ErrorKind::InvalidData.into());
                         }
                     }
                 }
             }
             Err(e) => {
-                node.register_failure(*peer_addr);
                 error!(parent: node.span(), "can't read from {}: {}", peer_addr, e);
-
                 Err(io::ErrorKind::Other.into())
             }
         }
