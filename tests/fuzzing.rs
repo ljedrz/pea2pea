@@ -38,7 +38,7 @@ async fn fuzzing() {
         .await
         .unwrap();
 
-    wait_until!(1, tester.node().num_handshaken() == 1);
+    wait_until!(1, tester.node().num_connected() == 1);
 
     let mut rng = SmallRng::from_entropy();
 

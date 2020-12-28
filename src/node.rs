@@ -177,19 +177,11 @@ impl Node {
         let (reader, writer) = stream.into_split();
 
         let connection_reader = ConnectionReader::new(peer_addr, reader, Arc::clone(&self));
-        let connection = Arc::new(Connection::new(
-            peer_addr,
-            writer,
-            Arc::clone(&self),
-            !own_side,
-        ));
+        let connection = Connection::new(peer_addr, writer, Arc::clone(&self), !own_side);
 
-        self.connections
-            .handshaking
-            .write()
-            .insert(peer_addr, Arc::clone(&connection));
-
-        let connection_reader = if let Some(ref handshake_setup) = self.handshake_setup() {
+        let (connection_reader, connection) = if let Some(ref handshake_setup) =
+            self.handshake_setup()
+        {
             let handshake_task = match own_side {
                 ConnectionSide::Initiator => {
                     (handshake_setup.initiator_closure)(connection_reader, connection)
@@ -200,7 +192,7 @@ impl Node {
             };
 
             match handshake_task.await {
-                Ok(Ok((conn_reader, handshake_state))) => {
+                Ok(Ok((conn_reader, conn, handshake_state))) => {
                     if let Some(ref sender) = handshake_setup.state_sender {
                         // can't recover from an error here
                         sender
@@ -208,33 +200,30 @@ impl Node {
                             .await
                             .expect("the handshake state channel is closed")
                     }
+                    debug!(parent: self.span(), "marked {} as handshaken", peer_addr);
 
-                    conn_reader
+                    (conn_reader, conn)
                 }
                 _ => {
                     error!(parent: self.span(), "handshake with {} failed; dropping the connection", peer_addr);
                     self.register_failure(peer_addr);
-                    self.connections.handshaking.write().remove(&peer_addr);
                     return Err(ErrorKind::Other.into());
                 }
             }
         } else {
-            connection_reader
+            (connection_reader, connection)
         };
 
-        let reader_task = if let Some(ref messaging_closure) = self.reading_closure() {
-            Some(messaging_closure(connection_reader))
-        } else {
-            None
-        };
-
-        if let Err(e) = self.connections.mark_as_handshaken(peer_addr, reader_task) {
-            error!(parent: self.span(), "can't mark {} as handshaken: {}", peer_addr, e);
-            Err(ErrorKind::Other.into())
-        } else {
-            debug!(parent: self.span(), "marked {} as handshaken", peer_addr);
-            Ok(())
+        if let Some(ref messaging_closure) = self.reading_closure() {
+            connection
+                .reader_task
+                .set(messaging_closure(connection_reader))
+                .unwrap();
         }
+
+        self.connections.add(connection);
+
+        Ok(())
     }
 
     /// Connects to the provided `SocketAddr`.
@@ -262,26 +251,32 @@ impl Node {
         disconnected
     }
 
-    /// Sends the provided message to the specified, handshaken `SocketAddr`.
+    /// Sends the provided message to the specified `SocketAddr`.
     pub async fn send_direct_message(&self, addr: SocketAddr, message: Bytes) -> io::Result<()> {
-        if let Some(conn) = self.connections.get_handshaken(addr) {
-            conn.send_message(message).await;
+        if let Some(message_sender) = self.connections.sender(addr) {
+            message_sender
+                .send(message)
+                .await
+                .expect("the connection writer task is closed"); // can't recover if this happens
             Ok(())
         } else {
             Err(ErrorKind::NotConnected.into())
         }
     }
 
-    /// Broadcasts the provided message to all handshaken peers.
+    /// Broadcasts the provided message to all peers.
     pub async fn send_broadcast(&self, message: Bytes) {
-        for conn in self.connections.all_handshaken() {
-            conn.send_message(message.clone()).await;
+        for message_sender in self.connections.senders() {
+            message_sender
+                .send(message.clone())
+                .await
+                .expect("the connection writer task is closed"); // can't recover if this happens
         }
     }
 
-    /// Returns a list containing addresses of handshaken connections.
-    pub fn handshaken_addrs(&self) -> Vec<SocketAddr> {
-        self.connections.handshaken.read().keys().copied().collect()
+    /// Returns a list containing addresses of active connections.
+    pub fn connected_addrs(&self) -> Vec<SocketAddr> {
+        self.connections.addrs()
     }
 
     /// Updates the peer's statistics upon successful submission of a message.
@@ -299,29 +294,14 @@ impl Node {
         self.known_peers.register_failure(from)
     }
 
-    /// Checks whether the provided address is connected, regardless of its handshake status.
+    /// Checks whether the provided address is connected.
     pub fn is_connected(&self, addr: SocketAddr) -> bool {
         self.connections.is_connected(addr)
     }
 
-    /// Returns the number of active connections, regardless of their handshake status.
+    /// Returns the number of active connections.
     pub fn num_connected(&self) -> usize {
         self.connections.num_connected()
-    }
-
-    /// Returns the number of active handshaken connections.
-    pub fn num_handshaken(&self) -> usize {
-        self.connections.num_handshaken()
-    }
-
-    /// Checks whether a connection with the given address is currently in the process of handshaking.
-    pub fn is_handshaking(&self, addr: SocketAddr) -> bool {
-        self.connections.is_handshaking(addr)
-    }
-
-    /// Checks whether a connection with the given address has been handshaken.
-    pub fn is_handshaken(&self, addr: SocketAddr) -> bool {
-        self.connections.is_handshaken(addr)
     }
 
     /// Returns the number of all sent messages.
@@ -337,11 +317,6 @@ impl Node {
     /// Updates the "last seen" timestamp of a connection with the given address.
     pub fn update_last_seen(&self, addr: SocketAddr) {
         self.known_peers.update_last_seen(addr);
-    }
-
-    /// Changes a connection's status from handshaking to handshaken.
-    pub fn mark_as_handshaken(&self, addr: SocketAddr) -> io::Result<()> {
-        self.connections.mark_as_handshaken(addr, None)
     }
 
     /// Returns a `Sender` for the channel handling all the

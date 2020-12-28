@@ -15,9 +15,9 @@ async fn topology_line_conn_counts() {
         1,
         nodes.iter().enumerate().all(|(i, node)| {
             if i == 0 || i == N - 1 {
-                node.num_handshaken() == 1
+                node.num_connected() == 1
             } else {
-                node.num_handshaken() == 2
+                node.num_connected() == 2
             }
         })
     );
@@ -28,7 +28,7 @@ async fn topology_ring_conn_counts() {
     let nodes = Node::new_multiple(N, None).await.unwrap();
     connect_nodes(&nodes, Topology::Ring).await.unwrap();
 
-    wait_until!(1, nodes.iter().all(|node| node.num_handshaken() == 2));
+    wait_until!(1, nodes.iter().all(|node| node.num_connected() == 2));
 }
 
 #[tokio::test]
@@ -36,7 +36,7 @@ async fn topology_mesh_conn_counts() {
     let nodes = Node::new_multiple(N, None).await.unwrap();
     connect_nodes(&nodes, Topology::Mesh).await.unwrap();
 
-    wait_until!(1, nodes.iter().all(|node| node.num_handshaken() == N - 1));
+    wait_until!(1, nodes.iter().all(|node| node.num_connected() == N - 1));
 }
 
 #[tokio::test]
@@ -48,9 +48,9 @@ async fn topology_star_conn_counts() {
         1,
         nodes.iter().enumerate().all(|(i, node)| {
             if i == 0 {
-                node.num_handshaken() == N - 1
+                node.num_connected() == N - 1
             } else {
-                node.num_handshaken() == 1
+                node.num_connected() == 1
             }
         })
     );

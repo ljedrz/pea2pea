@@ -86,7 +86,7 @@ async fn run_bench_scenario(params: BenchParams) {
             .unwrap();
     }
 
-    wait_until!(1, sink.node().num_handshaken() == spammer_count);
+    wait_until!(1, sink.node().num_connected() == spammer_count);
 
     let sink_addr = sink.node().listening_addr;
     let msg = common::prefix_message_with_len(4, &vec![0u8; msg_size - 4]);

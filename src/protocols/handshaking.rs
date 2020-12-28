@@ -2,11 +2,11 @@ use crate::{Connection, ConnectionReader};
 
 use tokio::{sync::mpsc::Sender, task::JoinHandle};
 
-use std::{any::Any, io, net::SocketAddr, sync::Arc};
+use std::{any::Any, io, net::SocketAddr};
 
 /// This protocol can be used to specify and enable network handshakes. Upon establishing a connection, both sides will
 /// need to adhere to the specified handshake rules in order to finalize the connection and be able to transmit any
-/// messages. Note: if not implemented, the nodes unconditionally mark their connections as handshaken.
+/// messages.
 pub trait Handshaking {
     /// Prepares the node to produce and handle network handshakes.
     fn enable_handshaking(&self);
@@ -19,8 +19,8 @@ pub type HandshakeState = Box<dyn Any + Send>;
 type HandshakeClosure = Box<
     dyn Fn(
             ConnectionReader,
-            Arc<Connection>,
-        ) -> JoinHandle<io::Result<(ConnectionReader, HandshakeState)>>
+            Connection,
+        ) -> JoinHandle<io::Result<(ConnectionReader, Connection, HandshakeState)>>
         + Send
         + Sync,
 >;

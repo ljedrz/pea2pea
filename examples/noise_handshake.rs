@@ -112,8 +112,10 @@ impl Handshaking for SecureNode {
 
         // the initiator's handshake closure
         let initiator = |mut connection_reader: ConnectionReader,
-                         connection: Arc<Connection>|
-         -> JoinHandle<io::Result<(ConnectionReader, HandshakeState)>> {
+                         connection: Connection|
+         -> JoinHandle<
+            io::Result<(ConnectionReader, Connection, HandshakeState)>,
+        > {
             tokio::spawn(async move {
                 let addr = connection_reader.addr;
                 info!(parent: connection_reader.node.span(), "handshaking with {} as the initiator", addr);
@@ -149,14 +151,20 @@ impl Handshaking for SecureNode {
                     buffer,
                 };
 
-                Ok((connection_reader, Box::new(noise) as HandshakeState))
+                Ok((
+                    connection_reader,
+                    connection,
+                    Box::new(noise) as HandshakeState,
+                ))
             })
         };
 
         // the responder's handshake closure
         let responder = |mut connection_reader: ConnectionReader,
-                         connection: Arc<Connection>|
-         -> JoinHandle<io::Result<(ConnectionReader, HandshakeState)>> {
+                         connection: Connection|
+         -> JoinHandle<
+            io::Result<(ConnectionReader, Connection, HandshakeState)>,
+        > {
             tokio::spawn(async move {
                 let addr = connection_reader.addr;
                 info!(parent: connection_reader.node.span(), "handshaking with {} as the responder", addr);
@@ -191,7 +199,11 @@ impl Handshaking for SecureNode {
                     buffer,
                 };
 
-                Ok((connection_reader, Box::new(noise) as HandshakeState))
+                Ok((
+                    connection_reader,
+                    connection,
+                    Box::new(noise) as HandshakeState,
+                ))
             })
         };
 
@@ -257,7 +269,7 @@ async fn main() {
         .unwrap();
 
     // send a message from responder to initiator; determine the latter's address first
-    let initiator_addr = responder.node().handshaken_addrs()[0];
+    let initiator_addr = responder.node().connected_addrs()[0];
     let msg = b"why hello there, fellow noise protocol user; I'm the responder";
     responder
         .send_direct_message(initiator_addr, msg)

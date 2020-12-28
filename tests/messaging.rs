@@ -83,7 +83,7 @@ async fn messaging_example() {
         .await
         .unwrap();
 
-    wait_until!(1, picky_echo.node().num_handshaken() == 1);
+    wait_until!(1, picky_echo.node().num_connected() == 1);
 
     shouter
         .send_direct_message_with_len(picky_echo_addr, &[TestMessage::Herp as u8])
@@ -96,7 +96,7 @@ async fn messaging_example() {
         .await;
 
     // let echo send one message on its own too, for good measure
-    let shouter_addr = picky_echo.node().handshaken_addrs()[0];
+    let shouter_addr = picky_echo.node().connected_addrs()[0];
 
     picky_echo
         .node()
@@ -123,7 +123,7 @@ async fn drop_connection_on_invalid_message() {
         .await
         .unwrap();
 
-    wait_until!(1, reader.node().num_handshaken() == 1);
+    wait_until!(1, reader.node().num_connected() == 1);
 
     // an invalid message: a header indicating a zero-length payload
     let bad_message: &'static [u8] = &[0, 0];
@@ -155,7 +155,7 @@ async fn drop_connection_on_oversized_message() {
         .await
         .unwrap();
 
-    wait_until!(1, reader.node().num_handshaken() == 1);
+    wait_until!(1, reader.node().num_connected() == 1);
 
     // when prefixed with length, it'll exceed MSG_SIZE_LIMIT, i.e. the read buffer size of the reader
     let oversized_payload = vec![0u8; MSG_SIZE_LIMIT];

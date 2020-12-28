@@ -23,7 +23,7 @@ impl ChattyNode {
             let bytes = common::prefix_message_with_len(2, message.as_bytes());
 
             loop {
-                if node.num_handshaken() != 0 {
+                if node.num_connected() != 0 {
                     info!(parent: node.span(), "sending \"{}\" to all my frens", message);
                     node.send_broadcast(bytes.clone()).await;
                 } else {

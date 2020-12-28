@@ -117,49 +117,59 @@ impl Handshaking for SecureishNode {
             }
         });
 
-        let initiator = |mut connection_reader: ConnectionReader,
-                         connection: Arc<Connection>|
-         -> JoinHandle<io::Result<(ConnectionReader, HandshakeState)>> {
-            tokio::spawn(async move {
-                let node = Arc::clone(&connection_reader.node);
-                let addr = connection_reader.addr;
-                debug!(parent: node.span(), "handshaking with {} as the initiator", addr);
+        let initiator =
+            |mut connection_reader: ConnectionReader,
+             connection: Connection|
+             -> JoinHandle<io::Result<(ConnectionReader, Connection, HandshakeState)>> {
+                tokio::spawn(async move {
+                    let node = Arc::clone(&connection_reader.node);
+                    let addr = connection_reader.addr;
+                    debug!(parent: node.span(), "handshaking with {} as the initiator", addr);
 
-                // send A
-                let own_nonce = 0;
-                send_handshake_message!(HandshakeMsg::A(own_nonce), node, connection, addr);
+                    // send A
+                    let own_nonce = 0;
+                    send_handshake_message!(HandshakeMsg::A(own_nonce), node, connection, addr);
 
-                // read B
-                let peer_nonce =
-                    read_handshake_message!(HandshakeMsg::B, node, connection_reader, addr);
+                    // read B
+                    let peer_nonce =
+                        read_handshake_message!(HandshakeMsg::B, node, connection_reader, addr);
 
-                let nonce_pair = NoncePair(own_nonce, peer_nonce);
+                    let nonce_pair = NoncePair(own_nonce, peer_nonce);
 
-                Ok((connection_reader, Box::new(nonce_pair) as HandshakeState))
-            })
-        };
+                    Ok((
+                        connection_reader,
+                        connection,
+                        Box::new(nonce_pair) as HandshakeState,
+                    ))
+                })
+            };
 
-        let responder = |mut connection_reader: ConnectionReader,
-                         connection: Arc<Connection>|
-         -> JoinHandle<io::Result<(ConnectionReader, HandshakeState)>> {
-            tokio::spawn(async move {
-                let node = Arc::clone(&connection_reader.node);
-                let addr = connection_reader.addr;
-                debug!(parent: node.span(), "handshaking with {} as the responder", addr);
+        let responder =
+            |mut connection_reader: ConnectionReader,
+             connection: Connection|
+             -> JoinHandle<io::Result<(ConnectionReader, Connection, HandshakeState)>> {
+                tokio::spawn(async move {
+                    let node = Arc::clone(&connection_reader.node);
+                    let addr = connection_reader.addr;
+                    debug!(parent: node.span(), "handshaking with {} as the responder", addr);
 
-                // read A
-                let peer_nonce =
-                    read_handshake_message!(HandshakeMsg::A, node, connection_reader, addr);
+                    // read A
+                    let peer_nonce =
+                        read_handshake_message!(HandshakeMsg::A, node, connection_reader, addr);
 
-                // send B
-                let own_nonce = 1;
-                send_handshake_message!(HandshakeMsg::B(own_nonce), node, connection, addr);
+                    // send B
+                    let own_nonce = 1;
+                    send_handshake_message!(HandshakeMsg::B(own_nonce), node, connection, addr);
 
-                let nonce_pair = NoncePair(own_nonce, peer_nonce);
+                    let nonce_pair = NoncePair(own_nonce, peer_nonce);
 
-                Ok((connection_reader, Box::new(nonce_pair) as HandshakeState))
-            })
-        };
+                    Ok((
+                        connection_reader,
+                        connection,
+                        Box::new(nonce_pair) as HandshakeState,
+                    ))
+                })
+            };
 
         let handshake_setup = HandshakeSetup {
             initiator_closure: Box::new(initiator),

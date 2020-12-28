@@ -15,7 +15,7 @@ async fn no_protocols_usage() {
         .await
         .unwrap();
 
-    wait_until!(1, bore2.num_handshaken() == 1);
+    wait_until!(1, bore2.num_connected() == 1);
 
     let message = Bytes::from("I may implement nothing, but I can still send stuff out!");
 

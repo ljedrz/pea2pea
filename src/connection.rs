@@ -89,13 +89,13 @@ pub struct Connection {
     /// A reference to the owning node.
     node: Arc<Node>,
     /// The address of the connection.
-    addr: SocketAddr,
+    pub(crate) addr: SocketAddr,
     /// The handle to the task performing reads from the stream.
     pub(crate) reader_task: OnceCell<JoinHandle<()>>,
     /// The handle to the task performing writes to the stream.
     _writer_task: JoinHandle<()>,
     /// Used to queue writes to the stream.
-    message_sender: Sender<Bytes>,
+    pub(crate) message_sender: Sender<Bytes>,
     /// The connection's side in relation to the node.
     side: ConnectionSide,
 }
