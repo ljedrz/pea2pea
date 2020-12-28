@@ -153,7 +153,7 @@ async fn bench_spam_to_one() {
     const KIB: usize = 1024;
     const MIB: usize = 1024 * 1024;
 
-    let spammer_counts = [1, 2, 5];
+    let spammer_counts = [1, 5, 10];
     let msg_sizes = [256, 1 * KIB, 64 * KIB, 1 * MIB];
     let conn_read_buffer_sizes = [1 * MIB, 4 * MIB, 8 * MIB];
     let inbound_channel_depths = [100, 250, 1000];
