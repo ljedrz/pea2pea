@@ -37,8 +37,6 @@ fn packet_message(message: TestMessage) -> Bytes {
 
 #[async_trait::async_trait]
 impl Messaging for EchoNode {
-    type Message = TestMessage;
-
     fn read_message(buffer: &[u8]) -> io::Result<Option<&[u8]>> {
         // expecting the test messages to be prefixed with their length encoded as a LE u16
         if buffer.len() >= 2 {
@@ -58,25 +56,20 @@ impl Messaging for EchoNode {
         }
     }
 
-    fn parse_message(&self, _source: SocketAddr, message: Vec<u8>) -> Option<Self::Message> {
+    async fn process_message(&self, source: SocketAddr, message: Vec<u8>) -> io::Result<()> {
         // the first 2B are the u16 length, last one is the payload
-        if message.len() == 3 {
+        let message = if message.len() == 3 {
             match message[2] {
-                0 => Some(TestMessage::Herp),
-                1 => Some(TestMessage::Derp),
-                _ => None,
+                0 => TestMessage::Herp,
+                1 => TestMessage::Derp,
+                _ => return Err(io::ErrorKind::InvalidData.into()),
             }
         } else {
-            None
-        }
-    }
+            return Err(io::ErrorKind::InvalidData.into());
+        };
 
-    async fn respond_to_message(
-        &self,
-        source: SocketAddr,
-        message: Self::Message,
-    ) -> io::Result<()> {
         info!(parent: self.node().span(), "got a {:?} from {}", message, source);
+
         if self.echoed.lock().insert(message) {
             info!(parent: self.node().span(), "it was new! echoing it");
 

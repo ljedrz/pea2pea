@@ -217,8 +217,6 @@ async fn handshake_example() {
 
 #[tokio::test]
 async fn no_handshake_no_messaging() {
-    tracing_subscriber::fmt::init();
-
     let mut initiator_config = NodeConfig::default();
     initiator_config.name = Some("initiator".into());
     let initiator = Node::new(Some(initiator_config)).await.unwrap();

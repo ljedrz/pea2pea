@@ -46,8 +46,6 @@ macro_rules! impl_messaging {
     ($target: ty) => {
         #[async_trait::async_trait]
         impl Messaging for $target {
-            type Message = ();
-
             fn read_message(buffer: &[u8]) -> io::Result<Option<&[u8]>> {
                 // expecting the test messages to be prefixed with their length encoded as a LE u16
                 if buffer.len() >= 2 {
@@ -67,12 +65,9 @@ macro_rules! impl_messaging {
                 }
             }
 
-            fn parse_message(&self, _source: SocketAddr, _message: Vec<u8>) -> Option<Self::Message> {
-                Some(())
-            }
-
-            fn process_message(&self, source: SocketAddr, _message: &Self::Message) {
+            async fn process_message(&self, source: SocketAddr, _message: Vec<u8>) -> io::Result<()> {
                 info!(parent: self.node().span(), "received a message from {}", source);
+                Ok(())
             }
         }
     };

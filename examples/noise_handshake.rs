@@ -207,27 +207,23 @@ impl Handshaking for SecureNode {
 
 #[async_trait::async_trait]
 impl Messaging for SecureNode {
-    type Message = String; // the encrypted messages are strings
-
     fn read_message(buffer: &[u8]) -> io::Result<Option<&[u8]>> {
         read_message(buffer)
     }
 
-    fn parse_message(&self, source: SocketAddr, message: Vec<u8>) -> Option<Self::Message> {
+    async fn process_message(&self, source: SocketAddr, message: Vec<u8>) -> io::Result<()> {
         // disregard the length prefix
         let message = &message[2..];
 
-        let noise = Arc::clone(self.noise_states.read().get(&source)?);
+        let noise = Arc::clone(self.noise_states.read().get(&source).unwrap());
         let NoiseState { state, buffer } = &mut *noise.lock();
 
-        let len = state.read_message(&message, buffer).ok()?;
-        let decrypted_message = String::from_utf8(buffer[..len].to_vec()).ok()?;
+        let len = state.read_message(&message, buffer).ok().unwrap();
+        let decrypted_message = String::from_utf8(buffer[..len].to_vec()).unwrap();
 
-        Some(decrypted_message)
-    }
+        info!(parent: self.node().span(), "decrypted a message from {}: \"{}\"", source, decrypted_message);
 
-    fn process_message(&self, source: SocketAddr, message: &Self::Message) {
-        info!(parent: self.node().span(), "decrypted a message from {}: \"{}\"", source, message);
+        Ok(())
     }
 }
 

@@ -6,7 +6,6 @@ use pea2pea::{ContainsNode, Messaging, Node, NodeConfig};
 use std::{
     convert::TryInto,
     io,
-    net::SocketAddr,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -22,8 +21,6 @@ impl ContainsNode for Sink {
 
 #[async_trait::async_trait]
 impl Messaging for Sink {
-    type Message = ();
-
     fn read_message(buffer: &[u8]) -> io::Result<Option<&[u8]>> {
         // expecting the test messages to be prefixed with their length encoded as a LE u32
         if buffer.len() >= 4 {
@@ -41,10 +38,6 @@ impl Messaging for Sink {
         } else {
             Ok(None)
         }
-    }
-
-    fn parse_message(&self, _source: SocketAddr, _message: Vec<u8>) -> Option<Self::Message> {
-        Some(())
     }
 }
 
@@ -154,6 +147,7 @@ async fn run_bench_scenario(params: BenchParams) {
 }
 
 #[ignore]
+#[allow(clippy::identity_op)]
 #[tokio::test]
 async fn bench_spam_to_one() {
     const KIB: usize = 1024;

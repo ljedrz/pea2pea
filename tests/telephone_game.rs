@@ -27,8 +27,6 @@ fn packet_message(message: &[u8]) -> Bytes {
 
 #[async_trait::async_trait]
 impl Messaging for Player {
-    type Message = String;
-
     fn read_message(buffer: &[u8]) -> io::Result<Option<&[u8]>> {
         // expecting the test messages to be prefixed with their length encoded as a LE u16
         if buffer.len() >= 2 {
@@ -48,16 +46,10 @@ impl Messaging for Player {
         }
     }
 
-    fn parse_message(&self, _source: SocketAddr, message: Vec<u8>) -> Option<Self::Message> {
+    async fn process_message(&self, source: SocketAddr, message: Vec<u8>) -> io::Result<()> {
         // the first 2B are the u16 length
-        String::from_utf8(message[2..].to_vec()).ok()
-    }
+        let message = String::from_utf8(message[2..].to_vec()).unwrap();
 
-    async fn respond_to_message(
-        &self,
-        source: SocketAddr,
-        message: Self::Message,
-    ) -> io::Result<()> {
         info!(
             parent: self.node().span(),
             "{} said \"{}\"{}",

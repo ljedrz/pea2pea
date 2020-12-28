@@ -17,11 +17,7 @@ use std::{io, net::SocketAddr, time::Duration};
 pub trait Messaging: ContainsNode
 where
     Self: Clone + Send + Sync + 'static,
-    Self::Message: Send,
 {
-    /// The (final) type of the inbound messages.
-    type Message;
-
     /// Prepares the node to receive messages and optionally respond to them.
     fn enable_messaging(&self) {
         let (sender, mut receiver) = channel(self.node().config.inbound_message_queue_depth);
@@ -33,17 +29,9 @@ where
                 if let Some((source, msg)) = receiver.recv().await {
                     let self_clone = self_clone.clone();
                     tokio::spawn(async move {
-                        let node = self_clone.node();
-                        if let Some(msg) = self_clone.parse_message(source, msg) {
-                            self_clone.process_message(source, &msg);
-
-                            if let Err(e) = self_clone.respond_to_message(source, msg).await {
-                                error!(parent: node.span(), "failed to respond to an inbound message: {}", e);
-                                node.register_failure(source);
-                            }
-                        } else {
-                            error!(parent: node.span(), "can't parse an inbound message");
-                            node.register_failure(source);
+                        if let Err(e) = self_clone.process_message(source, msg).await {
+                            error!(parent: self_clone.node().span(), "failed to respond to an inbound message: {}", e);
+                            self_clone.node().register_failure(source);
                         }
                     });
                 }
@@ -144,22 +132,9 @@ where
     /// Reads a single inbound message from the given buffer.
     fn read_message(buffer: &[u8]) -> io::Result<Option<&[u8]>>;
 
-    /// Deserializes a message from bytes.
-    fn parse_message(&self, source: SocketAddr, message: Vec<u8>) -> Option<Self::Message>;
-
-    /// Processes an inbound message.
+    /// Processes an inbound message. Can be used to update state, send replies etc.
     #[allow(unused_variables)]
-    fn process_message(&self, source: SocketAddr, message: &Self::Message) {
-        // do nothing by default
-    }
-
-    /// Responds to an inbound message.
-    #[allow(unused_variables)]
-    async fn respond_to_message(
-        &self,
-        source: SocketAddr,
-        message: Self::Message,
-    ) -> io::Result<()> {
+    async fn process_message(&self, source: SocketAddr, message: Vec<u8>) -> io::Result<()> {
         // don't do anything by default
         Ok(())
     }
