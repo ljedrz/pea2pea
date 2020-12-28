@@ -3,7 +3,7 @@
 [![current version](https://img.shields.io/crates/v/pea2pea.svg)](https://crates.io/crates/pea2pea)
 
 **pea2pea** is a P2P library designed with the following use cases in mind:
-- simple and quick creation of P2P networks
+- simple and quick creation of custom P2P networks
 - testing/verifying network protocols
 - benchmarking and stress-testing P2P nodes (or other network entities)
 - substituting other, "heavier" nodes in local network tests
@@ -16,12 +16,12 @@
 
 ## non-goals
 - `no_std`
-- DHT (it _can_ be applied on top, however)
 - becoming a framework
-- support for multiple `async` runtimes
+- support for multiple `async` runtimes (it should be simple enough to change it, though)
+- any functionality that can be introduced "on top" (e.g. DHT, advanced topology formation algorithms etc.)
 
 ## current state: _beta_
-- all the planned functionalities are operational
+- all the planned functionalities are available and operational
 - benchmarks demonstrate _very_ good performance (over 1GB/s in favorable scenarios)
 - the public APIs are unstable
 - more tests, benches and examples wouldn't hurt
