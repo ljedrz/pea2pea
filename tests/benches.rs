@@ -5,6 +5,7 @@ use pea2pea::{ContainsNode, Messaging, Node, NodeConfig};
 
 use std::{
     convert::TryInto,
+    io,
     net::SocketAddr,
     sync::Arc,
     time::{Duration, Instant},
@@ -32,18 +33,22 @@ impl ContainsNode for VictimBot {
 impl Messaging for VictimBot {
     type Message = ();
 
-    fn read_message(buffer: &[u8]) -> Option<&[u8]> {
-        // expecting the test messages to be prefixed with their length encoded as a LE u16
+    fn read_message(buffer: &[u8]) -> io::Result<Option<&[u8]>> {
+        // expecting the test messages to be prefixed with their length encoded as a LE u32
         if buffer.len() >= 4 {
             let payload_len = u32::from_le_bytes(buffer[..4].try_into().unwrap()) as usize;
 
-            if payload_len != 0 && buffer[4..].len() >= payload_len {
-                Some(&buffer[..4 + payload_len])
+            if payload_len == 0 {
+                return Err(io::ErrorKind::InvalidData.into());
+            }
+
+            if buffer[4..].len() >= payload_len {
+                Ok(Some(&buffer[..4 + payload_len]))
             } else {
-                None
+                Ok(None)
             }
         } else {
-            None
+            Ok(None)
         }
     }
 

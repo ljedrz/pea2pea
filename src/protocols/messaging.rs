@@ -50,6 +50,7 @@ where
             }
         });
 
+        // the default implementation is buffered; it sacrifices a bit of simplicity for better performance
         let reading_closure = |mut connection_reader: ConnectionReader,
                                addr: SocketAddr|
          -> JoinHandle<()> {
@@ -71,38 +72,58 @@ where
                             let mut processed = 0;
                             let mut left = carry + n;
 
-                            while let Some(msg) = Self::read_message(
-                                &connection_reader.buffer[processed..processed + left],
-                            ) {
-                                node.register_received_message(addr, msg.len());
+                            // several messages could have been read at once; process the contents of the bufer
+                            loop {
+                                match Self::read_message(
+                                    &connection_reader.buffer[processed..processed + left],
+                                ) {
+                                    // a full message was read successfully
+                                    Ok(Some(msg)) => {
+                                        node.register_received_message(addr, msg.len());
 
-                                if let Some(ref inbound_messages) = node.inbound_messages() {
-                                    // can't recover from an error here
-                                    inbound_messages
-                                        .send((addr, msg.to_vec()))
-                                        .await
-                                        .expect("the inbound message channel is closed")
-                                }
+                                        // send the message for further processing
+                                        if let Some(ref inbound_messages) = node.inbound_messages()
+                                        {
+                                            // can't recover from an error here
+                                            inbound_messages
+                                                .send((addr, msg.to_vec()))
+                                                .await
+                                                .expect("the inbound message channel is closed")
+                                        }
 
-                                processed += msg.len();
-                                left -= msg.len();
-                            }
-                            // if no bytes were registered as processed, advance the carry
-                            if processed == 0 {
-                                carry += n;
-                                if carry < connection_reader.buffer.len() {
-                                    continue;
-                                } else {
-                                    node.register_failure(addr);
-                                    error!(parent: node.span(), "can't read from {}: the message is too large", addr);
-                                    carry = 0;
-                                    continue;
+                                        // advance the buffer
+                                        processed += msg.len();
+                                        left -= msg.len();
+                                    }
+                                    // a partial read; it gets carried over
+                                    Ok(None) => {
+                                        carry = left;
+
+                                        // guard against messages that are larger than the read buffer
+                                        if carry >= connection_reader.buffer.len() {
+                                            node.register_failure(addr);
+                                            error!(parent: node.span(), "can't read from {}: the message is too large", addr);
+                                            // drop the connection to avoid reading borked messages
+                                            node.disconnect(addr);
+                                            return;
+                                        }
+
+                                        // rotate the buffer so the next read can complete the message
+                                        connection_reader
+                                            .buffer
+                                            .copy_within(processed..processed + left, 0);
+                                        break;
+                                    }
+                                    // an erroneous message (e.g. an unexpected zero-length payload)
+                                    Err(_) => {
+                                        node.register_failure(addr);
+                                        error!(parent: node.span(), "can't read from {}: invalid message", addr);
+                                        // drop the connection to avoid reading borked messages
+                                        node.disconnect(addr);
+                                        return;
+                                    }
                                 }
                             }
-                            connection_reader
-                                .buffer
-                                .copy_within(processed..processed + left, 0);
-                            carry = left;
                         }
                         Err(e) => {
                             node.register_failure(addr);
@@ -121,7 +142,7 @@ where
     }
 
     /// Reads a single inbound message from the given buffer.
-    fn read_message(buffer: &[u8]) -> Option<&[u8]>;
+    fn read_message(buffer: &[u8]) -> io::Result<Option<&[u8]>>;
 
     /// Deserializes a message from bytes.
     fn parse_message(&self, source: SocketAddr, message: Vec<u8>) -> Option<Self::Message>;

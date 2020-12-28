@@ -29,18 +29,22 @@ fn packet_message(message: &[u8]) -> Bytes {
 impl Messaging for Player {
     type Message = String;
 
-    fn read_message(buffer: &[u8]) -> Option<&[u8]> {
+    fn read_message(buffer: &[u8]) -> io::Result<Option<&[u8]>> {
         // expecting the test messages to be prefixed with their length encoded as a LE u16
         if buffer.len() >= 2 {
             let payload_len = u16::from_le_bytes(buffer[..2].try_into().unwrap()) as usize;
 
-            if payload_len != 0 && buffer[2..].len() >= payload_len {
-                Some(&buffer[..2 + payload_len])
+            if payload_len == 0 {
+                return Err(io::ErrorKind::InvalidData.into());
+            }
+
+            if buffer[2..].len() >= payload_len {
+                Ok(Some(&buffer[..2 + payload_len]))
             } else {
-                None
+                Ok(None)
             }
         } else {
-            None
+            Ok(None)
         }
     }
 
