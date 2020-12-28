@@ -95,7 +95,16 @@ where
                     match Self::read_message(&buffer[processed..processed + left]) {
                         // a full message was read successfully
                         Ok(Some(msg)) => {
-                            trace!("isolated a {}B message from {}", msg.len(), peer_addr);
+                            // advance the counters
+                            processed += msg.len();
+                            left -= msg.len();
+
+                            trace!(
+                                "isolated {}B as a message from {}; {}B left to process",
+                                msg.len(),
+                                peer_addr,
+                                left
+                            );
                             node.register_received_message(*peer_addr, msg.len());
 
                             // send the message for further processing
@@ -107,27 +116,30 @@ where
                                     .expect("the inbound message channel is closed")
                             }
 
-                            // advance the buffer
-                            processed += msg.len();
-                            left -= msg.len();
-
+                            // if the read is exhausted, reset the carry
                             if left == 0 {
                                 *carry = 0;
                             }
                         }
-                        // a partial read; it gets carried over
+                        // an incomplete message
                         Ok(None) => {
-                            *carry = left;
-
-                            // guard against messages that are larger than the read buffer
-                            if *carry >= buffer.len() {
+                            // forbid messages that are larger than the read buffer
+                            if left >= buffer.len() {
                                 node.register_failure(*peer_addr);
                                 error!(parent: node.span(), "a message from {} is too large", peer_addr);
 
                                 return Err(io::ErrorKind::InvalidData.into());
                             }
 
-                            // rotate the buffer so the next read can complete the message
+                            trace!(
+                                "a message from {} is incomplete; carrying {}B over",
+                                peer_addr,
+                                left
+                            );
+                            *carry = left;
+
+                            // move the leftover bytes to the beginning of the buffer; the next read will append bytes
+                            // starting from where the leftover ones end, allowing the message to be completed
                             buffer.copy_within(processed..processed + left, 0);
 
                             return Ok(());
