@@ -217,7 +217,7 @@ impl Node {
         };
 
         let reader_task = if let Some(ref messaging_closure) = self.reading_closure() {
-            Some(messaging_closure(connection_reader, peer_addr))
+            Some(messaging_closure(connection_reader))
         } else {
             None
         };

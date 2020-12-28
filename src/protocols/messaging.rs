@@ -9,7 +9,7 @@ use tokio::{
 };
 use tracing::*;
 
-use std::{io, net::SocketAddr, time::Duration};
+use std::{io, net::SocketAddr, sync::Arc, time::Duration};
 
 /// This protocol can be used to specify and enable messaging, i.e. handling of inbound messages and replying to them.
 /// If handshaking is enabled too, it goes into force only after the handshake has been concluded.
@@ -38,11 +38,10 @@ where
             }
         });
 
-        let reading_closure = |mut connection_reader: ConnectionReader,
-                               addr: SocketAddr|
-         -> JoinHandle<()> {
+        let reading_closure = |mut connection_reader: ConnectionReader| -> JoinHandle<()> {
             tokio::spawn(async move {
-                let node = connection_reader.node.clone();
+                let node = Arc::clone(&connection_reader.node);
+                let addr = connection_reader.peer_addr;
                 trace!(parent: node.span(), "spawned a task for reading messages from {}", addr);
 
                 loop {
@@ -178,4 +177,4 @@ pub type InboundMessage = Vec<u8>;
 pub type InboundMessages = Sender<(SocketAddr, InboundMessage)>;
 
 /// The closure used to receive inbound messages from every connection.
-pub type ReadingClosure = Box<dyn Fn(ConnectionReader, SocketAddr) -> JoinHandle<()> + Send + Sync>;
+pub type ReadingClosure = Box<dyn Fn(ConnectionReader) -> JoinHandle<()> + Send + Sync>;
