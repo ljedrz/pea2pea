@@ -27,10 +27,9 @@ impl TidyNode {
                 // peer stat, which would otherwise lead to a deadlock
                 let mut addrs_to_disconnect = Vec::new();
 
-                for (addr, stats) in node.known_peers.peer_stats().write().iter_mut() {
+                for (addr, stats) in node.known_peers().read().iter() {
                     if stats.failures > node.config.max_allowed_failures {
                         addrs_to_disconnect.push(*addr);
-                        stats.failures = 0;
                     }
                 }
 
@@ -62,7 +61,9 @@ async fn maintenance_example() {
         .unwrap();
 
     tidy.perform_periodic_maintenance();
-    tidy.node().register_failure(rando.node().listening_addr); // artificially report an issue with rando
+    tidy.node()
+        .known_peers()
+        .register_failure(rando.node().listening_addr); // artificially report an issue with rando
 
     wait_until!(1, tidy.node().num_connected() == 0);
 }

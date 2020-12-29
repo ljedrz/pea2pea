@@ -1,4 +1,4 @@
-use parking_lot::RwLock;
+use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use fxhash::FxHashMap;
 use std::{net::SocketAddr, time::Instant};
@@ -8,53 +8,59 @@ use std::{net::SocketAddr, time::Instant};
 pub struct KnownPeers(RwLock<FxHashMap<SocketAddr, PeerStats>>);
 
 impl KnownPeers {
-    pub(crate) fn add(&self, addr: SocketAddr) {
-        self.0.write().entry(addr).or_default().new_connection();
+    /// Adds an address to the list of known peers.
+    pub fn add(&self, addr: SocketAddr) {
+        self.write().entry(addr).or_default().new_connection();
     }
 
-    pub(crate) fn update_last_seen(&self, addr: SocketAddr) {
-        if let Some(ref mut stats) = self.0.write().get_mut(&addr) {
-            stats.update_last_seen();
-        }
+    /// Removes an address to the list of known peers.
+    pub fn remove(&self, addr: SocketAddr) -> Option<PeerStats> {
+        self.write().remove(&addr)
     }
 
-    pub(crate) fn register_sent_message(&self, to: SocketAddr, len: usize) {
-        if let Some(ref mut stats) = self.0.write().get_mut(&to) {
-            stats.register_sent_message(len)
-        }
+    /// Registers a connection to the given address, adding a peer if it hasn't been known.
+    pub fn register_connection(&self, addr: SocketAddr) {
+        self.write().entry(addr).or_default().new_connection();
     }
 
-    pub(crate) fn register_received_message(&self, from: SocketAddr, len: usize) {
-        if let Some(ref mut stats) = self.0.write().get_mut(&from) {
-            stats.register_received_message(len)
-        }
+    /// Updates the "last seen" timestamp of the given address, adding a peer if it hasn't been known.
+    pub fn update_last_seen(&self, addr: SocketAddr) {
+        self.write().entry(addr).or_default().update_last_seen();
     }
 
-    pub(crate) fn register_failure(&self, from: SocketAddr) {
-        if let Some(ref mut stats) = self.0.write().get_mut(&from) {
-            stats.register_failure();
-        }
+    /// Registers a submission of a message to the given address, adding a peer if it hasn't been known.
+    pub fn register_sent_message(&self, to: SocketAddr, len: usize) {
+        self.write().entry(to).or_default().sent_message(len);
     }
 
+    /// Registers a receipt of a message to the given address, adding a peer if it hasn't been known.
+    pub fn register_received_message(&self, from: SocketAddr, len: usize) {
+        self.write().entry(from).or_default().received_message(len);
+    }
+
+    /// Registers a failure associated with the given address, adding a peer if it hasn't been known.
+    pub fn register_failure(&self, addr: SocketAddr) {
+        self.write().entry(addr).or_default().register_failure();
+    }
+
+    /// Acquires a read lock over the collection of known peers.
+    pub fn read(&self) -> RwLockReadGuard<'_, FxHashMap<SocketAddr, PeerStats>> {
+        self.0.read()
+    }
+
+    /// Acquires a write lock over the collection of known peers.
+    pub fn write(&self) -> RwLockWriteGuard<'_, FxHashMap<SocketAddr, PeerStats>> {
+        self.0.write()
+    }
+
+    /// Returns the number of messages sent to all the peers.
     pub(crate) fn num_messages_sent(&self) -> usize {
-        self.0
-            .read()
-            .values()
-            .map(|peer_stats| peer_stats.msgs_sent)
-            .sum()
+        self.read().values().map(|stats| stats.msgs_sent).sum()
     }
 
+    /// Returns the number of messages received from all the peers.
     pub(crate) fn num_messages_received(&self) -> usize {
-        self.0
-            .read()
-            .values()
-            .map(|peer_stats| peer_stats.msgs_received)
-            .sum()
-    }
-
-    /// Provides access to the collection of node's connection statistics.
-    pub fn peer_stats(&self) -> &RwLock<FxHashMap<SocketAddr, PeerStats>> {
-        &self.0
+        self.read().values().map(|stats| stats.msgs_received).sum()
     }
 }
 
@@ -113,12 +119,12 @@ impl PeerStats {
         self.times_connected += 1;
     }
 
-    pub(crate) fn register_sent_message(&mut self, msg_len: usize) {
+    pub(crate) fn sent_message(&mut self, msg_len: usize) {
         self.msgs_sent += 1;
         self.bytes_sent += msg_len as u64;
     }
 
-    pub(crate) fn register_received_message(&mut self, msg_len: usize) {
+    pub(crate) fn received_message(&mut self, msg_len: usize) {
         self.msgs_received += 1;
         self.bytes_received += msg_len as u64;
     }

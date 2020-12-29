@@ -112,8 +112,7 @@ async fn run_bench_scenario(params: BenchParams) {
 
     let bytes_received = sink
         .node()
-        .known_peers
-        .peer_stats()
+        .known_peers()
         .read()
         .values()
         .map(|stats| stats.bytes_received)

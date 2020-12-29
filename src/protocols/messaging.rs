@@ -31,7 +31,7 @@ where
                     tokio::spawn(async move {
                         if let Err(e) = self_clone.process_message(source, msg).await {
                             error!(parent: self_clone.node().span(), "failed to respond to an inbound message: {}", e);
-                            self_clone.node().register_failure(source);
+                            self_clone.node().known_peers().register_failure(source);
                         }
                     });
                 }
@@ -46,7 +46,7 @@ where
 
                 loop {
                     if let Err(e) = Self::read_from_stream(&mut connection_reader).await {
-                        node.register_failure(addr);
+                        node.known_peers().register_failure(addr);
                         match e.kind() {
                             io::ErrorKind::InvalidData => {
                                 // drop the connection to avoid reading borked messages
@@ -105,7 +105,8 @@ where
                                 addr,
                                 left
                             );
-                            node.register_received_message(*addr, msg.len());
+                            node.known_peers()
+                                .register_received_message(*addr, msg.len());
 
                             // send the message for further processing
                             if let Some(ref inbound_messages) = node.inbound_messages() {

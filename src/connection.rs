@@ -117,15 +117,17 @@ impl Connection {
                 // try adding a buffer for extra writing perf
                 while let Some(msg) = message_receiver.recv().await {
                     if let Err(e) = writer.write_all(&msg).await {
-                        node_clone.register_failure(addr);
+                        node_clone.known_peers().register_failure(addr);
                         error!(parent: node_clone.span(), "couldn't send {}B to {}: {}", msg.len(), addr, e);
                     } else {
-                        node_clone.register_sent_message(addr, msg.len());
+                        node_clone
+                            .known_peers()
+                            .register_sent_message(addr, msg.len());
                         trace!(parent: node_clone.span(), "sent {}B to {}", msg.len(), addr);
                     }
                 }
                 if let Err(e) = writer.flush().await {
-                    node_clone.register_failure(addr);
+                    node_clone.known_peers().register_failure(addr);
                     error!(parent: node_clone.span(), "couldn't flush the stream to {}: {}", addr, e);
                 }
             }
@@ -159,11 +161,7 @@ impl Drop for Connection {
         // of the associated peer, so the related stats are unreliable; the next connection initiated by the
         // peer could be bound to an entirely different port number
         if matches!(self.side, ConnectionSide::Initiator) {
-            self.node
-                .known_peers
-                .peer_stats()
-                .write()
-                .remove(&self.addr);
+            self.node.known_peers().remove(self.addr);
         }
     }
 }

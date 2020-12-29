@@ -39,7 +39,7 @@ pub struct Node {
     /// Contains objects related to the node's active connections.
     connections: Connections,
     /// Collects statistics related to the node's connections.
-    pub known_peers: KnownPeers,
+    known_peers: KnownPeers,
 }
 
 impl Node {
@@ -206,7 +206,7 @@ impl Node {
                 }
                 _ => {
                     error!(parent: self.span(), "handshake with {} failed; dropping the connection", peer_addr);
-                    self.register_failure(peer_addr);
+                    self.known_peers().register_failure(peer_addr);
                     return Err(ErrorKind::Other.into());
                 }
             }
@@ -222,6 +222,7 @@ impl Node {
         }
 
         self.connections.add(connection);
+        self.known_peers.register_connection(peer_addr);
 
         Ok(())
     }
@@ -279,19 +280,9 @@ impl Node {
         self.connections.addrs()
     }
 
-    /// Updates the peer's statistics upon successful submission of a message.
-    pub fn register_sent_message(&self, from: SocketAddr, len: usize) {
-        self.known_peers.register_sent_message(from, len)
-    }
-
-    /// Updates the peer's statistics upon successful receipt of a message.
-    pub fn register_received_message(&self, from: SocketAddr, len: usize) {
-        self.known_peers.register_received_message(from, len)
-    }
-
-    /// Updates the peer's statistics upon a failure.
-    pub fn register_failure(&self, from: SocketAddr) {
-        self.known_peers.register_failure(from)
+    /// Returns a reference to the collection of statistics of node's known peers.
+    pub fn known_peers(&self) -> &KnownPeers {
+        &self.known_peers
     }
 
     /// Checks whether the provided address is connected.
@@ -312,11 +303,6 @@ impl Node {
     /// Returns the number of all received messages.
     pub fn num_messages_received(&self) -> usize {
         self.known_peers.num_messages_received()
-    }
-
-    /// Updates the "last seen" timestamp of a connection with the given address.
-    pub fn update_last_seen(&self, addr: SocketAddr) {
-        self.known_peers.update_last_seen(addr);
     }
 
     /// Returns a `Sender` for the channel handling all the
