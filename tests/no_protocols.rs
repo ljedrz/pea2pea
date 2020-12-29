@@ -25,8 +25,5 @@ async fn no_protocols_usage() {
         .await
         .unwrap();
 
-    wait_until!(
-        1,
-        bore1.num_messages_sent() == 1 && bore2.num_messages_received() == 0
-    );
+    wait_until!(1, bore1.stats.sent().0 == 1);
 }

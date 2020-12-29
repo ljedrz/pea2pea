@@ -112,7 +112,7 @@ async fn messaging_example() {
         .unwrap();
 
     // check if the shouter heard the (non-duplicate) echoes and the last, non-reply one
-    wait_until!(1, shouter.node().num_messages_received() == 3);
+    wait_until!(1, shouter.node().stats.received().0 == 3);
 }
 
 #[tokio::test]

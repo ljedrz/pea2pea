@@ -107,6 +107,7 @@ where
                             );
                             node.known_peers()
                                 .register_received_message(*addr, msg.len());
+                            node.stats.register_received_message(msg.len());
 
                             // send the message for further processing
                             if let Some(ref inbound_messages) = node.inbound_messages() {

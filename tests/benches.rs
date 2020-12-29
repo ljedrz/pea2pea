@@ -106,7 +106,7 @@ async fn run_bench_scenario(params: BenchParams) {
 
     wait_until!(
         10,
-        sink.node().num_messages_received() == spammer_count * msg_count
+        sink.node().stats.received().0 as usize == spammer_count * msg_count
     );
     let time_elapsed = start.elapsed().as_millis();
 

@@ -69,6 +69,6 @@ async fn broadcast_example() {
         1,
         random_nodes
             .iter()
-            .all(|rando| rando.node().num_messages_received() > 0)
+            .all(|rando| rando.node().stats.received().0 != 0)
     );
 }

@@ -52,16 +52,6 @@ impl KnownPeers {
     pub fn write(&self) -> RwLockWriteGuard<'_, FxHashMap<SocketAddr, PeerStats>> {
         self.0.write()
     }
-
-    /// Returns the number of messages sent to all the peers.
-    pub(crate) fn num_messages_sent(&self) -> usize {
-        self.read().values().map(|stats| stats.msgs_sent).sum()
-    }
-
-    /// Returns the number of messages received from all the peers.
-    pub(crate) fn num_messages_received(&self) -> usize {
-        self.read().values().map(|stats| stats.msgs_received).sum()
-    }
 }
 
 /// Contains statistics related to a single connection.

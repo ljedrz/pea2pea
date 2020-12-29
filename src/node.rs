@@ -2,6 +2,7 @@ use crate::config::NodeConfig;
 use crate::connection::{Connection, ConnectionReader, ConnectionSide};
 use crate::connections::Connections;
 use crate::known_peers::KnownPeers;
+use crate::node_stats::NodeStats;
 use crate::protocols::{HandshakeSetup, InboundMessages, Protocols, ReadingClosure};
 
 use bytes::Bytes;
@@ -40,6 +41,8 @@ pub struct Node {
     connections: Connections,
     /// Collects statistics related to the node's connections.
     known_peers: KnownPeers,
+    /// Collects statistics related to the node itself.
+    pub stats: NodeStats,
 }
 
 impl Node {
@@ -90,6 +93,7 @@ impl Node {
             protocols: Default::default(),
             connections: Default::default(),
             known_peers: Default::default(),
+            stats: Default::default(),
         });
 
         let node_clone = Arc::clone(&node);
@@ -222,6 +226,7 @@ impl Node {
         }
 
         self.connections.add(connection);
+        self.stats.register_connection();
         self.known_peers.register_connection(peer_addr);
 
         Ok(())
@@ -293,16 +298,6 @@ impl Node {
     /// Returns the number of active connections.
     pub fn num_connected(&self) -> usize {
         self.connections.num_connected()
-    }
-
-    /// Returns the number of all sent messages.
-    pub fn num_messages_sent(&self) -> usize {
-        self.known_peers.num_messages_sent()
-    }
-
-    /// Returns the number of all received messages.
-    pub fn num_messages_received(&self) -> usize {
-        self.known_peers.num_messages_received()
     }
 
     /// Returns a `Sender` for the channel handling all the

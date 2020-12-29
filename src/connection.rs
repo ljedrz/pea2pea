@@ -123,6 +123,7 @@ impl Connection {
                         node_clone
                             .known_peers()
                             .register_sent_message(addr, msg.len());
+                        node_clone.stats.register_sent_message(msg.len());
                         trace!(parent: node_clone.span(), "sent {}B to {}", msg.len(), addr);
                     }
                 }

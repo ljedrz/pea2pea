@@ -74,8 +74,5 @@ async fn telephone_game() {
         .await
         .unwrap();
 
-    wait_until!(
-        1,
-        players.last().unwrap().node().num_messages_received() == 1
-    );
+    wait_until!(1, players.last().unwrap().node().stats.received().0 == 1);
 }

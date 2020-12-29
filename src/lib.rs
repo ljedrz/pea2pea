@@ -11,6 +11,7 @@ mod connection;
 mod connections;
 mod known_peers;
 mod node;
+mod node_stats;
 mod protocols;
 mod topology;
 
@@ -18,6 +19,7 @@ pub use config::NodeConfig;
 pub use connection::{Connection, ConnectionReader};
 pub use known_peers::{KnownPeers, PeerStats};
 pub use node::{ContainsNode, Node};
+pub use node_stats::NodeStats;
 pub use protocols::{
     HandshakeSetup, HandshakeState, Handshaking, InboundMessage, Messaging, ReadingClosure,
 };
