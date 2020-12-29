@@ -23,6 +23,8 @@ tokio = { version = "1", features = ["io-util", "macros", "net", "parking_lot", 
 tracing = { version = "0.1", features = ["attributes"] }
 
 [dev-dependencies]
+bincode = "1"
 rand = { version = "0.8", features = ["small_rng"] }
+serde = { version = "1", features = ["derive"] }
 snow = "0.7"
 tracing-subscriber = { version = "0.2", features = ["ansi", "chrono", "env-filter", "fmt", "parking_lot", "smallvec"] }
