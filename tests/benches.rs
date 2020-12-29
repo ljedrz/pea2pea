@@ -108,15 +108,9 @@ async fn run_bench_scenario(params: BenchParams) {
         10,
         sink.node().stats.received().0 as usize == spammer_count * msg_count
     );
-    let time_elapsed = start.elapsed().as_millis();
 
-    let bytes_received = sink
-        .node()
-        .known_peers()
-        .read()
-        .values()
-        .map(|stats| stats.bytes_received)
-        .sum::<u64>();
+    let time_elapsed = start.elapsed().as_millis();
+    let bytes_received = sink.node().stats.received().1;
 
     let throughput = (bytes_received as f64) / (time_elapsed as f64 / 100.0);
     display_throughput(throughput);
