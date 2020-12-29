@@ -50,7 +50,7 @@ impl Messaging for EchoNode {
             info!(parent: self.node().span(), "it was new! echoing it");
 
             self.node()
-                .send_direct_message(source, message.into())
+                .send_direct_message(source, message)
                 .await
                 .unwrap();
         } else {
