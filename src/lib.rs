@@ -20,7 +20,5 @@ pub use connection::{Connection, ConnectionReader};
 pub use known_peers::{KnownPeers, PeerStats};
 pub use node::{ContainsNode, Node};
 pub use node_stats::NodeStats;
-pub use protocols::{
-    HandshakeSetup, HandshakeState, Handshaking, InboundMessage, Messaging, ReadingClosure,
-};
+pub use protocols::{HandshakeSetup, HandshakeState, Handshaking, Messaging, ReadingClosure};
 pub use topology::{connect_nodes, Topology};

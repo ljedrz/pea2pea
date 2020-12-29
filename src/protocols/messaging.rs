@@ -1,6 +1,7 @@
 use crate::{ConnectionReader, ContainsNode};
 
 use async_trait::async_trait;
+use bytes::Bytes;
 use tokio::{
     io::AsyncReadExt,
     sync::mpsc::{channel, Sender},
@@ -113,7 +114,7 @@ where
                             if let Some(ref inbound_messages) = node.inbound_messages() {
                                 // can't recover from an error here
                                 inbound_messages
-                                    .send((*addr, msg.to_vec()))
+                                    .send((*addr, Bytes::copy_from_slice(msg)))
                                     .await
                                     .expect("the inbound message channel is closed")
                             }
@@ -166,17 +167,14 @@ where
 
     /// Processes an inbound message. Can be used to update state, send replies etc.
     #[allow(unused_variables)]
-    async fn process_message(&self, source: SocketAddr, message: Vec<u8>) -> io::Result<()> {
+    async fn process_message(&self, source: SocketAddr, message: Bytes) -> io::Result<()> {
         // don't do anything by default
         Ok(())
     }
 }
 
-/// The type transmitted using the `InboundMessages` sender.
-pub type InboundMessage = Vec<u8>;
-
 /// A sender used to transmit inbound messages from the reader task for further handling by the node.
-pub type InboundMessages = Sender<(SocketAddr, InboundMessage)>;
+pub type InboundMessages = Sender<(SocketAddr, Bytes)>;
 
 /// The closure used to receive inbound messages from every connection.
 pub type ReadingClosure = Box<dyn Fn(ConnectionReader) -> JoinHandle<()> + Send + Sync>;

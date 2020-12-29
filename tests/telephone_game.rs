@@ -1,3 +1,4 @@
+use bytes::Bytes;
 use tracing::*;
 
 mod common;
@@ -20,7 +21,7 @@ impl Messaging for Player {
         common::read_len_prefixed_message(2, buffer)
     }
 
-    async fn process_message(&self, source: SocketAddr, message: Vec<u8>) -> io::Result<()> {
+    async fn process_message(&self, source: SocketAddr, message: Bytes) -> io::Result<()> {
         // the first 2B are the u16 length
         let message = String::from_utf8(message[2..].to_vec()).unwrap();
 

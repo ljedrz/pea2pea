@@ -4,7 +4,7 @@ mod handshaking;
 mod messaging;
 
 pub use handshaking::{HandshakeSetup, HandshakeState, Handshaking};
-pub use messaging::{InboundMessage, Messaging, ReadingClosure};
+pub use messaging::{Messaging, ReadingClosure};
 
 pub(crate) use messaging::InboundMessages;
 

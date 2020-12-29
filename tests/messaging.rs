@@ -1,3 +1,4 @@
+use bytes::Bytes;
 use parking_lot::Mutex;
 use tracing::*;
 
@@ -31,7 +32,7 @@ impl Messaging for EchoNode {
         common::read_len_prefixed_message(2, buffer)
     }
 
-    async fn process_message(&self, source: SocketAddr, message: Vec<u8>) -> io::Result<()> {
+    async fn process_message(&self, source: SocketAddr, message: Bytes) -> io::Result<()> {
         // the first 2B are the u16 length, last one is the payload
         let deserialized_message = if message.len() == 3 {
             match message[2] {

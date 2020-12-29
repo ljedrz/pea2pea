@@ -223,7 +223,7 @@ impl Messaging for SecureNode {
         read_message(buffer)
     }
 
-    async fn process_message(&self, source: SocketAddr, message: Vec<u8>) -> io::Result<()> {
+    async fn process_message(&self, source: SocketAddr, message: Bytes) -> io::Result<()> {
         // disregard the length prefix
         let message = &message[2..];
 

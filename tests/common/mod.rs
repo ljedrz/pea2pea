@@ -74,7 +74,7 @@ macro_rules! impl_messaging {
                 crate::common::read_len_prefixed_message(2, buffer)
             }
 
-            async fn process_message(&self, source: SocketAddr, _message: Vec<u8>) -> io::Result<()> {
+            async fn process_message(&self, source: SocketAddr, _message: Bytes) -> io::Result<()> {
                 info!(parent: self.node().span(), "received a message from {}", source);
                 Ok(())
             }
