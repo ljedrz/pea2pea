@@ -1,9 +1,7 @@
-use crate::config::NodeConfig;
-use crate::connection::{Connection, ConnectionReader, ConnectionSide};
+use crate::connection::ConnectionSide;
 use crate::connections::Connections;
-use crate::known_peers::KnownPeers;
-use crate::node_stats::NodeStats;
-use crate::protocols::{HandshakeSetup, InboundMessages, Protocols, ReadingClosure};
+use crate::protocols::{InboundMessages, Protocols};
+use crate::*;
 
 use bytes::Bytes;
 use tokio::net::{TcpListener, TcpStream};
