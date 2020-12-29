@@ -10,7 +10,17 @@ use pea2pea::{
     Handshaking, Messaging, Node, NodeConfig, Topology,
 };
 
-use std::{collections::HashMap, convert::TryInto, io, net::SocketAddr, sync::Arc, time::Duration};
+use std::{
+    collections::HashMap,
+    convert::TryInto,
+    io,
+    net::SocketAddr,
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
+    time::Duration,
+};
 
 type PlayerName = String;
 
@@ -26,6 +36,7 @@ struct PlayerNode {
     node: Arc<Node>,
     other_players: Arc<Mutex<HashMap<PlayerName, Player>>>,
     rng: Arc<Mutex<SmallRng>>,
+    potato_count: Arc<AtomicUsize>,
 }
 
 impl PlayerNode {
@@ -38,6 +49,7 @@ impl PlayerNode {
             node,
             other_players: Default::default(),
             rng,
+            potato_count: Default::default(),
         }
     }
 
@@ -47,32 +59,21 @@ impl PlayerNode {
         let message = bincode::serialize(&message).unwrap();
         self.node().send_broadcast(prefix_message(&message)).await;
 
-        let (new_carrier_name, new_carrier_addr) = {
-            let players_lock = self.other_players.lock();
-            let new_carrier = players_lock
-                .values()
-                .filter(|p| !p.is_carrier)
-                .choose(&mut *self.rng.lock())
-                .unwrap();
-
-            (new_carrier.name.clone(), new_carrier.addr)
-        };
-
-        // take a moment to "decide" who to throw the potato to
-        sleep(Duration::from_secs(1)).await;
+        let (new_carrier_name, new_carrier_addr) = self
+            .other_players
+            .lock()
+            .iter()
+            .map(|(name, player)| (name.clone(), player.addr))
+            .choose(&mut *self.rng.lock())
+            .unwrap();
 
         info!(parent: self.node().span(), "throwing the potato to {}!", new_carrier_name);
 
-        let message = Message::HotPotato;
-        let message = bincode::serialize(&message).unwrap();
+        let message = bincode::serialize(&Message::HotPotato).unwrap();
         self.node()
             .send_direct_message(new_carrier_addr, prefix_message(&message))
             .await
             .unwrap();
-
-        if let Some(ref mut new_carrier) = self.other_players.lock().get_mut(&new_carrier_name) {
-            new_carrier.is_carrier = true;
-        }
     }
 }
 
@@ -203,17 +204,25 @@ impl Messaging for PlayerNode {
 
         match message {
             Message::HotPotato => {
-                self.throw_potato().await;
-            }
-            Message::IHaveThePotato(carrier) => {
-                let mut players_lock = self.other_players.lock();
-
-                if let Some(ref mut old_carrier) = players_lock.values_mut().find(|p| p.is_carrier)
+                if let Some(ref mut old_carrier) = self
+                    .other_players
+                    .lock()
+                    .values_mut()
+                    .find(|p| p.is_carrier)
                 {
                     old_carrier.is_carrier = false;
                 }
 
-                if let Some(ref mut new_carrier) = players_lock.get_mut(&carrier) {
+                self.potato_count.fetch_add(1, Ordering::Relaxed);
+                self.throw_potato().await;
+            }
+            Message::IHaveThePotato(carrier) => {
+                let mut players = self.other_players.lock();
+
+                if let Some(ref mut old_carrier) = players.values_mut().find(|p| p.is_carrier) {
+                    old_carrier.is_carrier = false;
+                }
+                if let Some(ref mut new_carrier) = players.get_mut(&carrier) {
                     new_carrier.is_carrier = true;
                 }
             }
@@ -227,7 +236,14 @@ impl Messaging for PlayerNode {
 async fn main() {
     tracing_subscriber::fmt::init();
 
+    const GAME_TIME_SECS: u64 = 5;
     const NUM_PLAYERS: usize = 10;
+
+    println!(
+        "hot potato! players: {}, play time: {}s",
+        NUM_PLAYERS, GAME_TIME_SECS
+    );
+
     let rng = Arc::new(Mutex::new(SmallRng::from_entropy()));
 
     let mut players = Vec::with_capacity(NUM_PLAYERS);
@@ -242,7 +258,19 @@ async fn main() {
     connect_nodes(&players, Topology::Mesh).await.unwrap();
 
     let first_carrier = rng.lock().gen_range(0..NUM_PLAYERS);
+    players[first_carrier]
+        .potato_count
+        .fetch_add(1, Ordering::Relaxed);
     players[first_carrier].throw_potato().await;
 
-    sleep(Duration::from_secs(60)).await;
+    sleep(Duration::from_secs(GAME_TIME_SECS)).await;
+
+    println!("\n---------- scoreboard ----------");
+    for player in &players {
+        println!(
+            "{} got the potato {} times",
+            player.node().name(),
+            player.potato_count.load(Ordering::Relaxed)
+        );
+    }
 }
