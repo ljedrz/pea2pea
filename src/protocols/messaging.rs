@@ -101,6 +101,7 @@ where
                             left -= msg.len();
 
                             trace!(
+                                parent: node.span(),
                                 "isolated {}B as a message from {}; {}B left to process",
                                 msg.len(),
                                 addr,
@@ -134,6 +135,7 @@ where
                             }
 
                             trace!(
+                                parent: node.span(),
                                 "a message from {} is incomplete; carrying {}B over",
                                 addr,
                                 left
