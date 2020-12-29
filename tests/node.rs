@@ -1,3 +1,4 @@
+mod common;
 use pea2pea::{connect_nodes, Node, NodeConfig, Topology};
 
 #[tokio::test]
@@ -23,7 +24,7 @@ async fn node_creation_used_port_fails() {
 
 #[tokio::test]
 async fn node_connect_and_disconnect() {
-    let nodes = Node::new_multiple(2, None).await.unwrap();
+    let nodes = common::start_nodes(2, None).await.unwrap();
     connect_nodes(&nodes, Topology::Line).await.unwrap();
 
     assert!(nodes[0].disconnect(nodes[1].listening_addr));

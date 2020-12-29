@@ -51,7 +51,7 @@ impl Messaging for Player {
 async fn telephone_game() {
     tracing_subscriber::fmt::init();
 
-    let players = Node::new_multiple(100, None)
+    let players = common::start_nodes(100, None)
         .await
         .unwrap()
         .into_iter()

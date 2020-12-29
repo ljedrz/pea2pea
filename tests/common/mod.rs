@@ -5,12 +5,18 @@ use tracing::*;
 
 use pea2pea::{ContainsNode, Messaging, Node, NodeConfig};
 
-use std::{
-    convert::TryInto,
-    io::{self, ErrorKind},
-    net::SocketAddr,
-    sync::Arc,
-};
+use std::{convert::TryInto, io, net::SocketAddr, sync::Arc};
+
+pub async fn start_nodes(count: usize, config: Option<NodeConfig>) -> io::Result<Vec<Arc<Node>>> {
+    let mut nodes = Vec::with_capacity(count);
+
+    for _ in 0..count {
+        let node = Node::new(config.clone()).await?;
+        nodes.push(node);
+    }
+
+    Ok(nodes)
+}
 
 #[derive(Clone)]
 pub struct RandomNode(pub Arc<Node>);
@@ -38,7 +44,7 @@ pub fn read_len_prefixed_message(len_size: usize, buffer: &[u8]) -> io::Result<O
         };
 
         if payload_len == 0 {
-            return Err(ErrorKind::InvalidData.into());
+            return Err(io::ErrorKind::InvalidData.into());
         }
 
         if buffer[len_size..].len() >= payload_len {

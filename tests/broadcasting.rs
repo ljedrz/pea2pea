@@ -40,7 +40,7 @@ impl ChattyNode {
 async fn broadcast_example() {
     tracing_subscriber::fmt::init();
 
-    let random_nodes = Node::new_multiple(4, None)
+    let random_nodes = common::start_nodes(4, None)
         .await
         .unwrap()
         .into_iter()
