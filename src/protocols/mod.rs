@@ -4,13 +4,10 @@ mod handshaking;
 mod messaging;
 
 pub use handshaking::{HandshakeHandler, HandshakeObjects, Handshaking};
-pub use messaging::{Messaging, ReadingClosure};
-
-pub(crate) use messaging::InboundMessages;
+pub use messaging::{InboundHandler, Messaging};
 
 #[derive(Default)]
 pub(crate) struct Protocols {
-    pub(crate) reading_closure: OnceCell<ReadingClosure>,
-    pub(crate) inbound_messages: OnceCell<InboundMessages>,
+    pub(crate) inbound_handler: OnceCell<InboundHandler>,
     pub(crate) handshake_handler: OnceCell<HandshakeHandler>,
 }

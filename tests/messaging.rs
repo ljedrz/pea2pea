@@ -1,4 +1,3 @@
-use bytes::Bytes;
 use parking_lot::Mutex;
 use tracing::*;
 
@@ -12,6 +11,16 @@ use std::{collections::HashSet, io, net::SocketAddr, sync::Arc};
 enum TestMessage {
     Herp,
     Derp,
+}
+
+impl From<u8> for TestMessage {
+    fn from(byte: u8) -> Self {
+        match byte {
+            0 => Self::Herp,
+            1 => Self::Derp,
+            _ => panic!("can't deserialize a TestMessage!"),
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -28,33 +37,26 @@ impl Pea2Pea for EchoNode {
 
 #[async_trait::async_trait]
 impl Messaging for EchoNode {
-    fn read_message(buffer: &[u8]) -> io::Result<Option<&[u8]>> {
-        common::read_len_prefixed_message(2, buffer)
+    type Message = TestMessage;
+
+    fn read_message(buffer: &[u8]) -> io::Result<Option<(Self::Message, usize)>> {
+        let bytes = common::read_len_prefixed_message(2, buffer)?;
+
+        Ok(bytes.map(|bytes| (TestMessage::from(bytes[2]), bytes.len())))
     }
 
-    async fn process_message(&self, source: SocketAddr, message: Bytes) -> io::Result<()> {
-        // the first 2B are the u16 length, last one is the payload
-        let deserialized_message = if message.len() == 3 {
-            match message[2] {
-                0 => Herp,
-                1 => Derp,
-                _ => return Err(io::ErrorKind::InvalidData.into()),
-            }
-        } else {
-            return Err(io::ErrorKind::InvalidData.into());
-        };
+    async fn process_message(&self, source: SocketAddr, message: Self::Message) -> io::Result<()> {
+        info!(parent: self.node().span(), "got a {:?} from {}", message, source);
 
-        info!(parent: self.node().span(), "got a {:?} from {}", deserialized_message, source);
-
-        if self.echoed.lock().insert(deserialized_message) {
+        if self.echoed.lock().insert(message) {
             info!(parent: self.node().span(), "it was new! echoing it");
 
             self.node()
-                .send_direct_message(source, message)
+                .send_direct_message(source, common::prefix_with_len(2, &[message as u8]))
                 .await
                 .unwrap();
         } else {
-            debug!(parent: self.node().span(), "I've already heard {:?}! not echoing", deserialized_message);
+            debug!(parent: self.node().span(), "I've already heard {:?}! not echoing", message);
         }
 
         Ok(())

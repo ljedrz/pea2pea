@@ -1,4 +1,3 @@
-use bytes::Bytes;
 use tracing::*;
 
 mod common;
@@ -17,14 +16,15 @@ impl Pea2Pea for Player {
 
 #[async_trait::async_trait]
 impl Messaging for Player {
-    fn read_message(buffer: &[u8]) -> io::Result<Option<&[u8]>> {
-        common::read_len_prefixed_message(2, buffer)
+    type Message = String;
+
+    fn read_message(buffer: &[u8]) -> io::Result<Option<(String, usize)>> {
+        let bytes = common::read_len_prefixed_message(2, buffer)?;
+
+        Ok(bytes.map(|bytes| (String::from_utf8(bytes[2..].to_vec()).unwrap(), bytes.len())))
     }
 
-    async fn process_message(&self, source: SocketAddr, message: Bytes) -> io::Result<()> {
-        // the first 2B are the u16 length
-        let message = String::from_utf8(message[2..].to_vec()).unwrap();
-
+    async fn process_message(&self, source: SocketAddr, message: String) -> io::Result<()> {
         info!(
             parent: self.node().span(),
             "{} said \"{}\"{}",

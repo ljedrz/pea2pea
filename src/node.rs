@@ -1,6 +1,6 @@
 use crate::connection::ConnectionSide;
 use crate::connections::Connections;
-use crate::protocols::{InboundMessages, Protocols};
+use crate::protocols::Protocols;
 use crate::*;
 
 use bytes::Bytes;
@@ -184,11 +184,13 @@ impl Node {
             (connection_reader, connection)
         };
 
-        if let Some(ref messaging_closure) = self.reading_closure() {
+        if let Some(ref inbound_handler) = self.inbound_handler() {
+            inbound_handler.send(connection_reader).await;
+            /* TODO: assign task handle; prolly obtain it using a oneshot
             connection
                 .reader_task
                 .set(messaging_closure(connection_reader))
-                .unwrap();
+                .unwrap();*/
         }
 
         self.connections.add(connection);
@@ -266,16 +268,9 @@ impl Node {
         self.connections.num_connected()
     }
 
-    /// Returns a `Sender` for the channel handling all the
-    /// incoming messages, if Messaging is enabled.
-    pub fn inbound_messages(&self) -> Option<&InboundMessages> {
-        self.protocols.inbound_messages.get()
-    }
-
-    /// Returns the closure responsible for spawning per-connection
-    /// tasks for handling inbound messages, if Messaging is enabled.
-    fn reading_closure(&self) -> Option<&ReadingClosure> {
-        self.protocols.reading_closure.get()
+    /// Returns a `Sender` for the channel handling messages from a connection, if Messaging is enabled.
+    pub fn inbound_handler(&self) -> Option<&InboundHandler> {
+        self.protocols.inbound_handler.get()
     }
 
     /// Returns a handle to the handshake handler, if Handshaking is enabled.
@@ -283,19 +278,10 @@ impl Node {
         self.protocols.handshake_handler.get()
     }
 
-    /// Sets up the `Sender` for handling all incoming messages, as part of the Messaging protocol.
-    pub fn set_inbound_messages(&self, sender: InboundMessages) {
-        self.protocols
-            .inbound_messages
-            .set(sender)
-            .expect("the inbound_messages field was set more than once!");
-    }
-
-    /// Sets up the closure responsible for spawning per-connection
-    /// tasks for handling inbound messages, as part of the Messaging protocol.
-    pub fn set_reading_closure(&self, closure: ReadingClosure) {
-        if self.protocols.reading_closure.set(closure).is_err() {
-            panic!("the reading_closure field was set more than once!");
+    /// Sets up the `Sender` for handling messages from a single connection, as part of the Messaging protocol.
+    pub fn set_inbound_handler(&self, sender: InboundHandler) {
+        if self.protocols.inbound_handler.set(sender).is_err() {
+            panic!("the inbound_handler field was set more than once!");
         }
     }
 

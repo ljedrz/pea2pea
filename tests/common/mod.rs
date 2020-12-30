@@ -101,11 +101,15 @@ macro_rules! impl_messaging {
     ($target: ty) => {
         #[async_trait::async_trait]
         impl Messaging for $target {
-            fn read_message(buffer: &[u8]) -> io::Result<Option<&[u8]>> {
-                crate::common::read_len_prefixed_message(2, buffer)
+            type Message = Bytes;
+
+            fn read_message(buffer: &[u8]) -> io::Result<Option<(Self::Message, usize)>> {
+                let bytes = crate::common::read_len_prefixed_message(2, buffer)?;
+
+                Ok(bytes.map(|bytes| (Bytes::copy_from_slice(&bytes[2..]), bytes.len())))
             }
 
-            async fn process_message(&self, source: SocketAddr, _message: Bytes) -> io::Result<()> {
+            async fn process_message(&self, source: SocketAddr, _message: Self::Message) -> io::Result<()> {
                 info!(parent: self.node().span(), "received a message from {}", source);
                 Ok(())
             }

@@ -165,7 +165,9 @@ enum Message {
 
 #[async_trait::async_trait]
 impl Messaging for PlayerNode {
-    fn read_message(buffer: &[u8]) -> io::Result<Option<&[u8]>> {
+    type Message = Message;
+
+    fn read_message(buffer: &[u8]) -> io::Result<Option<(Self::Message, usize)>> {
         // expecting incoming messages to be prefixed with their length encoded as a LE u16
         if buffer.len() >= 2 {
             let payload_len = u16::from_le_bytes(buffer[..2].try_into().unwrap()) as usize;
@@ -175,7 +177,9 @@ impl Messaging for PlayerNode {
             }
 
             if buffer[2..].len() >= payload_len {
-                Ok(Some(&buffer[..2 + payload_len]))
+                let message = bincode::deserialize(&buffer[2..2 + payload_len]).unwrap();
+
+                Ok(Some((message, 2 + payload_len)))
             } else {
                 Ok(None)
             }
@@ -184,9 +188,7 @@ impl Messaging for PlayerNode {
         }
     }
 
-    async fn process_message(&self, _source: SocketAddr, message: Bytes) -> io::Result<()> {
-        let message = bincode::deserialize(&message[2..]).unwrap();
-
+    async fn process_message(&self, _source: SocketAddr, message: Self::Message) -> io::Result<()> {
         match message {
             Message::HotPotato => {
                 if let Some(ref mut old_carrier) = self

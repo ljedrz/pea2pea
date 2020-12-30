@@ -16,8 +16,12 @@ impl Pea2Pea for Tester {
 
 #[async_trait::async_trait]
 impl Messaging for Tester {
-    fn read_message(buffer: &[u8]) -> io::Result<Option<&[u8]>> {
-        common::read_len_prefixed_message(2, buffer)
+    type Message = ();
+
+    fn read_message(buffer: &[u8]) -> io::Result<Option<(Self::Message, usize)>> {
+        let bytes = common::read_len_prefixed_message(2, buffer)?;
+
+        Ok(bytes.map(|bytes| ((), bytes.len())))
     }
 }
 
