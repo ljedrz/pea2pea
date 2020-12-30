@@ -103,7 +103,7 @@ macro_rules! impl_messaging {
         impl Messaging for $target {
             type Message = Bytes;
 
-            fn read_message(&self, buffer: &[u8]) -> io::Result<Option<(Self::Message, usize)>> {
+            fn read_message(&self, _source: SocketAddr, buffer: &[u8]) -> io::Result<Option<(Self::Message, usize)>> {
                 let bytes = crate::common::read_len_prefixed_message(2, buffer)?;
 
                 Ok(bytes.map(|bytes| (Bytes::copy_from_slice(&bytes[2..]), bytes.len())))

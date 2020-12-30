@@ -18,7 +18,11 @@ impl Pea2Pea for Player {
 impl Messaging for Player {
     type Message = String;
 
-    fn read_message(&self, buffer: &[u8]) -> io::Result<Option<(String, usize)>> {
+    fn read_message(
+        &self,
+        _source: SocketAddr,
+        buffer: &[u8],
+    ) -> io::Result<Option<(String, usize)>> {
         let bytes = common::read_len_prefixed_message(2, buffer)?;
 
         Ok(bytes.map(|bytes| (String::from_utf8(bytes[2..].to_vec()).unwrap(), bytes.len())))

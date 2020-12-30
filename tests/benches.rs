@@ -1,7 +1,7 @@
 mod common;
 use pea2pea::{Messaging, Node, NodeConfig, Pea2Pea};
 
-use std::{io, sync::Arc, time::Instant};
+use std::{io, net::SocketAddr, sync::Arc, time::Instant};
 
 #[derive(Clone)]
 struct Sink(Arc<Node>);
@@ -16,7 +16,11 @@ impl Pea2Pea for Sink {
 impl Messaging for Sink {
     type Message = ();
 
-    fn read_message(&self, buffer: &[u8]) -> io::Result<Option<(Self::Message, usize)>> {
+    fn read_message(
+        &self,
+        _source: SocketAddr,
+        buffer: &[u8],
+    ) -> io::Result<Option<(Self::Message, usize)>> {
         let bytes = common::read_len_prefixed_message(4, buffer)?;
 
         Ok(bytes.map(|bytes| ((), bytes.len())))

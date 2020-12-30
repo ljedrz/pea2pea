@@ -30,7 +30,7 @@ impl Pea2Pea for SecureNode {
 }
 
 // read the first message from the provided buffer
-fn read_message(buffer: &[u8]) -> io::Result<Option<(Bytes, usize)>> {
+fn read_message(buffer: &[u8]) -> io::Result<Option<&[u8]>> {
     // expecting the test messages to be prefixed with their length encoded as a BE u16
     if buffer.len() >= 2 {
         let payload_len = u16::from_be_bytes(buffer[..2].try_into().unwrap()) as usize;
@@ -40,9 +40,7 @@ fn read_message(buffer: &[u8]) -> io::Result<Option<(Bytes, usize)>> {
         }
 
         if buffer[2..].len() >= payload_len {
-            let bytes = Bytes::copy_from_slice(&buffer[..2 + payload_len]);
-
-            Ok(Some((bytes, 2 + payload_len)))
+            Ok(Some(&buffer[2..2 + payload_len]))
         } else {
             Ok(None)
         }
@@ -128,8 +126,8 @@ impl Handshaking for SecureNode {
 
                             // <- e, ee, s, es
                             let queued_bytes = conn_reader.read_queued_bytes().await.unwrap();
-                            let message = read_message(queued_bytes).unwrap().unwrap().0;
-                            noise.read_message(&message[2..], &mut buffer).unwrap();
+                            let message = read_message(queued_bytes).unwrap().unwrap();
+                            noise.read_message(message, &mut buffer).unwrap();
 
                             // -> s, se, psk
                             let len = noise.write_message(&[], &mut buffer).unwrap();
@@ -155,8 +153,8 @@ impl Handshaking for SecureNode {
 
                             // <- e
                             let queued_bytes = conn_reader.read_queued_bytes().await.unwrap();
-                            let message = read_message(queued_bytes).unwrap().unwrap().0;
-                            noise.read_message(&message[2..], &mut buffer).unwrap();
+                            let message = read_message(queued_bytes).unwrap().unwrap();
+                            noise.read_message(message, &mut buffer).unwrap();
 
                             // -> e, ee, s, es
                             let len = noise.write_message(&[], &mut buffer).unwrap();
@@ -164,8 +162,8 @@ impl Handshaking for SecureNode {
 
                             // <- s, se, psk
                             let queued_bytes = conn_reader.read_queued_bytes().await.unwrap();
-                            let message = read_message(queued_bytes).unwrap().unwrap().0;
-                            noise.read_message(&message[2..], &mut buffer).unwrap();
+                            let message = read_message(queued_bytes).unwrap().unwrap();
+                            noise.read_message(message, &mut buffer).unwrap();
 
                             NoiseState {
                                 state: noise.into_transport_mode().unwrap(),
@@ -192,20 +190,30 @@ impl Handshaking for SecureNode {
 
 #[async_trait::async_trait]
 impl Messaging for SecureNode {
-    type Message = Bytes; // TODO: change to String
+    type Message = String;
 
-    fn read_message(&self, buffer: &[u8]) -> io::Result<Option<(Self::Message, usize)>> {
-        read_message(buffer)
+    fn read_message(
+        &self,
+        source: SocketAddr,
+        buffer: &[u8],
+    ) -> io::Result<Option<(Self::Message, usize)>> {
+        let bytes = read_message(buffer)?;
+
+        if let Some(bytes) = bytes {
+            let noise = Arc::clone(self.noise_states.read().get(&source).unwrap());
+            let NoiseState { state, buffer } = &mut *noise.lock();
+
+            let len = state.read_message(bytes, buffer).ok().unwrap();
+            let decrypted_message = String::from_utf8(buffer[..len].to_vec()).unwrap();
+
+            Ok(Some((decrypted_message, bytes.len())))
+        } else {
+            Ok(None)
+        }
     }
 
     async fn process_message(&self, source: SocketAddr, message: Self::Message) -> io::Result<()> {
-        let noise = Arc::clone(self.noise_states.read().get(&source).unwrap());
-        let NoiseState { state, buffer } = &mut *noise.lock();
-
-        let len = state.read_message(&message[2..], buffer).ok().unwrap();
-        let decrypted_message = String::from_utf8(buffer[..len].to_vec()).unwrap();
-
-        info!(parent: self.node().span(), "decrypted a message from {}: \"{}\"", source, decrypted_message);
+        info!(parent: self.node().span(), "decrypted a message from {}: \"{}\"", source, message);
 
         Ok(())
     }

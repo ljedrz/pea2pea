@@ -121,7 +121,7 @@ where
 
                 // several messages could have been read at once; process the contents of the bufer
                 loop {
-                    match self.read_message(&buffer[processed..processed + left]) {
+                    match self.read_message(*addr, &buffer[processed..processed + left]) {
                         // a full message was read successfully
                         Ok(Some((msg, len))) => {
                             // advance the counters
@@ -190,7 +190,11 @@ where
     /// Reads a single inbound message from the given buffer; `Ok(None)` indicates that the message is incomplete,
     /// i.e. another read from the stream must be performed in order to produce the whole message. Alongside the
     /// message it returns the number of bytes it occupied in the buffer.
-    fn read_message(&self, buffer: &[u8]) -> io::Result<Option<(Self::Message, usize)>>;
+    fn read_message(
+        &self,
+        source: SocketAddr,
+        buffer: &[u8],
+    ) -> io::Result<Option<(Self::Message, usize)>>;
 
     /// Processes an inbound message. Can be used to update state, send replies etc.
     #[allow(unused_variables)]
