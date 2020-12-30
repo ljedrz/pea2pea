@@ -206,7 +206,8 @@ impl Messaging for SecureNode {
             let len = state.read_message(bytes, buffer).ok().unwrap();
             let decrypted_message = String::from_utf8(buffer[..len].to_vec()).unwrap();
 
-            Ok(Some((decrypted_message, bytes.len())))
+            // account for the length prefix discarded in read_message
+            Ok(Some((decrypted_message, bytes.len() + 2)))
         } else {
             Ok(None)
         }
