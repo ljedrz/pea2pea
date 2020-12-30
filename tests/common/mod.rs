@@ -61,7 +61,7 @@ impl Pea2Pea for MessagingNode {
 }
 
 pub fn read_len_prefixed_message(len_size: usize, buffer: &[u8]) -> io::Result<Option<&[u8]>> {
-    if buffer.len() >= 2 {
+    if buffer.len() >= len_size {
         let payload_len = match len_size {
             2 => u16::from_le_bytes(buffer[..len_size].try_into().unwrap()) as usize,
             4 => u32::from_le_bytes(buffer[..len_size].try_into().unwrap()) as usize,
