@@ -93,7 +93,9 @@ pub struct Connection {
     /// The address of the connection.
     pub(crate) addr: SocketAddr,
     /// The handle to the task performing reads from the stream.
-    pub(crate) reader_task: OnceCell<JoinHandle<()>>,
+    pub inbound_reader_task: OnceCell<JoinHandle<()>>,
+    /// The handle to the task processing read messages.
+    pub inbound_processing_task: OnceCell<JoinHandle<()>>,
     /// The handle to the task performing writes to the stream.
     _writer_task: JoinHandle<()>,
     /// Used to queue writes to the stream.
@@ -140,7 +142,8 @@ impl Connection {
         Self {
             node,
             addr,
-            reader_task: Default::default(),
+            inbound_reader_task: Default::default(),
+            inbound_processing_task: Default::default(),
             _writer_task,
             message_sender,
             side,

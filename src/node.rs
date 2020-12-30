@@ -163,6 +163,7 @@ impl Node {
         let connection_reader = ConnectionReader::new(peer_addr, reader, Arc::clone(&self));
         let connection = Connection::new(peer_addr, writer, Arc::clone(&self), !own_side);
 
+        // Handshaking
         let (connection_reader, connection) = if let Some(ref handshake_handler) =
             self.handshake_handler()
         {
@@ -184,14 +185,25 @@ impl Node {
             (connection_reader, connection)
         };
 
-        if let Some(ref inbound_handler) = self.inbound_handler() {
-            inbound_handler.send(connection_reader).await;
-            /* TODO: assign task handle; prolly obtain it using a oneshot
+        // Messaging
+        let connection = if let Some(ref inbound_handler) = self.inbound_handler() {
+            let (conn_sender, conn_retriever) = oneshot::channel();
+
+            inbound_handler
+                .send((connection_reader, connection, conn_sender))
+                .await;
+
+            match conn_retriever.await {
+                Ok(Ok(conn)) => conn,
+                _ => {
+                    error!(parent: self.span(), "can't spawn inbound handlers; dropping the connection with {}", peer_addr);
+                    self.known_peers().register_failure(peer_addr);
+                    return Err(ErrorKind::Other.into());
+                }
+            }
+        } else {
             connection
-                .reader_task
-                .set(messaging_closure(connection_reader))
-                .unwrap();*/
-        }
+        };
 
         self.connections.add(connection);
         self.stats.register_connection();

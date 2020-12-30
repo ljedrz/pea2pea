@@ -167,7 +167,7 @@ enum Message {
 impl Messaging for PlayerNode {
     type Message = Message;
 
-    fn read_message(buffer: &[u8]) -> io::Result<Option<(Self::Message, usize)>> {
+    fn read_message(&self, buffer: &[u8]) -> io::Result<Option<(Self::Message, usize)>> {
         // expecting incoming messages to be prefixed with their length encoded as a LE u16
         if buffer.len() >= 2 {
             let payload_len = u16::from_le_bytes(buffer[..2].try_into().unwrap()) as usize;

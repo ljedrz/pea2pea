@@ -39,7 +39,7 @@ impl Pea2Pea for EchoNode {
 impl Messaging for EchoNode {
     type Message = TestMessage;
 
-    fn read_message(buffer: &[u8]) -> io::Result<Option<(Self::Message, usize)>> {
+    fn read_message(&self, buffer: &[u8]) -> io::Result<Option<(Self::Message, usize)>> {
         let bytes = common::read_len_prefixed_message(2, buffer)?;
 
         Ok(bytes.map(|bytes| (TestMessage::from(bytes[2]), bytes.len())))

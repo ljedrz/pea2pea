@@ -1,7 +1,11 @@
-use crate::{ConnectionReader, Pea2Pea};
+use crate::{Connection, ConnectionReader, Pea2Pea};
 
 use async_trait::async_trait;
-use tokio::{io::AsyncReadExt, sync::mpsc, time::sleep};
+use tokio::{
+    io::AsyncReadExt,
+    sync::{mpsc, oneshot},
+    time::sleep,
+};
 use tracing::*;
 
 use std::{io, net::SocketAddr, sync::Arc, time::Duration};
@@ -25,21 +29,23 @@ where
         let self_clone = self.clone();
         tokio::spawn(async move {
             loop {
-                if let Some(mut conn_reader) = conn_reader_receiver.recv().await {
+                if let Some((mut conn_reader, conn, conn_returner)) =
+                    conn_reader_receiver.recv().await
+                {
                     let (inbound_message_sender, mut inbound_message_receiver) =
                         mpsc::channel(self_clone.node().config.conn_inbound_queue_depth);
                     let addr = conn_reader.addr;
 
                     // the task for reading messages from the stream
-                    let self_clone = self_clone.clone();
-                    tokio::spawn(async move {
+                    let reader_clone = self_clone.clone();
+                    let inbound_reader_task = tokio::spawn(async move {
                         let node = Arc::clone(&conn_reader.node);
                         trace!(parent: node.span(), "spawned a task for reading messages from {}", addr);
 
                         loop {
-                            if let Err(e) =
-                                Self::read_from_stream(&mut conn_reader, &inbound_message_sender)
-                                    .await
+                            if let Err(e) = reader_clone
+                                .read_from_stream(&mut conn_reader, &inbound_message_sender)
+                                .await
                             {
                                 node.known_peers().register_failure(addr);
                                 match e.kind() {
@@ -63,17 +69,28 @@ where
                     });
 
                     // the task for processing parsed messages
-                    let self_clone = self_clone.clone();
-                    tokio::spawn(async move {
+                    let processing_clone = self_clone.clone();
+                    let inbound_processing_task = tokio::spawn(async move {
+                        let node = processing_clone.node();
                         loop {
                             if let Some(msg) = inbound_message_receiver.recv().await {
-                                if let Err(e) = self_clone.process_message(addr, msg).await {
-                                    error!(parent: self_clone.node().span(), "failed to respond to an inbound message: {}", e);
-                                    self_clone.node().known_peers().register_failure(addr);
+                                if let Err(e) = processing_clone.process_message(addr, msg).await {
+                                    error!(parent: node.span(), "failed to respond to an inbound message: {}", e);
+                                    node.known_peers().register_failure(addr);
                                 }
                             }
                         }
                     });
+
+                    conn.inbound_reader_task.set(inbound_reader_task).unwrap();
+                    conn.inbound_processing_task
+                        .set(inbound_processing_task)
+                        .unwrap();
+
+                    if conn_returner.send(Ok(conn)).is_err() {
+                        // can't recover if this happens
+                        panic!("can't return a Connection to the Node");
+                    }
                 }
             }
         });
@@ -84,6 +101,7 @@ where
     /// (if all of them have a fixed size) or first the number of bytes expected for a header, and then the number of
     /// bytes of the payload, as specified by the header.
     async fn read_from_stream(
+        &self,
         conn_reader: &mut ConnectionReader,
         message_sender: &mpsc::Sender<Self::Message>,
     ) -> io::Result<()> {
@@ -103,7 +121,7 @@ where
 
                 // several messages could have been read at once; process the contents of the bufer
                 loop {
-                    match Self::read_message(&buffer[processed..processed + left]) {
+                    match self.read_message(&buffer[processed..processed + left]) {
                         // a full message was read successfully
                         Ok(Some((msg, len))) => {
                             // advance the counters
@@ -172,7 +190,7 @@ where
     /// Reads a single inbound message from the given buffer; `Ok(None)` indicates that the message is incomplete,
     /// i.e. another read from the stream must be performed in order to produce the whole message. Alongside the
     /// message it returns the number of bytes it occupied in the buffer.
-    fn read_message(buffer: &[u8]) -> io::Result<Option<(Self::Message, usize)>>;
+    fn read_message(&self, buffer: &[u8]) -> io::Result<Option<(Self::Message, usize)>>;
 
     /// Processes an inbound message. Can be used to update state, send replies etc.
     #[allow(unused_variables)]
@@ -182,21 +200,28 @@ where
     }
 }
 
+/// A set of objects required to handle inbound messages.
+pub type MessagingObjects = (
+    ConnectionReader,
+    Connection,
+    oneshot::Sender<io::Result<Connection>>,
+);
+
 /// An object dedicated to handling inbound messages.
-pub struct InboundHandler(mpsc::Sender<ConnectionReader>);
+pub struct InboundHandler(mpsc::Sender<MessagingObjects>);
 
 impl InboundHandler {
     /// Sends the connection reader to the task handling inbound messages.
-    pub async fn send(&self, connection_reader: ConnectionReader) {
-        if let Err(_) = self.0.send(connection_reader).await {
+    pub async fn send(&self, messaging_objects: MessagingObjects) {
+        if let Err(_) = self.0.send(messaging_objects).await {
             // can't recover if this happens
             panic!("the inbound message handling task is down or its Receiver is closed")
         }
     }
 }
 
-impl From<mpsc::Sender<ConnectionReader>> for InboundHandler {
-    fn from(sender: mpsc::Sender<ConnectionReader>) -> Self {
+impl From<mpsc::Sender<MessagingObjects>> for InboundHandler {
+    fn from(sender: mpsc::Sender<MessagingObjects>) -> Self {
         Self(sender)
     }
 }

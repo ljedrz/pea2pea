@@ -194,7 +194,7 @@ impl Handshaking for SecureNode {
 impl Messaging for SecureNode {
     type Message = Bytes; // TODO: change to String
 
-    fn read_message(buffer: &[u8]) -> io::Result<Option<(Self::Message, usize)>> {
+    fn read_message(&self, buffer: &[u8]) -> io::Result<Option<(Self::Message, usize)>> {
         read_message(buffer)
     }
 

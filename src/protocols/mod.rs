@@ -4,7 +4,7 @@ mod handshaking;
 mod messaging;
 
 pub use handshaking::{HandshakeHandler, HandshakeObjects, Handshaking};
-pub use messaging::{InboundHandler, Messaging};
+pub use messaging::{InboundHandler, Messaging, MessagingObjects};
 
 #[derive(Default)]
 pub(crate) struct Protocols {
