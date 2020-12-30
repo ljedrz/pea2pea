@@ -318,12 +318,6 @@ impl Node {
     }
 }
 
-impl Pea2Pea for Arc<Node> {
-    fn node(&self) -> &Arc<Node> {
-        &self
-    }
-}
-
 // FIXME: this can probably be done more elegantly
 /// Creates the node's tracing span based on its name.
 fn create_span(node_name: &str) -> Span {

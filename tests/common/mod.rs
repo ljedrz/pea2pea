@@ -7,15 +7,40 @@ use pea2pea::{Messaging, Node, NodeConfig, Pea2Pea};
 
 use std::{convert::TryInto, io, net::SocketAddr, sync::Arc};
 
-pub async fn start_nodes(count: usize, config: Option<NodeConfig>) -> io::Result<Vec<Arc<Node>>> {
+pub async fn start_nodes(count: usize, config: Option<NodeConfig>) -> Vec<Arc<Node>> {
     let mut nodes = Vec::with_capacity(count);
 
     for _ in 0..count {
-        let node = Node::new(config.clone()).await?;
+        let node = Node::new(config.clone()).await.unwrap();
         nodes.push(node);
     }
 
-    Ok(nodes)
+    nodes
+}
+
+#[derive(Clone)]
+pub struct InertNode(pub Arc<Node>);
+
+impl Pea2Pea for InertNode {
+    fn node(&self) -> &Arc<Node> {
+        &self.0
+    }
+}
+
+impl std::ops::Deref for InertNode {
+    type Target = Arc<Node>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+pub async fn start_inert_nodes(count: usize, config: Option<NodeConfig>) -> Vec<InertNode> {
+    start_nodes(count, config)
+        .await
+        .into_iter()
+        .map(InertNode)
+        .collect()
 }
 
 #[derive(Clone)]

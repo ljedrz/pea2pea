@@ -53,7 +53,6 @@ async fn telephone_game() {
 
     let players = common::start_nodes(100, None)
         .await
-        .unwrap()
         .into_iter()
         .map(Player)
         .collect::<Vec<_>>();

@@ -8,7 +8,7 @@ const N: usize = 10;
 
 #[tokio::test]
 async fn topology_line_conn_counts() {
-    let nodes = common::start_nodes(N, None).await.unwrap();
+    let nodes = common::start_inert_nodes(N, None).await;
     connect_nodes(&nodes, Topology::Line).await.unwrap();
 
     wait_until!(
@@ -25,7 +25,7 @@ async fn topology_line_conn_counts() {
 
 #[tokio::test]
 async fn topology_ring_conn_counts() {
-    let nodes = common::start_nodes(N, None).await.unwrap();
+    let nodes = common::start_inert_nodes(N, None).await;
     connect_nodes(&nodes, Topology::Ring).await.unwrap();
 
     wait_until!(1, nodes.iter().all(|node| node.num_connected() == 2));
@@ -33,7 +33,7 @@ async fn topology_ring_conn_counts() {
 
 #[tokio::test]
 async fn topology_mesh_conn_counts() {
-    let nodes = common::start_nodes(N, None).await.unwrap();
+    let nodes = common::start_inert_nodes(N, None).await;
     connect_nodes(&nodes, Topology::Mesh).await.unwrap();
 
     wait_until!(1, nodes.iter().all(|node| node.num_connected() == N - 1));
@@ -41,7 +41,7 @@ async fn topology_mesh_conn_counts() {
 
 #[tokio::test]
 async fn topology_star_conn_counts() {
-    let nodes = common::start_nodes(N, None).await.unwrap();
+    let nodes = common::start_inert_nodes(N, None).await;
     connect_nodes(&nodes, Topology::Star).await.unwrap();
 
     wait_until!(

@@ -42,7 +42,6 @@ async fn broadcast_example() {
 
     let random_nodes = common::start_nodes(4, None)
         .await
-        .unwrap()
         .into_iter()
         .map(common::MessagingNode)
         .collect::<Vec<_>>();
