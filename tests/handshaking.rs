@@ -106,6 +106,7 @@ impl Handshaking for SecureishNode {
     fn enable_handshaking(&self) {
         let (result_sender, mut result_receiver) = channel::<(SocketAddr, HandshakeResult)>(1);
 
+        // spawn a background task dedicated to collecting handshake nonces
         let self_clone = self.clone();
         tokio::spawn(async move {
             loop {

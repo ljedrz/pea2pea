@@ -94,8 +94,8 @@ impl Handshaking for SecureNode {
         // a channel used to register handshake states
         let (state_sender, mut state_receiver) = channel::<(SocketAddr, HandshakeResult)>(1);
 
+        // spawn a background task dedicated to collecting noise states created during handshakes
         let self_clone = self.clone();
-        // a task registering the handshake states returned by the closures below
         tokio::spawn(async move {
             loop {
                 if let Some((addr, state)) = state_receiver.recv().await {

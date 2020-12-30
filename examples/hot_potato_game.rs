@@ -95,6 +95,7 @@ impl Handshaking for PlayerNode {
     fn enable_handshaking(&self) {
         let (result_sender, mut result_receiver) = channel::<(SocketAddr, HandshakeResult)>(9);
 
+        // spawn a background task dedicated to collecting peer names exchanged during handshakes
         let self_clone = self.clone();
         tokio::spawn(async move {
             loop {
