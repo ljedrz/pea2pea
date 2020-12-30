@@ -6,7 +6,7 @@ use tokio::{sync::mpsc::channel, task::JoinHandle, time::sleep};
 use tracing::*;
 
 use pea2pea::{
-    connect_nodes, Connection, ConnectionReader, HandshakeSetup, HandshakeState, Handshaking,
+    connect_nodes, Connection, ConnectionReader, HandshakeResult, HandshakeSetup, Handshaking,
     Messaging, Node, NodeConfig, Pea2Pea, Topology,
 };
 
@@ -93,13 +93,13 @@ fn prefix_message(message: &[u8]) -> Bytes {
 
 impl Handshaking for PlayerNode {
     fn enable_handshaking(&self) {
-        let (state_sender, mut state_receiver) = channel::<(SocketAddr, HandshakeState)>(64);
+        let (result_sender, mut result_receiver) = channel::<(SocketAddr, HandshakeResult)>(9);
 
         let self_clone = self.clone();
         tokio::spawn(async move {
             loop {
-                if let Some((addr, state)) = state_receiver.recv().await {
-                    let name: String = *state.downcast().unwrap();
+                if let Some((addr, result)) = result_receiver.recv().await {
+                    let name: String = *result.downcast().unwrap();
                     let player = Player {
                         name: name.clone(),
                         addr,
@@ -110,62 +110,64 @@ impl Handshaking for PlayerNode {
             }
         });
 
-        let initiator =
-            |mut connection_reader: ConnectionReader,
-             connection: Connection|
-             -> JoinHandle<io::Result<(ConnectionReader, Connection, HandshakeState)>> {
-                tokio::spawn(async move {
-                    let node = Arc::clone(&connection_reader.node);
-                    let addr = connection_reader.addr;
-                    debug!(parent: node.span(), "handshaking with {} as the initiator", addr);
+        let initiator = |mut connection_reader: ConnectionReader,
+                         connection: Connection|
+         -> JoinHandle<
+            io::Result<(ConnectionReader, Connection, HandshakeResult)>,
+        > {
+            tokio::spawn(async move {
+                let node = Arc::clone(&connection_reader.node);
+                let addr = connection_reader.addr;
+                debug!(parent: node.span(), "handshaking with {} as the initiator", addr);
 
-                    // send own PlayerName
-                    let own_name = node.name();
-                    let message = prefix_message(own_name.as_bytes());
-                    connection.send_message(message).await;
+                // send own PlayerName
+                let own_name = node.name();
+                let message = prefix_message(own_name.as_bytes());
+                connection.send_message(message).await;
 
-                    // receive the peer's PlayerName
-                    let message = connection_reader.read_queued_bytes().await.unwrap();
-                    let peer_name = String::from_utf8(message[2..].to_vec()).unwrap();
+                // receive the peer's PlayerName
+                let message = connection_reader.read_queued_bytes().await.unwrap();
+                let peer_name = String::from_utf8(message[2..].to_vec()).unwrap();
 
-                    Ok((
-                        connection_reader,
-                        connection,
-                        Box::new(peer_name) as HandshakeState,
-                    ))
-                })
-            };
+                Ok((
+                    connection_reader,
+                    connection,
+                    Box::new(peer_name) as HandshakeResult,
+                ))
+            })
+        };
 
-        let responder =
-            |mut connection_reader: ConnectionReader,
-             connection: Connection|
-             -> JoinHandle<io::Result<(ConnectionReader, Connection, HandshakeState)>> {
-                tokio::spawn(async move {
-                    let node = Arc::clone(&connection_reader.node);
-                    let addr = connection_reader.addr;
-                    debug!(parent: node.span(), "handshaking with {} as the responder", addr);
+        let responder = |mut connection_reader: ConnectionReader,
+                         connection: Connection|
+         -> JoinHandle<
+            io::Result<(ConnectionReader, Connection, HandshakeResult)>,
+        > {
+            tokio::spawn(async move {
+                let node = Arc::clone(&connection_reader.node);
+                let addr = connection_reader.addr;
+                debug!(parent: node.span(), "handshaking with {} as the responder", addr);
 
-                    // receive the peer's PlayerName
-                    let message = connection_reader.read_queued_bytes().await.unwrap();
-                    let peer_name = String::from_utf8(message[2..].to_vec()).unwrap();
+                // receive the peer's PlayerName
+                let message = connection_reader.read_queued_bytes().await.unwrap();
+                let peer_name = String::from_utf8(message[2..].to_vec()).unwrap();
 
-                    // send own PlayerName
-                    let own_name = node.name();
-                    let message = prefix_message(own_name.as_bytes());
-                    connection.send_message(message).await;
+                // send own PlayerName
+                let own_name = node.name();
+                let message = prefix_message(own_name.as_bytes());
+                connection.send_message(message).await;
 
-                    Ok((
-                        connection_reader,
-                        connection,
-                        Box::new(peer_name) as HandshakeState,
-                    ))
-                })
-            };
+                Ok((
+                    connection_reader,
+                    connection,
+                    Box::new(peer_name) as HandshakeResult,
+                ))
+            })
+        };
 
         let handshake_setup = HandshakeSetup {
             initiator_closure: Box::new(initiator),
             responder_closure: Box::new(responder),
-            state_sender: Some(state_sender),
+            result_sender: Some(result_sender),
         };
 
         self.node().set_handshake_setup(handshake_setup);

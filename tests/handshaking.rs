@@ -4,7 +4,7 @@ use tracing::*;
 
 mod common;
 use pea2pea::{
-    Connection, ConnectionReader, HandshakeSetup, HandshakeState, Handshaking, Messaging, Node,
+    Connection, ConnectionReader, HandshakeResult, HandshakeSetup, Handshaking, Messaging, Node,
     NodeConfig, Pea2Pea,
 };
 
@@ -104,76 +104,78 @@ impl_messaging!(SecureishNode);
 
 impl Handshaking for SecureishNode {
     fn enable_handshaking(&self) {
-        let (state_sender, mut state_receiver) = channel::<(SocketAddr, HandshakeState)>(64);
+        let (result_sender, mut result_receiver) = channel::<(SocketAddr, HandshakeResult)>(1);
 
         let self_clone = self.clone();
         tokio::spawn(async move {
             loop {
-                if let Some((addr, state)) = state_receiver.recv().await {
-                    let state = state.downcast().unwrap();
-                    self_clone.handshakes.write().insert(addr, *state);
+                if let Some((addr, result)) = result_receiver.recv().await {
+                    let result = result.downcast().unwrap();
+                    self_clone.handshakes.write().insert(addr, *result);
                 }
             }
         });
 
-        let initiator =
-            |mut connection_reader: ConnectionReader,
-             connection: Connection|
-             -> JoinHandle<io::Result<(ConnectionReader, Connection, HandshakeState)>> {
-                tokio::spawn(async move {
-                    let node = Arc::clone(&connection_reader.node);
-                    let addr = connection_reader.addr;
-                    debug!(parent: node.span(), "handshaking with {} as the initiator", addr);
+        let initiator = |mut connection_reader: ConnectionReader,
+                         connection: Connection|
+         -> JoinHandle<
+            io::Result<(ConnectionReader, Connection, HandshakeResult)>,
+        > {
+            tokio::spawn(async move {
+                let node = Arc::clone(&connection_reader.node);
+                let addr = connection_reader.addr;
+                debug!(parent: node.span(), "handshaking with {} as the initiator", addr);
 
-                    // send A
-                    let own_nonce = 0;
-                    send_handshake_message!(HandshakeMsg::A(own_nonce), node, connection, addr);
+                // send A
+                let own_nonce = 0;
+                send_handshake_message!(HandshakeMsg::A(own_nonce), node, connection, addr);
 
-                    // read B
-                    let peer_nonce =
-                        read_handshake_message!(HandshakeMsg::B, node, connection_reader, addr);
+                // read B
+                let peer_nonce =
+                    read_handshake_message!(HandshakeMsg::B, node, connection_reader, addr);
 
-                    let nonce_pair = NoncePair(own_nonce, peer_nonce);
+                let nonce_pair = NoncePair(own_nonce, peer_nonce);
 
-                    Ok((
-                        connection_reader,
-                        connection,
-                        Box::new(nonce_pair) as HandshakeState,
-                    ))
-                })
-            };
+                Ok((
+                    connection_reader,
+                    connection,
+                    Box::new(nonce_pair) as HandshakeResult,
+                ))
+            })
+        };
 
-        let responder =
-            |mut connection_reader: ConnectionReader,
-             connection: Connection|
-             -> JoinHandle<io::Result<(ConnectionReader, Connection, HandshakeState)>> {
-                tokio::spawn(async move {
-                    let node = Arc::clone(&connection_reader.node);
-                    let addr = connection_reader.addr;
-                    debug!(parent: node.span(), "handshaking with {} as the responder", addr);
+        let responder = |mut connection_reader: ConnectionReader,
+                         connection: Connection|
+         -> JoinHandle<
+            io::Result<(ConnectionReader, Connection, HandshakeResult)>,
+        > {
+            tokio::spawn(async move {
+                let node = Arc::clone(&connection_reader.node);
+                let addr = connection_reader.addr;
+                debug!(parent: node.span(), "handshaking with {} as the responder", addr);
 
-                    // read A
-                    let peer_nonce =
-                        read_handshake_message!(HandshakeMsg::A, node, connection_reader, addr);
+                // read A
+                let peer_nonce =
+                    read_handshake_message!(HandshakeMsg::A, node, connection_reader, addr);
 
-                    // send B
-                    let own_nonce = 1;
-                    send_handshake_message!(HandshakeMsg::B(own_nonce), node, connection, addr);
+                // send B
+                let own_nonce = 1;
+                send_handshake_message!(HandshakeMsg::B(own_nonce), node, connection, addr);
 
-                    let nonce_pair = NoncePair(own_nonce, peer_nonce);
+                let nonce_pair = NoncePair(own_nonce, peer_nonce);
 
-                    Ok((
-                        connection_reader,
-                        connection,
-                        Box::new(nonce_pair) as HandshakeState,
-                    ))
-                })
-            };
+                Ok((
+                    connection_reader,
+                    connection,
+                    Box::new(nonce_pair) as HandshakeResult,
+                ))
+            })
+        };
 
         let handshake_setup = HandshakeSetup {
             initiator_closure: Box::new(initiator),
             responder_closure: Box::new(responder),
-            state_sender: Some(state_sender),
+            result_sender: Some(result_sender),
         };
 
         self.node().set_handshake_setup(handshake_setup);

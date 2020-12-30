@@ -173,13 +173,13 @@ impl Node {
             };
 
             match handshake_task.await {
-                Ok(Ok((conn_reader, conn, handshake_state))) => {
-                    if let Some(ref sender) = handshake_setup.state_sender {
+                Ok(Ok((conn_reader, conn, handshake_result))) => {
+                    if let Some(ref sender) = handshake_setup.result_sender {
                         // can't recover from an error here
                         sender
-                            .send((peer_addr, handshake_state))
+                            .send((peer_addr, handshake_result))
                             .await
-                            .expect("the handshake state channel is closed")
+                            .expect("the handshake result channel is closed")
                     }
                     debug!(parent: self.span(), "marked {} as handshaken", peer_addr);
 

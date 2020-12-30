@@ -12,15 +12,15 @@ pub trait Handshaking {
     fn enable_handshaking(&self);
 }
 
-/// A trait object containing handshake state.
-pub type HandshakeState = Box<dyn Any + Send>;
+/// A trait object containing the result of a handshake, if there's any.
+pub type HandshakeResult = Box<dyn Any + Send>;
 
 // FIXME; simplify
 type HandshakeClosure = Box<
     dyn Fn(
             ConnectionReader,
             Connection,
-        ) -> JoinHandle<io::Result<(ConnectionReader, Connection, HandshakeState)>>
+        ) -> JoinHandle<io::Result<(ConnectionReader, Connection, HandshakeResult)>>
         + Send
         + Sync,
 >;
@@ -31,6 +31,6 @@ pub struct HandshakeSetup {
     pub initiator_closure: HandshakeClosure,
     /// The closure for performing handshakes as the connection responder.
     pub responder_closure: HandshakeClosure,
-    /// Can be used to persist any handshake state.
-    pub state_sender: Option<Sender<(SocketAddr, HandshakeState)>>,
+    /// Can be used to persist any handshake result.
+    pub result_sender: Option<Sender<(SocketAddr, HandshakeResult)>>,
 }

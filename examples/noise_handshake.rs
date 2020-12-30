@@ -92,7 +92,7 @@ impl SecureNode {
 impl Handshaking for SecureNode {
     fn enable_handshaking(&self) {
         // a channel used to register handshake states
-        let (state_sender, mut state_receiver) = channel::<(SocketAddr, HandshakeState)>(64);
+        let (state_sender, mut state_receiver) = channel::<(SocketAddr, HandshakeResult)>(1);
 
         let self_clone = self.clone();
         // a task registering the handshake states returned by the closures below
@@ -114,7 +114,7 @@ impl Handshaking for SecureNode {
         let initiator = |mut connection_reader: ConnectionReader,
                          connection: Connection|
          -> JoinHandle<
-            io::Result<(ConnectionReader, Connection, HandshakeState)>,
+            io::Result<(ConnectionReader, Connection, HandshakeResult)>,
         > {
             tokio::spawn(async move {
                 let addr = connection_reader.addr;
@@ -154,7 +154,7 @@ impl Handshaking for SecureNode {
                 Ok((
                     connection_reader,
                     connection,
-                    Box::new(noise) as HandshakeState,
+                    Box::new(noise) as HandshakeResult,
                 ))
             })
         };
@@ -163,7 +163,7 @@ impl Handshaking for SecureNode {
         let responder = |mut connection_reader: ConnectionReader,
                          connection: Connection|
          -> JoinHandle<
-            io::Result<(ConnectionReader, Connection, HandshakeState)>,
+            io::Result<(ConnectionReader, Connection, HandshakeResult)>,
         > {
             tokio::spawn(async move {
                 let addr = connection_reader.addr;
@@ -202,7 +202,7 @@ impl Handshaking for SecureNode {
                 Ok((
                     connection_reader,
                     connection,
-                    Box::new(noise) as HandshakeState,
+                    Box::new(noise) as HandshakeResult,
                 ))
             })
         };
@@ -210,7 +210,7 @@ impl Handshaking for SecureNode {
         let handshake_setup = HandshakeSetup {
             initiator_closure: Box::new(initiator),
             responder_closure: Box::new(responder),
-            state_sender: Some(state_sender),
+            result_sender: Some(state_sender),
         };
 
         self.node().set_handshake_setup(handshake_setup);
