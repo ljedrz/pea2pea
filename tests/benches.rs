@@ -74,7 +74,7 @@ async fn run_bench_scenario(params: BenchParams) {
     let spammers = common::start_nodes(spammer_count, Some(config)).await;
 
     let mut config = NodeConfig::default();
-    config.inbound_message_queue_depth = inbound_channel_depth;
+    config.conn_inbound_queue_depth = inbound_channel_depth;
     config.conn_read_buffer_size = conn_read_buffer_size;
     let sink = Sink(Node::new(Some(config)).await.unwrap());
 
