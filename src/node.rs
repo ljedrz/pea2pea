@@ -187,10 +187,10 @@ impl Node {
 
         // Messaging
         let connection = if let Some(ref inbound_handler) = self.inbound_handler() {
-            let (conn_sender, conn_retriever) = oneshot::channel();
+            let (conn_returner, conn_retriever) = oneshot::channel();
 
             inbound_handler
-                .send((connection_reader, connection, conn_sender))
+                .send((connection_reader, connection, conn_returner))
                 .await;
 
             match conn_retriever.await {

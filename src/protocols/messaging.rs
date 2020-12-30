@@ -207,11 +207,11 @@ pub type MessagingObjects = (
     oneshot::Sender<io::Result<Connection>>,
 );
 
-/// An object dedicated to handling inbound messages.
+/// An object dedicated to handling inbound messages; used in the `Messaging` protocol.
 pub struct InboundHandler(mpsc::Sender<MessagingObjects>);
 
 impl InboundHandler {
-    /// Sends the connection reader to the task handling inbound messages.
+    /// Sends messaging-relevant objects to the messaging handler.
     pub async fn send(&self, messaging_objects: MessagingObjects) {
         if self.0.send(messaging_objects).await.is_err() {
             // can't recover if this happens

@@ -19,7 +19,7 @@ pub type HandshakeObjects = (
     oneshot::Sender<io::Result<(ConnectionReader, Connection)>>,
 );
 
-/// An object dedicated to handling connection handshakes.
+/// An object dedicated to handling connection handshakes; used in the `Handshaking` protocol.
 pub struct HandshakeHandler(mpsc::Sender<HandshakeObjects>);
 
 impl HandshakeHandler {
