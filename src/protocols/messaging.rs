@@ -1,4 +1,4 @@
-use crate::{ConnectionReader, ContainsNode};
+use crate::{ConnectionReader, Pea2Pea};
 
 use async_trait::async_trait;
 use bytes::Bytes;
@@ -15,7 +15,7 @@ use std::{io, net::SocketAddr, sync::Arc, time::Duration};
 /// This protocol can be used to specify and enable messaging, i.e. handling of inbound messages and replying to them.
 /// If handshaking is enabled too, it goes into force only after the handshake has been concluded.
 #[async_trait]
-pub trait Messaging: ContainsNode
+pub trait Messaging: Pea2Pea
 where
     Self: Clone + Send + Sync + 'static,
 {

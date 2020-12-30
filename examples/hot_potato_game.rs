@@ -6,8 +6,8 @@ use tokio::{sync::mpsc::channel, task::JoinHandle, time::sleep};
 use tracing::*;
 
 use pea2pea::{
-    connect_nodes, Connection, ConnectionReader, ContainsNode, HandshakeSetup, HandshakeState,
-    Handshaking, Messaging, Node, NodeConfig, Topology,
+    connect_nodes, Connection, ConnectionReader, HandshakeSetup, HandshakeState, Handshaking,
+    Messaging, Node, NodeConfig, Pea2Pea, Topology,
 };
 
 use std::{
@@ -77,7 +77,7 @@ impl PlayerNode {
     }
 }
 
-impl ContainsNode for PlayerNode {
+impl Pea2Pea for PlayerNode {
     fn node(&self) -> &Arc<Node> {
         &self.node
     }

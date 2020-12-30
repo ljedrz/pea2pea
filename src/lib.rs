@@ -18,7 +18,13 @@ mod topology;
 pub use config::NodeConfig;
 pub use connection::{Connection, ConnectionReader};
 pub use known_peers::{KnownPeers, PeerStats};
-pub use node::{ContainsNode, Node};
+pub use node::Node;
 pub use node_stats::NodeStats;
 pub use protocols::{HandshakeSetup, HandshakeState, Handshaking, Messaging, ReadingClosure};
 pub use topology::{connect_nodes, Topology};
+
+/// A trait for objects containing a `Node`; it is required to implement protocols.
+pub trait Pea2Pea {
+    /// Returns a clonable reference to the node.
+    fn node(&self) -> &std::sync::Arc<Node>;
+}

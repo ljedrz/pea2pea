@@ -28,7 +28,7 @@
 
 ## how to use it
 1. define a clonable struct containing an `Arc<Node>` and any extra state you'd like to carry
-2. `impl ContainsNode` for it
+2. `impl Pea2Pea` for it
 3. make it implement any/all of the protocols
 4. create that struct (or as many of them as you like)
 5. enable protocols you'd like the node(s) to utilize

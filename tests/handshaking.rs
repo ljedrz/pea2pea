@@ -4,8 +4,8 @@ use tracing::*;
 
 mod common;
 use pea2pea::{
-    Connection, ConnectionReader, ContainsNode, HandshakeSetup, HandshakeState, Handshaking,
-    Messaging, Node, NodeConfig,
+    Connection, ConnectionReader, HandshakeSetup, HandshakeState, Handshaking, Messaging, Node,
+    NodeConfig, Pea2Pea,
 };
 
 use parking_lot::RwLock;
@@ -60,7 +60,7 @@ struct SecureishNode {
     handshakes: Arc<RwLock<HashMap<SocketAddr, NoncePair>>>,
 }
 
-impl ContainsNode for SecureishNode {
+impl Pea2Pea for SecureishNode {
     fn node(&self) -> &Arc<Node> {
         &self.node
     }

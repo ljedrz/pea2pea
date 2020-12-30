@@ -3,7 +3,7 @@ use parking_lot::Mutex;
 use tracing::*;
 
 mod common;
-use pea2pea::{ContainsNode, Messaging, Node, NodeConfig};
+use pea2pea::{Messaging, Node, NodeConfig, Pea2Pea};
 use TestMessage::*;
 
 use std::{collections::HashSet, io, net::SocketAddr, sync::Arc};
@@ -20,7 +20,7 @@ struct EchoNode {
     echoed: Arc<Mutex<HashSet<TestMessage>>>,
 }
 
-impl ContainsNode for EchoNode {
+impl Pea2Pea for EchoNode {
     fn node(&self) -> &Arc<Node> {
         &self.node
     }

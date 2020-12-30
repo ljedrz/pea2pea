@@ -2,14 +2,14 @@ use tokio::time::sleep;
 use tracing::*;
 
 mod common;
-use pea2pea::{ContainsNode, Messaging, Node, NodeConfig};
+use pea2pea::{Messaging, Node, NodeConfig, Pea2Pea};
 
 use std::{sync::Arc, time::Duration};
 
 #[derive(Clone)]
 struct ChattyNode(Arc<Node>);
 
-impl ContainsNode for ChattyNode {
+impl Pea2Pea for ChattyNode {
     fn node(&self) -> &Arc<Node> {
         &self.0
     }

@@ -1,14 +1,14 @@
 use rand::{distributions::Standard, rngs::SmallRng, Rng, SeedableRng};
 
 mod common;
-use pea2pea::{ContainsNode, Messaging, Node, NodeConfig};
+use pea2pea::{Messaging, Node, NodeConfig, Pea2Pea};
 
 use std::{io, sync::Arc};
 
 #[derive(Clone)]
 struct Tester(Arc<Node>);
 
-impl ContainsNode for Tester {
+impl Pea2Pea for Tester {
     fn node(&self) -> &Arc<Node> {
         &self.0
     }

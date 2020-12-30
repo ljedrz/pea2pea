@@ -3,7 +3,7 @@
 use bytes::Bytes;
 use tracing::*;
 
-use pea2pea::{ContainsNode, Messaging, Node, NodeConfig};
+use pea2pea::{Messaging, Node, NodeConfig, Pea2Pea};
 
 use std::{convert::TryInto, io, net::SocketAddr, sync::Arc};
 
@@ -29,7 +29,7 @@ impl RandomNode {
     }
 }
 
-impl ContainsNode for RandomNode {
+impl Pea2Pea for RandomNode {
     fn node(&self) -> &Arc<Node> {
         &self.0
     }

@@ -23,7 +23,7 @@ struct SecureNode {
     noise_states: Arc<RwLock<HashMap<SocketAddr, Arc<Mutex<NoiseState>>>>>,
 }
 
-impl ContainsNode for SecureNode {
+impl Pea2Pea for SecureNode {
     fn node(&self) -> &Arc<Node> {
         &self.node
     }

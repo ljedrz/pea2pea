@@ -1,4 +1,4 @@
-use crate::ContainsNode;
+use crate::Pea2Pea;
 
 use std::{
     collections::HashSet,
@@ -19,7 +19,7 @@ pub enum Topology {
 }
 
 /// Connects the provided list of nodes in order to form the given `Topology`.
-pub async fn connect_nodes<T: ContainsNode>(nodes: &[T], topology: Topology) -> io::Result<()> {
+pub async fn connect_nodes<T: Pea2Pea>(nodes: &[T], topology: Topology) -> io::Result<()> {
     if nodes.len() < 2 {
         // there must be more than one node in order to have any connections
         return Err(ErrorKind::Other.into());

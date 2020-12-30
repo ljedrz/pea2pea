@@ -2,14 +2,14 @@ use bytes::Bytes;
 use tracing::*;
 
 mod common;
-use pea2pea::{connect_nodes, ContainsNode, Messaging, Node, Topology};
+use pea2pea::{connect_nodes, Messaging, Node, Pea2Pea, Topology};
 
 use std::{io, net::SocketAddr, sync::Arc};
 
 #[derive(Clone)]
 struct Player(Arc<Node>);
 
-impl ContainsNode for Player {
+impl Pea2Pea for Player {
     fn node(&self) -> &Arc<Node> {
         &self.0
     }

@@ -1,12 +1,12 @@
 mod common;
-use pea2pea::{ContainsNode, Messaging, Node, NodeConfig};
+use pea2pea::{Messaging, Node, NodeConfig, Pea2Pea};
 
 use std::{io, sync::Arc, time::Instant};
 
 #[derive(Clone)]
 struct Sink(Arc<Node>);
 
-impl ContainsNode for Sink {
+impl Pea2Pea for Sink {
     fn node(&self) -> &Arc<Node> {
         &self.0
     }
