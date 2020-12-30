@@ -16,11 +16,11 @@ mod protocols;
 mod topology;
 
 pub use config::NodeConfig;
-pub use connection::{Connection, ConnectionReader};
+pub use connection::{Connection, ConnectionReader, ConnectionSide};
 pub use known_peers::{KnownPeers, PeerStats};
 pub use node::Node;
 pub use node_stats::NodeStats;
-pub use protocols::{HandshakeResult, HandshakeSetup, Handshaking, Messaging, ReadingClosure};
+pub use protocols::{HandshakeHandler, HandshakeObjects, Handshaking, Messaging, ReadingClosure};
 pub use topology::{connect_nodes, Topology};
 
 /// A trait for objects containing a `Node`; it is required to implement protocols.

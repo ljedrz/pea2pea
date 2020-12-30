@@ -1,8 +1,8 @@
 use crate::{Connection, ConnectionReader, Pea2Pea};
 
-use tokio::{sync::mpsc::Sender, task::JoinHandle};
+use tokio::sync::{mpsc, oneshot};
 
-use std::{any::Any, io, net::SocketAddr};
+use std::io;
 
 /// This protocol can be used to specify and enable network handshakes. Upon establishing a connection, both sides will
 /// need to adhere to the specified handshake rules in order to finalize the connection and be able to transmit any
@@ -12,25 +12,28 @@ pub trait Handshaking: Pea2Pea {
     fn enable_handshaking(&self);
 }
 
-/// A trait object containing the result of a handshake, if there's any.
-pub type HandshakeResult = Box<dyn Any + Send>;
-
-// FIXME; simplify
-type HandshakeClosure = Box<
-    dyn Fn(
-            ConnectionReader,
-            Connection,
-        ) -> JoinHandle<io::Result<(ConnectionReader, Connection, HandshakeResult)>>
-        + Send
-        + Sync,
->;
+/// A set of objects required to perform handshakes.
+pub type HandshakeObjects = (
+    ConnectionReader,
+    Connection,
+    oneshot::Sender<io::Result<(ConnectionReader, Connection)>>,
+);
 
 /// An object dedicated to handling connection handshakes.
-pub struct HandshakeSetup {
-    /// The closure for performing handshakes as the connection initiator.
-    pub initiator_closure: HandshakeClosure,
-    /// The closure for performing handshakes as the connection responder.
-    pub responder_closure: HandshakeClosure,
-    /// Can be used to persist any handshake result.
-    pub result_sender: Option<Sender<(SocketAddr, HandshakeResult)>>,
+pub struct HandshakeHandler(mpsc::Sender<HandshakeObjects>);
+
+impl HandshakeHandler {
+    /// Sends handshake-relevant objects to the handshake handler.
+    pub async fn send(&self, handshake_objects: HandshakeObjects) {
+        if let Err(_) = self.0.send(handshake_objects).await {
+            // can't recover if this happens
+            panic!("the handshake handling task is down or its Receiver is closed")
+        }
+    }
+}
+
+impl From<mpsc::Sender<HandshakeObjects>> for HandshakeHandler {
+    fn from(sender: mpsc::Sender<HandshakeObjects>) -> Self {
+        Self(sender)
+    }
 }

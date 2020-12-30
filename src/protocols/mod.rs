@@ -3,7 +3,7 @@ use once_cell::sync::OnceCell;
 mod handshaking;
 mod messaging;
 
-pub use handshaking::{HandshakeResult, HandshakeSetup, Handshaking};
+pub use handshaking::{HandshakeHandler, HandshakeObjects, Handshaking};
 pub use messaging::{Messaging, ReadingClosure};
 
 pub(crate) use messaging::InboundMessages;
@@ -12,5 +12,5 @@ pub(crate) use messaging::InboundMessages;
 pub(crate) struct Protocols {
     pub(crate) reading_closure: OnceCell<ReadingClosure>,
     pub(crate) inbound_messages: OnceCell<InboundMessages>,
-    pub(crate) handshake_setup: OnceCell<HandshakeSetup>,
+    pub(crate) handshake_handler: OnceCell<HandshakeHandler>,
 }

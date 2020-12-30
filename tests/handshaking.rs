@@ -1,11 +1,10 @@
 use bytes::Bytes;
-use tokio::{sync::mpsc::channel, task::JoinHandle};
+use tokio::sync::mpsc;
 use tracing::*;
 
 mod common;
 use pea2pea::{
-    Connection, ConnectionReader, HandshakeResult, HandshakeSetup, Handshaking, Messaging, Node,
-    NodeConfig, Pea2Pea,
+    ConnectionSide, HandshakeObjects, Handshaking, Messaging, Node, NodeConfig, Pea2Pea,
 };
 
 use parking_lot::RwLock;
@@ -67,25 +66,25 @@ impl Pea2Pea for SecureishNode {
 }
 
 macro_rules! read_handshake_message {
-    ($expected: path, $node: expr, $connection_reader: expr, $addr: expr) => {
-        if let Ok(bytes) = $connection_reader.read_exact(9).await {
-            let msg = if let Ok(msg) = HandshakeMsg::deserialize(bytes) {
-                msg
+    ($expected: path, $node: expr, $conn_reader: expr, $addr: expr) => {
+        if let Ok(bytes) = $conn_reader.read_exact(9).await {
+            let msg: io::Result<HandshakeMsg> = if let Ok(msg) = HandshakeMsg::deserialize(bytes) {
+                Ok(msg)
             } else {
                 error!(parent: $node.span(), "unrecognized handshake message (neither A nor B)");
-                return Err(ErrorKind::Other.into());
+                Err(ErrorKind::Other.into())
             };
 
-            if let $expected(nonce) = msg {
+            if let Ok($expected(nonce)) = msg {
                 debug!(parent: $node.span(), "received handshake message B from {}", $addr);
-                nonce
+                Ok(nonce)
             } else {
                 error!(parent: $node.span(), "received an invalid handshake message from {} (expected B)", $addr);
-                return Err(ErrorKind::Other.into());
+                Err(ErrorKind::Other.into())
             }
         } else {
             error!(parent: $node.span(), "couldn't read handshake message B");
-            return Err(ErrorKind::Other.into());
+            Err(ErrorKind::Other.into())
         }
     }
 }
@@ -104,82 +103,79 @@ impl_messaging!(SecureishNode);
 
 impl Handshaking for SecureishNode {
     fn enable_handshaking(&self) {
-        let (result_sender, mut result_receiver) = channel::<(SocketAddr, HandshakeResult)>(1);
+        let (from_node_sender, mut from_node_receiver) = mpsc::channel::<HandshakeObjects>(1);
 
-        // spawn a background task dedicated to collecting handshake nonces
+        // spawn a background task dedicated to handling the handshakes
         let self_clone = self.clone();
         tokio::spawn(async move {
             loop {
-                if let Some((addr, result)) = result_receiver.recv().await {
-                    let result = result.downcast().unwrap();
-                    self_clone.handshakes.write().insert(addr, *result);
+                if let Some((mut conn_reader, conn, result_sender)) =
+                    from_node_receiver.recv().await
+                {
+                    let node = Arc::clone(&conn_reader.node);
+                    let addr = conn_reader.addr;
+
+                    let nonce_pair = match conn.side {
+                        // the connection is the Responder, so the node is the Initiator
+                        ConnectionSide::Responder => {
+                            debug!(parent: node.span(), "handshaking with {} as the initiator", addr);
+
+                            // send A
+                            let own_nonce = 0;
+                            send_handshake_message!(HandshakeMsg::A(own_nonce), node, conn, addr);
+
+                            // read B
+                            let peer_nonce =
+                                read_handshake_message!(HandshakeMsg::B, node, conn_reader, addr);
+
+                            match peer_nonce {
+                                Ok(peer_nonce) => Ok(NoncePair(own_nonce, peer_nonce)),
+                                Err(e) => Err(e),
+                            }
+                        }
+                        // the connection is the Initiator, so the node is the Responder
+                        ConnectionSide::Initiator => {
+                            debug!(parent: node.span(), "handshaking with {} as the responder", addr);
+
+                            // read A
+                            let peer_nonce =
+                                read_handshake_message!(HandshakeMsg::A, node, conn_reader, addr);
+
+                            // send B
+                            let own_nonce = 1;
+                            send_handshake_message!(HandshakeMsg::B(own_nonce), node, conn, addr);
+
+                            match peer_nonce {
+                                Ok(peer_nonce) => Ok(NoncePair(own_nonce, peer_nonce)),
+                                Err(e) => Err(e),
+                            }
+                        }
+                    };
+
+                    let nonce_pair = match nonce_pair {
+                        Ok(pair) => pair,
+                        Err(e) => {
+                            if result_sender.send(Err(e)).is_err() {
+                                // can't recover if this happens
+                                unreachable!();
+                            }
+                            return;
+                        }
+                    };
+
+                    // register the handshake nonce
+                    self_clone.handshakes.write().insert(addr, nonce_pair);
+
+                    // return the connection objects to the node
+                    if result_sender.send(Ok((conn_reader, conn))).is_err() {
+                        // can't recover if this happens
+                        unreachable!();
+                    }
                 }
             }
         });
 
-        let initiator = |mut connection_reader: ConnectionReader,
-                         connection: Connection|
-         -> JoinHandle<
-            io::Result<(ConnectionReader, Connection, HandshakeResult)>,
-        > {
-            tokio::spawn(async move {
-                let node = Arc::clone(&connection_reader.node);
-                let addr = connection_reader.addr;
-                debug!(parent: node.span(), "handshaking with {} as the initiator", addr);
-
-                // send A
-                let own_nonce = 0;
-                send_handshake_message!(HandshakeMsg::A(own_nonce), node, connection, addr);
-
-                // read B
-                let peer_nonce =
-                    read_handshake_message!(HandshakeMsg::B, node, connection_reader, addr);
-
-                let nonce_pair = NoncePair(own_nonce, peer_nonce);
-
-                Ok((
-                    connection_reader,
-                    connection,
-                    Box::new(nonce_pair) as HandshakeResult,
-                ))
-            })
-        };
-
-        let responder = |mut connection_reader: ConnectionReader,
-                         connection: Connection|
-         -> JoinHandle<
-            io::Result<(ConnectionReader, Connection, HandshakeResult)>,
-        > {
-            tokio::spawn(async move {
-                let node = Arc::clone(&connection_reader.node);
-                let addr = connection_reader.addr;
-                debug!(parent: node.span(), "handshaking with {} as the responder", addr);
-
-                // read A
-                let peer_nonce =
-                    read_handshake_message!(HandshakeMsg::A, node, connection_reader, addr);
-
-                // send B
-                let own_nonce = 1;
-                send_handshake_message!(HandshakeMsg::B(own_nonce), node, connection, addr);
-
-                let nonce_pair = NoncePair(own_nonce, peer_nonce);
-
-                Ok((
-                    connection_reader,
-                    connection,
-                    Box::new(nonce_pair) as HandshakeResult,
-                ))
-            })
-        };
-
-        let handshake_setup = HandshakeSetup {
-            initiator_closure: Box::new(initiator),
-            responder_closure: Box::new(responder),
-            result_sender: Some(result_sender),
-        };
-
-        self.node().set_handshake_setup(handshake_setup);
+        self.node().set_handshake_handler(from_node_sender.into());
     }
 }
 

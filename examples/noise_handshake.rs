@@ -1,6 +1,6 @@
 use bytes::Bytes;
 use parking_lot::{Mutex, RwLock};
-use tokio::{sync::mpsc::channel, task::JoinHandle, time::sleep};
+use tokio::{sync::mpsc, time::sleep};
 use tracing::*;
 
 use pea2pea::*;
@@ -91,129 +91,100 @@ impl SecureNode {
 
 impl Handshaking for SecureNode {
     fn enable_handshaking(&self) {
-        // a channel used to register handshake states
-        let (state_sender, mut state_receiver) = channel::<(SocketAddr, HandshakeResult)>(1);
-
-        // spawn a background task dedicated to collecting noise states created during handshakes
-        let self_clone = self.clone();
-        tokio::spawn(async move {
-            loop {
-                if let Some((addr, state)) = state_receiver.recv().await {
-                    let state: NoiseState = *state.downcast().unwrap();
-                    let state = Arc::new(Mutex::new(state));
-                    self_clone.noise_states.write().insert(addr, state);
-                }
-            }
-        });
+        let (from_node_sender, mut from_node_receiver) = mpsc::channel::<HandshakeObjects>(1);
 
         // the noise handshake settings used by snow
         const HANDSHAKE_PATTERN: &str = "Noise_XXpsk3_25519_ChaChaPoly_BLAKE2s";
         const PRE_SHARED_KEY: &[u8] = b"I dont care for codes of conduct"; // the PSK must be 32B
 
-        // the initiator's handshake closure
-        let initiator = |mut connection_reader: ConnectionReader,
-                         connection: Connection|
-         -> JoinHandle<
-            io::Result<(ConnectionReader, Connection, HandshakeResult)>,
-        > {
-            tokio::spawn(async move {
-                let addr = connection_reader.addr;
-                info!(parent: connection_reader.node.span(), "handshaking with {} as the initiator", addr);
+        // spawn a background task dedicated to handling the handshakes
+        let self_clone = self.clone();
+        tokio::spawn(async move {
+            loop {
+                if let Some((mut conn_reader, conn, result_sender)) =
+                    from_node_receiver.recv().await
+                {
+                    let addr = conn_reader.addr;
 
-                let builder = snow::Builder::new(HANDSHAKE_PATTERN.parse().unwrap());
-                let static_key = builder.generate_keypair().unwrap().private;
-                let mut noise = builder
-                    .local_private_key(&static_key)
-                    .psk(3, PRE_SHARED_KEY)
-                    .build_initiator()
-                    .unwrap();
-                let mut buffer: Box<[u8]> = vec![0u8; NOISE_BUF_LEN].into();
+                    let noise_state = match conn.side {
+                        // the connection is the Responder, so the node is the Initiator
+                        ConnectionSide::Responder => {
+                            info!(parent: conn_reader.node.span(), "handshaking with {} as the initiator", addr);
 
-                // -> e
-                let len = noise.write_message(&[], &mut buffer).unwrap();
-                connection
-                    .send_message(packet_message(&buffer[..len]))
-                    .await;
+                            let builder = snow::Builder::new(HANDSHAKE_PATTERN.parse().unwrap());
+                            let static_key = builder.generate_keypair().unwrap().private;
+                            let mut noise = builder
+                                .local_private_key(&static_key)
+                                .psk(3, PRE_SHARED_KEY)
+                                .build_initiator()
+                                .unwrap();
+                            let mut buffer: Box<[u8]> = vec![0u8; NOISE_BUF_LEN].into();
 
-                // <- e, ee, s, es
-                let queued_bytes = connection_reader.read_queued_bytes().await.unwrap();
-                let message = read_message(queued_bytes).unwrap().unwrap();
-                noise.read_message(&message[2..], &mut buffer).unwrap();
+                            // -> e
+                            let len = noise.write_message(&[], &mut buffer).unwrap();
+                            conn.send_message(packet_message(&buffer[..len])).await;
 
-                // -> s, se, psk
-                let len = noise.write_message(&[], &mut buffer).unwrap();
-                connection
-                    .send_message(packet_message(&buffer[..len]))
-                    .await;
+                            // <- e, ee, s, es
+                            let queued_bytes = conn_reader.read_queued_bytes().await.unwrap();
+                            let message = read_message(queued_bytes).unwrap().unwrap();
+                            noise.read_message(&message[2..], &mut buffer).unwrap();
 
-                let noise = NoiseState {
-                    state: noise.into_transport_mode().unwrap(),
-                    buffer,
-                };
+                            // -> s, se, psk
+                            let len = noise.write_message(&[], &mut buffer).unwrap();
+                            conn.send_message(packet_message(&buffer[..len])).await;
 
-                Ok((
-                    connection_reader,
-                    connection,
-                    Box::new(noise) as HandshakeResult,
-                ))
-            })
-        };
+                            NoiseState {
+                                state: noise.into_transport_mode().unwrap(),
+                                buffer,
+                            }
+                        }
+                        // the connection is the Initiator, so the node is the Responder
+                        ConnectionSide::Initiator => {
+                            info!(parent: conn_reader.node.span(), "handshaking with {} as the responder", addr);
 
-        // the responder's handshake closure
-        let responder = |mut connection_reader: ConnectionReader,
-                         connection: Connection|
-         -> JoinHandle<
-            io::Result<(ConnectionReader, Connection, HandshakeResult)>,
-        > {
-            tokio::spawn(async move {
-                let addr = connection_reader.addr;
-                info!(parent: connection_reader.node.span(), "handshaking with {} as the responder", addr);
+                            let builder = snow::Builder::new(HANDSHAKE_PATTERN.parse().unwrap());
+                            let static_key = builder.generate_keypair().unwrap().private;
+                            let mut noise = builder
+                                .local_private_key(&static_key)
+                                .psk(3, PRE_SHARED_KEY)
+                                .build_responder()
+                                .unwrap();
+                            let mut buffer: Box<[u8]> = vec![0u8; NOISE_BUF_LEN].into();
 
-                let builder = snow::Builder::new(HANDSHAKE_PATTERN.parse().unwrap());
-                let static_key = builder.generate_keypair().unwrap().private;
-                let mut noise = builder
-                    .local_private_key(&static_key)
-                    .psk(3, PRE_SHARED_KEY)
-                    .build_responder()
-                    .unwrap();
-                let mut buffer: Box<[u8]> = vec![0u8; NOISE_BUF_LEN].into();
+                            // <- e
+                            let queued_bytes = conn_reader.read_queued_bytes().await.unwrap();
+                            let message = read_message(queued_bytes).unwrap().unwrap();
+                            noise.read_message(&message[2..], &mut buffer).unwrap();
 
-                // <- e
-                let queued_bytes = connection_reader.read_queued_bytes().await.unwrap();
-                let message = read_message(queued_bytes).unwrap().unwrap();
-                noise.read_message(&message[2..], &mut buffer).unwrap();
+                            // -> e, ee, s, es
+                            let len = noise.write_message(&[], &mut buffer).unwrap();
+                            conn.send_message(packet_message(&buffer[..len])).await;
 
-                // -> e, ee, s, es
-                let len = noise.write_message(&[], &mut buffer).unwrap();
-                connection
-                    .send_message(packet_message(&buffer[..len]))
-                    .await;
+                            // <- s, se, psk
+                            let queued_bytes = conn_reader.read_queued_bytes().await.unwrap();
+                            let message = read_message(queued_bytes).unwrap().unwrap();
+                            noise.read_message(&message[2..], &mut buffer).unwrap();
 
-                // <- s, se, psk
-                let queued_bytes = connection_reader.read_queued_bytes().await.unwrap();
-                let message = read_message(queued_bytes).unwrap().unwrap();
-                noise.read_message(&message[2..], &mut buffer).unwrap();
+                            NoiseState {
+                                state: noise.into_transport_mode().unwrap(),
+                                buffer,
+                            }
+                        }
+                    };
 
-                let noise = NoiseState {
-                    state: noise.into_transport_mode().unwrap(),
-                    buffer,
-                };
+                    let noise_state = Arc::new(Mutex::new(noise_state));
+                    self_clone.noise_states.write().insert(addr, noise_state);
 
-                Ok((
-                    connection_reader,
-                    connection,
-                    Box::new(noise) as HandshakeResult,
-                ))
-            })
-        };
+                    // return the connection objects to the node
+                    if result_sender.send(Ok((conn_reader, conn))).is_err() {
+                        // can't recover if this happens
+                        unreachable!();
+                    }
+                }
+            }
+        });
 
-        let handshake_setup = HandshakeSetup {
-            initiator_closure: Box::new(initiator),
-            responder_closure: Box::new(responder),
-            result_sender: Some(state_sender),
-        };
-
-        self.node().set_handshake_setup(handshake_setup);
+        self.node().set_handshake_handler(from_node_sender.into());
     }
 }
 

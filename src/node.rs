@@ -4,7 +4,10 @@ use crate::protocols::{InboundMessages, Protocols};
 use crate::*;
 
 use bytes::Bytes;
-use tokio::net::{TcpListener, TcpStream};
+use tokio::{
+    net::{TcpListener, TcpStream},
+    sync::oneshot,
+};
 use tracing::*;
 
 use std::{
@@ -160,31 +163,17 @@ impl Node {
         let connection_reader = ConnectionReader::new(peer_addr, reader, Arc::clone(&self));
         let connection = Connection::new(peer_addr, writer, Arc::clone(&self), !own_side);
 
-        let (connection_reader, connection) = if let Some(ref handshake_setup) =
-            self.handshake_setup()
+        let (connection_reader, connection) = if let Some(ref handshake_handler) =
+            self.handshake_handler()
         {
-            let handshake_task = match own_side {
-                ConnectionSide::Initiator => {
-                    (handshake_setup.initiator_closure)(connection_reader, connection)
-                }
-                ConnectionSide::Responder => {
-                    (handshake_setup.responder_closure)(connection_reader, connection)
-                }
-            };
+            let (handshake_result_sender, handshake_result_receiver) = oneshot::channel();
 
-            match handshake_task.await {
-                Ok(Ok((conn_reader, conn, handshake_result))) => {
-                    if let Some(ref sender) = handshake_setup.result_sender {
-                        // can't recover from an error here
-                        sender
-                            .send((peer_addr, handshake_result))
-                            .await
-                            .expect("the handshake result channel is closed")
-                    }
-                    debug!(parent: self.span(), "marked {} as handshaken", peer_addr);
+            handshake_handler
+                .send((connection_reader, connection, handshake_result_sender))
+                .await;
 
-                    (conn_reader, conn)
-                }
+            match handshake_result_receiver.await {
+                Ok(Ok((conn_reader, conn))) => (conn_reader, conn),
                 _ => {
                     error!(parent: self.span(), "handshake with {} failed; dropping the connection", peer_addr);
                     self.known_peers().register_failure(peer_addr);
@@ -289,9 +278,9 @@ impl Node {
         self.protocols.reading_closure.get()
     }
 
-    /// Returns a handle to the handshake-relevant objects, if Handshaking is enabled.
-    fn handshake_setup(&self) -> Option<&HandshakeSetup> {
-        self.protocols.handshake_setup.get()
+    /// Returns a handle to the handshake handler, if Handshaking is enabled.
+    fn handshake_handler(&self) -> Option<&HandshakeHandler> {
+        self.protocols.handshake_handler.get()
     }
 
     /// Sets up the `Sender` for handling all incoming messages, as part of the Messaging protocol.
@@ -310,10 +299,10 @@ impl Node {
         }
     }
 
-    /// Sets up the handshake-relevant objects, as part of the Handshaking protocol.
-    pub fn set_handshake_setup(&self, closures: HandshakeSetup) {
-        if self.protocols.handshake_setup.set(closures).is_err() {
-            panic!("the handshake_setup field was set more than once!");
+    /// Sets up the handshake handler, as part of the Handshaking protocol.
+    pub fn set_handshake_handler(&self, handler: HandshakeHandler) {
+        if self.protocols.handshake_handler.set(handler).is_err() {
+            panic!("the handshake_handler field was set more than once!");
         }
     }
 }

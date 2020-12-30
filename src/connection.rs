@@ -19,8 +19,10 @@ use std::{
 
 /// Indicates who was the initiator and who was the responder when the connection was established.
 #[derive(Clone, Copy)]
-pub(crate) enum ConnectionSide {
+pub enum ConnectionSide {
+    /// The side that initiated the connection.
     Initiator,
+    /// The sider that accepted the connection.
     Responder,
 }
 
@@ -97,7 +99,7 @@ pub struct Connection {
     /// Used to queue writes to the stream.
     pub(crate) message_sender: Sender<Bytes>,
     /// The connection's side in relation to the node.
-    side: ConnectionSide,
+    pub side: ConnectionSide,
 }
 
 impl Connection {
