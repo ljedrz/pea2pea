@@ -1,4 +1,4 @@
-use crate::{Connection, ConnectionReader};
+use crate::{Connection, ConnectionReader, Pea2Pea};
 
 use tokio::{sync::mpsc::Sender, task::JoinHandle};
 
@@ -7,7 +7,7 @@ use std::{any::Any, io, net::SocketAddr};
 /// This protocol can be used to specify and enable network handshakes. Upon establishing a connection, both sides will
 /// need to adhere to the specified handshake rules in order to finalize the connection and be able to transmit any
 /// messages.
-pub trait Handshaking {
+pub trait Handshaking: Pea2Pea {
     /// Prepares the node to produce and handle network handshakes.
     fn enable_handshaking(&self);
 }
