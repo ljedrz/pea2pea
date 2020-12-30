@@ -213,7 +213,7 @@ pub struct InboundHandler(mpsc::Sender<MessagingObjects>);
 impl InboundHandler {
     /// Sends the connection reader to the task handling inbound messages.
     pub async fn send(&self, messaging_objects: MessagingObjects) {
-        if let Err(_) = self.0.send(messaging_objects).await {
+        if self.0.send(messaging_objects).await.is_err() {
             // can't recover if this happens
             panic!("the inbound message handling task is down or its Receiver is closed")
         }

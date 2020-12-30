@@ -25,7 +25,7 @@ pub struct HandshakeHandler(mpsc::Sender<HandshakeObjects>);
 impl HandshakeHandler {
     /// Sends handshake-relevant objects to the handshake handler.
     pub async fn send(&self, handshake_objects: HandshakeObjects) {
-        if let Err(_) = self.0.send(handshake_objects).await {
+        if self.0.send(handshake_objects).await.is_err() {
             // can't recover if this happens
             panic!("the handshake handling task is down or its Receiver is closed")
         }
