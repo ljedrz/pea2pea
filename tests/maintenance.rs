@@ -47,7 +47,7 @@ impl TidyNode {
 async fn maintenance_example() {
     tracing_subscriber::fmt::init();
 
-    let rando = common::RandomNode::new("0").await;
+    let rando = common::MessagingNode::new("0").await;
 
     let mut tidy_config = NodeConfig::default();
     tidy_config.name = Some("tidy".into());

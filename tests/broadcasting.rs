@@ -44,7 +44,7 @@ async fn broadcast_example() {
         .await
         .unwrap()
         .into_iter()
-        .map(common::RandomNode)
+        .map(common::MessagingNode)
         .collect::<Vec<_>>();
     for rando in &random_nodes {
         rando.enable_messaging();

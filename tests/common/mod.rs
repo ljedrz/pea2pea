@@ -19,9 +19,9 @@ pub async fn start_nodes(count: usize, config: Option<NodeConfig>) -> io::Result
 }
 
 #[derive(Clone)]
-pub struct RandomNode(pub Arc<Node>);
+pub struct MessagingNode(pub Arc<Node>);
 
-impl RandomNode {
+impl MessagingNode {
     pub async fn new<T: AsRef<str>>(name: T) -> Self {
         let mut config = NodeConfig::default();
         config.name = Some(name.as_ref().into());
@@ -29,7 +29,7 @@ impl RandomNode {
     }
 }
 
-impl Pea2Pea for RandomNode {
+impl Pea2Pea for MessagingNode {
     fn node(&self) -> &Arc<Node> {
         &self.0
     }
@@ -88,7 +88,7 @@ macro_rules! impl_messaging {
     };
 }
 
-impl_messaging!(RandomNode);
+impl_messaging!(MessagingNode);
 
 #[macro_export]
 macro_rules! wait_until {

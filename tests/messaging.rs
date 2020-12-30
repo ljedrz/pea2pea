@@ -65,7 +65,7 @@ impl Messaging for EchoNode {
 async fn messaging_example() {
     tracing_subscriber::fmt::init();
 
-    let shouter = common::RandomNode::new("shout").await;
+    let shouter = common::MessagingNode::new("shout").await;
     shouter.enable_messaging();
 
     let mut picky_echo_config = NodeConfig::default();
@@ -118,8 +118,8 @@ async fn messaging_example() {
 
 #[tokio::test]
 async fn drop_connection_on_invalid_message() {
-    let writer = common::RandomNode::new("writer").await;
-    let reader = common::RandomNode::new("reader").await;
+    let writer = common::MessagingNode::new("writer").await;
+    let reader = common::MessagingNode::new("reader").await;
     reader.enable_messaging();
 
     writer
@@ -146,12 +146,12 @@ async fn drop_connection_on_invalid_message() {
 async fn drop_connection_on_oversized_message() {
     const MSG_SIZE_LIMIT: usize = 10;
 
-    let writer = common::RandomNode::new("writer").await;
+    let writer = common::MessagingNode::new("writer").await;
 
     let mut config = NodeConfig::default();
     config.name = Some("reader".into());
     config.conn_read_buffer_size = MSG_SIZE_LIMIT;
-    let reader = common::RandomNode(Node::new(Some(config)).await.unwrap());
+    let reader = common::MessagingNode(Node::new(Some(config)).await.unwrap());
     reader.enable_messaging();
 
     writer
