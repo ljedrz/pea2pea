@@ -25,7 +25,8 @@ where
 
     /// Prepares the node to receive messages and optionally respond to them.
     fn enable_messaging(&self) {
-        let (conn_reader_sender, mut conn_reader_receiver) = mpsc::channel(32); // TODO: make configurable
+        let (conn_reader_sender, mut conn_reader_receiver) =
+            mpsc::channel(self.node().config.inbound_handler_queue_depth);
         self.node().set_inbound_handler(conn_reader_sender.into());
 
         // the task spawning tasks reading messages from the given stream

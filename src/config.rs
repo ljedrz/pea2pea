@@ -7,6 +7,8 @@ pub struct NodeConfig {
     pub desired_listening_port: Option<u16>,
     /// Allow listening on a different port if desired_listening_port is unavailable.
     pub allow_random_port: bool,
+    /// The depth of the queue passing connection objects to the inbound message handler.
+    pub inbound_handler_queue_depth: usize,
     /// The size of a per-connection buffer for inbound messages.
     pub conn_read_buffer_size: usize,
     /// The depth of per-connection queues used to process inbound messages.
@@ -25,6 +27,7 @@ impl Default for NodeConfig {
             name: None,
             desired_listening_port: None,
             allow_random_port: true,
+            inbound_handler_queue_depth: 16,
             conn_read_buffer_size: 64 * 1024,
             conn_inbound_queue_depth: 256,
             conn_outbound_queue_depth: 16,
