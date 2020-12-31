@@ -8,7 +8,7 @@ use tracing::*;
 use pea2pea::{
     connect_nodes,
     connections::ConnectionSide,
-    protocols::{HandshakeObjects, Handshaking, Messaging},
+    protocols::{Handshaking, Messaging},
     Node, NodeConfig, Pea2Pea, Topology,
 };
 
@@ -95,7 +95,8 @@ fn prefix_message(message: &[u8]) -> Bytes {
 
 impl Handshaking for PlayerNode {
     fn enable_handshaking(&self) {
-        let (from_node_sender, mut from_node_receiver) = mpsc::channel::<HandshakeObjects>(1);
+        let (from_node_sender, mut from_node_receiver) = mpsc::channel(1);
+        self.node().set_handshake_handler(from_node_sender.into());
 
         // spawn a background task dedicated to handling the handshakes
         let self_clone = self.clone();
@@ -154,8 +155,6 @@ impl Handshaking for PlayerNode {
                 }
             }
         });
-
-        self.node().set_handshake_handler(from_node_sender.into());
     }
 }
 

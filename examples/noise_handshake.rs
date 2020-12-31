@@ -5,7 +5,7 @@ use tracing::*;
 
 use pea2pea::{
     connections::ConnectionSide,
-    protocols::{HandshakeObjects, Handshaking, Messaging},
+    protocols::{Handshaking, Messaging},
     Node, NodeConfig, Pea2Pea,
 };
 
@@ -95,7 +95,8 @@ impl SecureNode {
 
 impl Handshaking for SecureNode {
     fn enable_handshaking(&self) {
-        let (from_node_sender, mut from_node_receiver) = mpsc::channel::<HandshakeObjects>(1);
+        let (from_node_sender, mut from_node_receiver) = mpsc::channel(1);
+        self.node().set_handshake_handler(from_node_sender.into());
 
         // the noise handshake settings used by snow
         const HANDSHAKE_PATTERN: &str = "Noise_XXpsk3_25519_ChaChaPoly_BLAKE2s";
@@ -187,8 +188,6 @@ impl Handshaking for SecureNode {
                 }
             }
         });
-
-        self.node().set_handshake_handler(from_node_sender.into());
     }
 }
 
