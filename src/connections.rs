@@ -130,7 +130,8 @@ impl ConnectionReader {
     }
 }
 
-/// An object dedicated to performing writes to the stream
+/// An object dedicated to performing writes to the stream, as well as keeping
+/// track of tasks that have been spawned for the purposes of a connection.
 pub struct Connection {
     /// A reference to the owning node.
     node: Arc<Node>,
