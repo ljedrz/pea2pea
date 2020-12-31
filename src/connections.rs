@@ -78,7 +78,8 @@ impl Not for ConnectionSide {
     }
 }
 
-/// An object dedicated to performing reads from a connection's stream.
+/// An object dedicated to performing reads from a connection's stream;
+/// it is available only if the `Reading` protocol is enabled.
 pub struct ConnectionReader {
     /// A reference to the owning node.
     pub node: Arc<Node>,
@@ -127,7 +128,8 @@ impl ConnectionReader {
     }
 }
 
-/// An object dedicated to performing writes to a connection's stream.
+/// An object dedicated to performing writes to a connection's stream;
+/// it is available only if the `Writing` protocol is enabled.
 pub struct ConnectionWriter {
     /// A reference to the owning node.
     pub node: Arc<Node>,
@@ -161,7 +163,8 @@ impl ConnectionWriter {
     }
 }
 
-/// Keeps track of tasks that have been spawned for the purposes of a connection.
+/// Keeps track of tasks that have been spawned for the purposes of a connection; it
+/// also contains a sender that communicates with the `Writing` protocol handler.
 pub struct Connection {
     /// A reference to the owning node.
     pub node: Arc<Node>,
@@ -180,7 +183,7 @@ pub struct Connection {
 }
 
 impl Connection {
-    /// Creates a Connection object with placeholders for tasks spawned by protocols.
+    /// Creates a `Connection` with placeholders for protocol-related objects.
     pub(crate) fn new(addr: SocketAddr, side: ConnectionSide, node: &Arc<Node>) -> Self {
         Self {
             node: Arc::clone(node),
@@ -193,7 +196,7 @@ impl Connection {
         }
     }
 
-    /// Returns a sender for outbound messages, as long as Writing is enabled.
+    /// Returns a `Sender` for outbound messages, as long as `Writing` is enabled.
     fn sender(&self) -> io::Result<Sender<Bytes>> {
         if let Some(sender) = self.outbound_message_sender.get() {
             Ok(sender.clone())

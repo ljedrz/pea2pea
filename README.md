@@ -23,8 +23,7 @@
 ## current state: _beta_
 - all the planned functionalities are available and operational
 - benchmarks demonstrate _very_ good performance (over 1GB/s in favorable scenarios)
-- the public APIs are unstable
-- more tests, benches and examples wouldn't hurt
+- the public APIs are unstable, but the overall architecture shouldn't change too much anymore
 
 ## how to use it
 1. define a clonable struct containing an `Arc<Node>` and any extra state you'd like to carry

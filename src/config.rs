@@ -5,7 +5,7 @@ pub struct NodeConfig {
     pub name: Option<String>,
     /// The desired listening port of the node.
     pub desired_listening_port: Option<u16>,
-    /// Allow listening on a different port if desired_listening_port is unavailable.
+    /// Allow listening on a different port if `desired_listening_port` is unavailable.
     pub allow_random_port: bool,
     /// The depth of the queue passing connection objects to the reading handler.
     pub reading_handler_queue_depth: usize,

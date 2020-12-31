@@ -5,7 +5,7 @@ use std::{
     io::{self, ErrorKind},
 };
 
-/// The way in which nodes are connected to each other; used in connect_nodes.
+/// The way in which nodes are connected to each other; used in `connect_nodes`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Topology {
     /// Each node - except the last one - connects to the next one in a linear fashion.

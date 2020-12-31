@@ -257,7 +257,7 @@ impl Node {
         disconnected
     }
 
-    /// Sends the provided message to the specified `SocketAddr`.
+    /// Sends the provided message to the specified `SocketAddr`, as long as the `Writing` protocol is enabled.
     pub async fn send_direct_message(&self, addr: SocketAddr, message: Bytes) -> io::Result<()> {
         self.connections
             .sender(addr)?
@@ -268,7 +268,7 @@ impl Node {
         Ok(())
     }
 
-    /// Broadcasts the provided message to all peers.
+    /// Broadcasts the provided message to all peers, as long as the `Writing` protocol is enabled.
     pub async fn send_broadcast(&self, message: Bytes) -> io::Result<()> {
         for message_sender in self.connections.senders()? {
             message_sender
@@ -300,38 +300,38 @@ impl Node {
         self.connections.num_connected()
     }
 
-    /// Returns a handle to the handshake handler, if Handshaking is enabled.
+    /// Returns a reference to the handshake handler, if the `Handshaking` protocol is enabled.
     fn handshake_handler(&self) -> Option<&HandshakeHandler> {
         self.protocols.handshake_handler.get()
     }
 
-    /// Returns a `Sender` for the channel handling messages from a connection, if Reading is enabled.
+    /// Returns a reference to the reading handler, if the `Reading` protocol is enabled.
     pub fn reading_handler(&self) -> Option<&ReadingHandler> {
         self.protocols.reading_handler.get()
     }
 
-    /// Returns a `Sender` for the channel handling messages to a connection, if Writing is enabled.
+    /// Returns a reference to the writing handler, if the `Writing` protocol is enabled.
     pub fn writing_handler(&self) -> Option<&WritingHandler> {
         self.protocols.writing_handler.get()
     }
 
-    /// Sets up the handshake handler, as part of the Handshaking protocol.
+    /// Sets up the handshake handler, as part of the `Handshaking` protocol.
     pub fn set_handshake_handler(&self, handler: HandshakeHandler) {
         if self.protocols.handshake_handler.set(handler).is_err() {
             panic!("the handshake_handler field was set more than once!");
         }
     }
 
-    /// Sets up the `Sender` for handling messages from a single connection, as part of the Reading protocol.
-    pub fn set_reading_handler(&self, sender: ReadingHandler) {
-        if self.protocols.reading_handler.set(sender).is_err() {
+    /// Sets up the reading handler, as part of enabling the `Reading` protocol.
+    pub fn set_reading_handler(&self, handler: ReadingHandler) {
+        if self.protocols.reading_handler.set(handler).is_err() {
             panic!("the reading_handler field was set more than once!");
         }
     }
 
-    /// Sets up the `Sender` for handling messages to a single connection, as part of the Writing protocol.
-    pub fn set_writing_handler(&self, sender: WritingHandler) {
-        if self.protocols.writing_handler.set(sender).is_err() {
+    /// Sets up the writing handler, as part of enabling the `Writing` protocol.
+    pub fn set_writing_handler(&self, handler: WritingHandler) {
+        if self.protocols.writing_handler.set(handler).is_err() {
             panic!("the writing_handler field was set more than once!");
         }
     }
