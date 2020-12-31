@@ -156,7 +156,7 @@ impl Connection {
         side: ConnectionSide,
     ) -> Self {
         let (message_sender, mut message_receiver) =
-            channel::<Bytes>(node.config.outbound_message_queue_depth);
+            channel::<Bytes>(node.config.conn_outbound_queue_depth);
 
         let node_clone = Arc::clone(&node);
         let _writer_task = tokio::spawn(async move {

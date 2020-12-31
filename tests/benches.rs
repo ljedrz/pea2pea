@@ -74,7 +74,7 @@ async fn run_bench_scenario(params: BenchParams) {
     } = params;
 
     let mut config = NodeConfig::default();
-    config.outbound_message_queue_depth = msg_count;
+    config.conn_outbound_queue_depth = msg_count;
     let spammers = common::start_nodes(spammer_count, Some(config)).await;
 
     let mut config = NodeConfig::default();
