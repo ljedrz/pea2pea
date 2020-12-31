@@ -36,3 +36,4 @@ that's it!
 
 - the `tests` directory contains some examples of simple use
 - `examples` contain more advanced setups, e.g. using [noise](https://noiseprotocol.org/noise.html) encryption
+- try different `RUST_LOG` verbosity levels to check out what's going on under the hood
