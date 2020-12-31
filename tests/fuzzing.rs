@@ -1,7 +1,10 @@
 use rand::{distributions::Standard, rngs::SmallRng, Rng, SeedableRng};
 
 mod common;
-use pea2pea::{protocols::Messaging, Node, NodeConfig, Pea2Pea};
+use pea2pea::{
+    protocols::{Reading, Writing},
+    Node, NodeConfig, Pea2Pea,
+};
 
 use std::{io, net::SocketAddr, sync::Arc};
 
@@ -15,7 +18,7 @@ impl Pea2Pea for Tester {
 }
 
 #[async_trait::async_trait]
-impl Messaging for Tester {
+impl Reading for Tester {
     type Message = ();
 
     fn read_message(
@@ -37,11 +40,13 @@ async fn fuzzing() {
     let mut config = NodeConfig::default();
     config.conn_read_buffer_size = MAX_MSG_SIZE;
     let tester = Tester(Node::new(Some(config)).await.unwrap());
-    tester.enable_messaging();
+    tester.enable_reading();
 
-    let sender = Node::new(None).await.unwrap();
+    let sender = common::MessagingNode::new("sender").await;
+    sender.enable_writing();
 
     sender
+        .node()
         .initiate_connection(tester.node().listening_addr)
         .await
         .unwrap();
@@ -52,10 +57,10 @@ async fn fuzzing() {
 
     loop {
         let random_len: usize = rng.gen_range(1..MAX_MSG_SIZE - 2); // account for the length prefix
-        let random_message: Vec<u8> = (&mut rng).sample_iter(Standard).take(random_len).collect();
-        let bytes = common::prefix_with_len(2, &random_message);
+        let random_payload: Vec<u8> = (&mut rng).sample_iter(Standard).take(random_len).collect();
         sender
-            .send_direct_message(tester.node().listening_addr, bytes)
+            .node()
+            .send_direct_message(tester.node().listening_addr, random_payload.into())
             .await
             .unwrap();
 

@@ -7,8 +7,8 @@ use tracing::*;
 
 use pea2pea::{
     connect_nodes,
-    connections::ConnectionSide,
-    protocols::{Handshaking, Messaging},
+    connections::{ConnectionSide, ConnectionWriter},
+    protocols::{Handshaking, Reading, Writing},
     Node, NodeConfig, Pea2Pea, Topology,
 };
 
@@ -59,7 +59,7 @@ impl PlayerNode {
         info!(parent: self.node().span(), "I have the potato!");
         let message = Message::IHaveThePotato(self.node().name().into());
         let message = bincode::serialize(&message).unwrap();
-        self.node().send_broadcast(prefix_message(&message)).await;
+        self.node().send_broadcast(message.into()).await.unwrap();
 
         let (new_carrier_name, new_carrier_addr) = self
             .other_players
@@ -73,7 +73,7 @@ impl PlayerNode {
 
         let message = bincode::serialize(&Message::HotPotato).unwrap();
         self.node()
-            .send_direct_message(new_carrier_addr, prefix_message(&message))
+            .send_direct_message(new_carrier_addr, message.into())
             .await
             .unwrap();
     }
@@ -102,29 +102,27 @@ impl Handshaking for PlayerNode {
         let self_clone = self.clone();
         tokio::spawn(async move {
             loop {
-                if let Some((mut conn_reader, conn, result_sender)) =
+                if let Some((mut conn_reader, mut conn_writer, node_side, result_sender)) =
                     from_node_receiver.recv().await
                 {
                     let node = Arc::clone(&conn_reader.node);
                     let addr = conn_reader.addr;
 
-                    let peer_name = match conn.side {
-                        // the connection is the Responder, so the node is the Initiator
-                        ConnectionSide::Responder => {
+                    let peer_name = match node_side {
+                        ConnectionSide::Initiator => {
                             debug!(parent: node.span(), "handshaking with {} as the initiator", addr);
 
                             // send own PlayerName
                             let own_name = node.name();
                             let message = prefix_message(own_name.as_bytes());
-                            conn.send_message(message).await;
+                            conn_writer.write_all(&message).await.unwrap();
 
                             // receive the peer's PlayerName
                             let message = conn_reader.read_queued_bytes().await.unwrap();
 
                             String::from_utf8(message[2..].to_vec()).unwrap()
                         }
-                        // the connection is the Initiator, so the node is the Responder
-                        ConnectionSide::Initiator => {
+                        ConnectionSide::Responder => {
                             debug!(parent: node.span(), "handshaking with {} as the responder", addr);
 
                             // receive the peer's PlayerName
@@ -134,7 +132,7 @@ impl Handshaking for PlayerNode {
                             // send own PlayerName
                             let own_name = node.name();
                             let message = prefix_message(own_name.as_bytes());
-                            conn.send_message(message).await;
+                            conn_writer.write_all(&message).await.unwrap();
 
                             peer_name
                         }
@@ -148,7 +146,7 @@ impl Handshaking for PlayerNode {
                     self_clone.other_players.lock().insert(peer_name, player);
 
                     // return the connection objects to the node
-                    if result_sender.send(Ok((conn_reader, conn))).is_err() {
+                    if result_sender.send(Ok((conn_reader, conn_writer))).is_err() {
                         // can't recover if this happens
                         unreachable!();
                     }
@@ -165,7 +163,7 @@ enum Message {
 }
 
 #[async_trait::async_trait]
-impl Messaging for PlayerNode {
+impl Reading for PlayerNode {
     type Message = Message;
 
     fn read_message(
@@ -224,6 +222,15 @@ impl Messaging for PlayerNode {
     }
 }
 
+#[async_trait::async_trait]
+impl Writing for PlayerNode {
+    async fn write_message(&self, writer: &mut ConnectionWriter, payload: &[u8]) -> io::Result<()> {
+        let message = prefix_message(payload);
+
+        writer.write_all(&message).await
+    }
+}
+
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt::init();
@@ -245,7 +252,8 @@ async fn main() {
 
     for player in &players {
         player.enable_handshaking();
-        player.enable_messaging();
+        player.enable_reading();
+        player.enable_writing();
     }
     connect_nodes(&players, Topology::Mesh).await.unwrap();
 

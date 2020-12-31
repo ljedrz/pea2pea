@@ -3,7 +3,11 @@
 use bytes::Bytes;
 use tracing::*;
 
-use pea2pea::{protocols::Messaging, Node, NodeConfig, Pea2Pea};
+use pea2pea::{
+    connections::ConnectionWriter,
+    protocols::{Reading, Writing},
+    Node, NodeConfig, Pea2Pea,
+};
 
 use std::{convert::TryInto, io, net::SocketAddr, sync::Arc};
 
@@ -100,7 +104,7 @@ pub fn prefix_with_len(len_size: usize, message: &[u8]) -> Bytes {
 macro_rules! impl_messaging {
     ($target: ty) => {
         #[async_trait::async_trait]
-        impl Messaging for $target {
+        impl Reading for $target {
             type Message = Bytes;
 
             fn read_message(&self, _source: SocketAddr, buffer: &[u8]) -> io::Result<Option<(Self::Message, usize)>> {
@@ -111,7 +115,17 @@ macro_rules! impl_messaging {
 
             async fn process_message(&self, source: SocketAddr, _message: Self::Message) -> io::Result<()> {
                 info!(parent: self.node().span(), "received a message from {}", source);
+
                 Ok(())
+            }
+        }
+
+        #[async_trait::async_trait]
+        impl Writing for $target {
+            async fn write_message(&self, writer: &mut ConnectionWriter, payload: &[u8]) -> io::Result<()> {
+                let message = crate::common::prefix_with_len(2, payload);
+
+                writer.write_all(&message).await
             }
         }
     };

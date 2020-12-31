@@ -1,5 +1,7 @@
-use crate::connections::{Connection, ConnectionReader, ConnectionSide, Connections};
-use crate::protocols::{HandshakeHandler, InboundHandler, Protocols};
+use crate::connections::{
+    Connection, ConnectionReader, ConnectionSide, ConnectionWriter, Connections,
+};
+use crate::protocols::{HandshakeHandler, Protocols, ReadingHandler, WritingHandler};
 use crate::*;
 
 use bytes::Bytes;
@@ -158,22 +160,21 @@ impl Node {
         );
 
         let (reader, writer) = stream.into_split();
+        let reader = ConnectionReader::new(peer_addr, reader, self);
+        let writer = ConnectionWriter::new(peer_addr, writer, self);
 
-        let connection_reader = ConnectionReader::new(peer_addr, reader, Arc::clone(&self));
-        let connection = Connection::new(peer_addr, writer, Arc::clone(&self), !own_side);
+        let connection = Connection::new(peer_addr, !own_side, self);
 
         // Handshaking
-        let (connection_reader, connection) = if let Some(ref handshake_handler) =
-            self.handshake_handler()
-        {
+        let (reader, writer) = if let Some(ref handshake_handler) = self.handshake_handler() {
             let (handshake_result_sender, handshake_result_receiver) = oneshot::channel();
 
             handshake_handler
-                .send((connection_reader, connection, handshake_result_sender))
+                .send((reader, writer, own_side, handshake_result_sender))
                 .await;
 
             match handshake_result_receiver.await {
-                Ok(Ok((conn_reader, conn))) => (conn_reader, conn),
+                Ok(Ok(reader_and_writer)) => reader_and_writer,
                 _ => {
                     error!(parent: self.span(), "handshake with {} failed; dropping the connection", peer_addr);
                     self.known_peers().register_failure(peer_addr);
@@ -181,21 +182,41 @@ impl Node {
                 }
             }
         } else {
-            (connection_reader, connection)
+            (reader, writer)
         };
 
-        // Messaging
-        let connection = if let Some(ref inbound_handler) = self.inbound_handler() {
+        // Reading
+        let connection = if let Some(ref reading_handler) = self.reading_handler() {
             let (conn_returner, conn_retriever) = oneshot::channel();
 
-            inbound_handler
-                .send((connection_reader, connection, conn_returner))
+            reading_handler
+                .send((reader, connection, conn_returner))
                 .await;
 
             match conn_retriever.await {
                 Ok(Ok(conn)) => conn,
                 _ => {
-                    error!(parent: self.span(), "can't spawn inbound handlers; dropping the connection with {}", peer_addr);
+                    error!(parent: self.span(), "can't spawn reading handlers; dropping the connection with {}", peer_addr);
+                    self.known_peers().register_failure(peer_addr);
+                    return Err(ErrorKind::Other.into());
+                }
+            }
+        } else {
+            connection
+        };
+
+        // Writing
+        let connection = if let Some(ref writing_handler) = self.writing_handler() {
+            let (conn_returner, conn_retriever) = oneshot::channel();
+
+            writing_handler
+                .send((writer, connection, conn_returner))
+                .await;
+
+            match conn_retriever.await {
+                Ok(Ok(conn)) => conn,
+                _ => {
+                    error!(parent: self.span(), "can't spawn writing handlers; dropping the connection with {}", peer_addr);
                     self.known_peers().register_failure(peer_addr);
                     return Err(ErrorKind::Other.into());
                 }
@@ -238,25 +259,25 @@ impl Node {
 
     /// Sends the provided message to the specified `SocketAddr`.
     pub async fn send_direct_message(&self, addr: SocketAddr, message: Bytes) -> io::Result<()> {
-        if let Some(message_sender) = self.connections.sender(addr) {
-            message_sender
-                .send(message)
-                .await
-                .expect("the connection writer task is closed"); // can't recover if this happens
-            Ok(())
-        } else {
-            Err(ErrorKind::NotConnected.into())
-        }
+        self.connections
+            .sender(addr)?
+            .send(message)
+            .await
+            .expect("the connection writer task is closed"); // can't recover if this happens
+
+        Ok(())
     }
 
     /// Broadcasts the provided message to all peers.
-    pub async fn send_broadcast(&self, message: Bytes) {
-        for message_sender in self.connections.senders() {
+    pub async fn send_broadcast(&self, message: Bytes) -> io::Result<()> {
+        for message_sender in self.connections.senders()? {
             message_sender
                 .send(message.clone())
                 .await
                 .expect("the connection writer task is closed"); // can't recover if this happens
         }
+
+        Ok(())
     }
 
     /// Returns a list containing addresses of active connections.
@@ -279,27 +300,39 @@ impl Node {
         self.connections.num_connected()
     }
 
-    /// Returns a `Sender` for the channel handling messages from a connection, if Messaging is enabled.
-    pub fn inbound_handler(&self) -> Option<&InboundHandler> {
-        self.protocols.inbound_handler.get()
-    }
-
     /// Returns a handle to the handshake handler, if Handshaking is enabled.
     fn handshake_handler(&self) -> Option<&HandshakeHandler> {
         self.protocols.handshake_handler.get()
     }
 
-    /// Sets up the `Sender` for handling messages from a single connection, as part of the Messaging protocol.
-    pub fn set_inbound_handler(&self, sender: InboundHandler) {
-        if self.protocols.inbound_handler.set(sender).is_err() {
-            panic!("the inbound_handler field was set more than once!");
-        }
+    /// Returns a `Sender` for the channel handling messages from a connection, if Reading is enabled.
+    pub fn reading_handler(&self) -> Option<&ReadingHandler> {
+        self.protocols.reading_handler.get()
+    }
+
+    /// Returns a `Sender` for the channel handling messages to a connection, if Writing is enabled.
+    pub fn writing_handler(&self) -> Option<&WritingHandler> {
+        self.protocols.writing_handler.get()
     }
 
     /// Sets up the handshake handler, as part of the Handshaking protocol.
     pub fn set_handshake_handler(&self, handler: HandshakeHandler) {
         if self.protocols.handshake_handler.set(handler).is_err() {
             panic!("the handshake_handler field was set more than once!");
+        }
+    }
+
+    /// Sets up the `Sender` for handling messages from a single connection, as part of the Reading protocol.
+    pub fn set_reading_handler(&self, sender: ReadingHandler) {
+        if self.protocols.reading_handler.set(sender).is_err() {
+            panic!("the reading_handler field was set more than once!");
+        }
+    }
+
+    /// Sets up the `Sender` for handling messages to a single connection, as part of the Writing protocol.
+    pub fn set_writing_handler(&self, sender: WritingHandler) {
+        if self.protocols.writing_handler.set(sender).is_err() {
+            panic!("the writing_handler field was set more than once!");
         }
     }
 }

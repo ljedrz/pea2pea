@@ -4,8 +4,8 @@ use tokio::{sync::mpsc, time::sleep};
 use tracing::*;
 
 use pea2pea::{
-    connections::ConnectionSide,
-    protocols::{Handshaking, Messaging},
+    connections::{ConnectionSide, ConnectionWriter},
+    protocols::{Handshaking, Reading, Writing},
     Node, NodeConfig, Pea2Pea,
 };
 
@@ -76,21 +76,6 @@ impl SecureNode {
             noise_states: Default::default(),
         })
     }
-
-    // send a direct message encrypted using noise
-    async fn send_direct_message(&self, target: SocketAddr, message: &[u8]) -> io::Result<()> {
-        info!(parent: self.node.span(), "sending an encrypted message to {}: \"{}\"", target, str::from_utf8(message).unwrap());
-
-        let noise = Arc::clone(&self.noise_states.read().get(&target).unwrap());
-        let NoiseState { state, buffer } = &mut *noise.lock();
-
-        let len = state.write_message(message, buffer).unwrap();
-        let encrypted_message = &buffer[..len];
-
-        self.node()
-            .send_direct_message(target, packet_message(encrypted_message))
-            .await
-    }
 }
 
 impl Handshaking for SecureNode {
@@ -106,14 +91,13 @@ impl Handshaking for SecureNode {
         let self_clone = self.clone();
         tokio::spawn(async move {
             loop {
-                if let Some((mut conn_reader, conn, result_sender)) =
+                if let Some((mut conn_reader, mut conn_writer, node_side, result_sender)) =
                     from_node_receiver.recv().await
                 {
                     let addr = conn_reader.addr;
 
-                    let noise_state = match conn.side {
-                        // the connection is the Responder, so the node is the Initiator
-                        ConnectionSide::Responder => {
+                    let noise_state = match node_side {
+                        ConnectionSide::Initiator => {
                             info!(parent: conn_reader.node.span(), "handshaking with {} as the initiator", addr);
 
                             let builder = snow::Builder::new(HANDSHAKE_PATTERN.parse().unwrap());
@@ -127,7 +111,10 @@ impl Handshaking for SecureNode {
 
                             // -> e
                             let len = noise.write_message(&[], &mut buffer).unwrap();
-                            conn.send_message(packet_message(&buffer[..len])).await;
+                            conn_writer
+                                .write_all(&packet_message(&buffer[..len]))
+                                .await
+                                .unwrap();
 
                             // <- e, ee, s, es
                             let queued_bytes = conn_reader.read_queued_bytes().await.unwrap();
@@ -136,15 +123,17 @@ impl Handshaking for SecureNode {
 
                             // -> s, se, psk
                             let len = noise.write_message(&[], &mut buffer).unwrap();
-                            conn.send_message(packet_message(&buffer[..len])).await;
+                            conn_writer
+                                .write_all(&packet_message(&buffer[..len]))
+                                .await
+                                .unwrap();
 
                             NoiseState {
                                 state: noise.into_transport_mode().unwrap(),
                                 buffer,
                             }
                         }
-                        // the connection is the Initiator, so the node is the Responder
-                        ConnectionSide::Initiator => {
+                        ConnectionSide::Responder => {
                             info!(parent: conn_reader.node.span(), "handshaking with {} as the responder", addr);
 
                             let builder = snow::Builder::new(HANDSHAKE_PATTERN.parse().unwrap());
@@ -163,7 +152,10 @@ impl Handshaking for SecureNode {
 
                             // -> e, ee, s, es
                             let len = noise.write_message(&[], &mut buffer).unwrap();
-                            conn.send_message(packet_message(&buffer[..len])).await;
+                            conn_writer
+                                .write_all(&packet_message(&buffer[..len]))
+                                .await
+                                .unwrap();
 
                             // <- s, se, psk
                             let queued_bytes = conn_reader.read_queued_bytes().await.unwrap();
@@ -181,7 +173,7 @@ impl Handshaking for SecureNode {
                     self_clone.noise_states.write().insert(addr, noise_state);
 
                     // return the connection objects to the node
-                    if result_sender.send(Ok((conn_reader, conn))).is_err() {
+                    if result_sender.send(Ok((conn_reader, conn_writer))).is_err() {
                         // can't recover if this happens
                         unreachable!();
                     }
@@ -192,7 +184,7 @@ impl Handshaking for SecureNode {
 }
 
 #[async_trait::async_trait]
-impl Messaging for SecureNode {
+impl Reading for SecureNode {
     type Message = String;
 
     fn read_message(
@@ -223,6 +215,26 @@ impl Messaging for SecureNode {
     }
 }
 
+#[async_trait::async_trait]
+impl Writing for SecureNode {
+    async fn write_message(&self, writer: &mut ConnectionWriter, payload: &[u8]) -> io::Result<()> {
+        let to_encrypt = str::from_utf8(payload).unwrap();
+        let target = writer.addr;
+        info!(parent: self.node.span(), "sending an encrypted message to {}: \"{}\"", target, to_encrypt);
+
+        let noise = Arc::clone(&self.noise_states.read().get(&target).unwrap());
+
+        let message = {
+            let NoiseState { state, buffer } = &mut *noise.lock();
+            let len = state.write_message(payload, buffer).unwrap();
+            let encrypted_message = &buffer[..len];
+            packet_message(encrypted_message)
+        };
+
+        writer.write_all(&message).await
+    }
+}
+
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt::init();
@@ -232,12 +244,13 @@ async fn main() {
 
     for node in &[&initiator, &responder] {
         node.enable_handshaking(); // enable the pre-defined handshakes
-        node.enable_messaging(); // enable the pre-defined messaging rules
+        node.enable_reading(); // enable the reading protocol
+        node.enable_writing(); // enable the writing protocol
     }
 
     // connect the initiator to the responder
     initiator
-        .node
+        .node()
         .initiate_connection(responder.node().listening_addr)
         .await
         .unwrap();
@@ -248,7 +261,8 @@ async fn main() {
     // send a message from initiator to responder
     let msg = b"why hello there, fellow noise protocol user; I'm the initiator";
     initiator
-        .send_direct_message(responder.node().listening_addr, msg)
+        .node()
+        .send_direct_message(responder.node().listening_addr, msg[..].into())
         .await
         .unwrap();
 
@@ -256,7 +270,8 @@ async fn main() {
     let initiator_addr = responder.node().connected_addrs()[0];
     let msg = b"why hello there, fellow noise protocol user; I'm the responder";
     responder
-        .send_direct_message(initiator_addr, msg)
+        .node()
+        .send_direct_message(initiator_addr, msg[..].into())
         .await
         .unwrap();
 

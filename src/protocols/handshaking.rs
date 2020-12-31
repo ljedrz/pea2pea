@@ -1,5 +1,5 @@
 use crate::{
-    connections::{Connection, ConnectionReader},
+    connections::{ConnectionReader, ConnectionSide, ConnectionWriter},
     Pea2Pea,
 };
 
@@ -15,11 +15,12 @@ pub trait Handshaking: Pea2Pea {
     fn enable_handshaking(&self);
 }
 
-/// A set of objects required to perform handshakes.
+/// A set of objects required to enable the `Handshaking` protocol.
 pub type HandshakeObjects = (
     ConnectionReader,
-    Connection,
-    oneshot::Sender<io::Result<(ConnectionReader, Connection)>>,
+    ConnectionWriter,
+    ConnectionSide,
+    oneshot::Sender<io::Result<(ConnectionReader, ConnectionWriter)>>,
 );
 
 /// An object dedicated to handling connection handshakes; used in the `Handshaking` protocol.

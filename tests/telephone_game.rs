@@ -1,7 +1,13 @@
+use bytes::Bytes;
 use tracing::*;
 
 mod common;
-use pea2pea::{connect_nodes, protocols::Messaging, Node, Pea2Pea, Topology};
+use pea2pea::{
+    connect_nodes,
+    connections::ConnectionWriter,
+    protocols::{Reading, Writing},
+    Node, Pea2Pea, Topology,
+};
 
 use std::{io, net::SocketAddr, sync::Arc};
 
@@ -15,7 +21,7 @@ impl Pea2Pea for Player {
 }
 
 #[async_trait::async_trait]
-impl Messaging for Player {
+impl Reading for Player {
     type Message = String;
 
     fn read_message(
@@ -38,16 +44,26 @@ impl Messaging for Player {
         );
 
         let connected_addrs = self.node().connected_addrs();
+        let message_bytes = Bytes::from(message.into_bytes());
 
         // there are just a maximum of 2 connections, so this is sufficient
         for addr in connected_addrs.into_iter().filter(|addr| *addr != source) {
             self.node()
-                .send_direct_message(addr, common::prefix_with_len(2, message.as_bytes()))
+                .send_direct_message(addr, message_bytes.clone())
                 .await
                 .unwrap();
         }
 
         Ok(())
+    }
+}
+
+#[async_trait::async_trait]
+impl Writing for Player {
+    async fn write_message(&self, writer: &mut ConnectionWriter, payload: &[u8]) -> io::Result<()> {
+        let message = crate::common::prefix_with_len(2, payload);
+
+        writer.write_all(&message).await
     }
 }
 
@@ -61,20 +77,17 @@ async fn telephone_game() {
         .map(Player)
         .collect::<Vec<_>>();
 
-    // the first node won't be replying to anything, so skip it
-    for player in players.iter().skip(1) {
-        player.enable_messaging();
+    for player in &players {
+        player.enable_reading();
+        player.enable_writing();
     }
     connect_nodes(&players, Topology::Line).await.unwrap();
 
-    let message = "when we can't think for ourselves, we can always quote";
+    let message = b"when we can't think for ourselves, we can always quote";
 
     players[0]
         .node()
-        .send_direct_message(
-            players[1].node().listening_addr,
-            common::prefix_with_len(2, message.as_bytes()),
-        )
+        .send_direct_message(players[1].node().listening_addr, message[..].into())
         .await
         .unwrap();
 

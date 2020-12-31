@@ -1,7 +1,27 @@
 mod common;
-use pea2pea::{protocols::Messaging, Node, NodeConfig, Pea2Pea};
+use pea2pea::{
+    connections::ConnectionWriter,
+    protocols::{Reading, Writing},
+    Node, NodeConfig, Pea2Pea,
+};
 
 use std::{io, net::SocketAddr, sync::Arc, time::Instant};
+
+#[derive(Clone)]
+struct Spammer(Arc<Node>);
+
+impl Pea2Pea for Spammer {
+    fn node(&self) -> &Arc<Node> {
+        &self.0
+    }
+}
+
+#[async_trait::async_trait]
+impl Writing for Spammer {
+    async fn write_message(&self, writer: &mut ConnectionWriter, payload: &[u8]) -> io::Result<()> {
+        writer.write_all(payload).await
+    }
+}
 
 #[derive(Clone)]
 struct Sink(Arc<Node>);
@@ -13,7 +33,7 @@ impl Pea2Pea for Sink {
 }
 
 #[async_trait::async_trait]
-impl Messaging for Sink {
+impl Reading for Sink {
     type Message = ();
 
     fn read_message(
@@ -76,16 +96,22 @@ async fn run_bench_scenario(params: BenchParams) {
     let mut config = NodeConfig::default();
     config.conn_outbound_queue_depth = msg_count;
     let spammers = common::start_nodes(spammer_count, Some(config)).await;
+    let spammers = spammers.into_iter().map(Spammer).collect::<Vec<_>>();
+
+    for spammer in &spammers {
+        spammer.enable_writing();
+    }
 
     let mut config = NodeConfig::default();
     config.conn_inbound_queue_depth = inbound_channel_depth;
     config.conn_read_buffer_size = conn_read_buffer_size;
     let sink = Sink(Node::new(Some(config)).await.unwrap());
 
-    sink.enable_messaging();
+    sink.enable_reading();
 
     for spammer in &spammers {
         spammer
+            .node()
             .initiate_connection(sink.node().listening_addr)
             .await
             .unwrap();
@@ -102,6 +128,7 @@ async fn run_bench_scenario(params: BenchParams) {
         tokio::spawn(async move {
             for _ in 0..msg_count {
                 spammer
+                    .node()
                     .send_direct_message(sink_addr, msg.clone())
                     .await
                     .unwrap();

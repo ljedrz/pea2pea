@@ -9,7 +9,7 @@ use parking_lot::RwLock;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::tcp::{OwnedReadHalf, OwnedWriteHalf},
-    sync::mpsc::{channel, Sender},
+    sync::mpsc::Sender,
     task::JoinHandle,
 };
 use tracing::*;
@@ -25,23 +25,20 @@ use std::{
 pub(crate) struct Connections(RwLock<FxHashMap<SocketAddr, Connection>>);
 
 impl Connections {
-    pub(crate) fn sender(&self, addr: SocketAddr) -> Option<Sender<Bytes>> {
-        self.0
-            .read()
-            .get(&addr)
-            .map(|conn| conn.message_sender.clone())
+    pub(crate) fn sender(&self, addr: SocketAddr) -> io::Result<Sender<Bytes>> {
+        if let Some(conn) = self.0.read().get(&addr) {
+            conn.sender()
+        } else {
+            Err(ErrorKind::NotConnected.into())
+        }
     }
 
     pub(crate) fn add(&self, conn: Connection) {
         self.0.write().insert(conn.addr, conn);
     }
 
-    pub(crate) fn senders(&self) -> Vec<Sender<Bytes>> {
-        self.0
-            .read()
-            .values()
-            .map(|conn| conn.message_sender.clone())
-            .collect()
+    pub(crate) fn senders(&self) -> io::Result<Vec<Sender<Bytes>>> {
+        self.0.read().values().map(|conn| conn.sender()).collect()
     }
 
     pub(crate) fn is_connected(&self, addr: SocketAddr) -> bool {
@@ -96,13 +93,13 @@ pub struct ConnectionReader {
 }
 
 impl ConnectionReader {
-    pub(crate) fn new(addr: SocketAddr, reader: OwnedReadHalf, node: Arc<Node>) -> Self {
+    pub(crate) fn new(addr: SocketAddr, reader: OwnedReadHalf, node: &Arc<Node>) -> Self {
         Self {
+            node: Arc::clone(node),
             addr,
             buffer: vec![0; node.config.conn_read_buffer_size].into(),
             carry: 0,
             reader,
-            node,
         }
     }
 
@@ -130,78 +127,91 @@ impl ConnectionReader {
     }
 }
 
-/// An object dedicated to performing writes to the stream, as well as keeping
-/// track of tasks that have been spawned for the purposes of a connection.
+/// An object dedicated to performing writes to a connection's stream.
+pub struct ConnectionWriter {
+    /// A reference to the owning node.
+    pub node: Arc<Node>,
+    /// The address of the connection.
+    pub addr: SocketAddr,
+    /// A buffer dedicated to buffering writes to the stream.
+    pub buffer: Box<[u8]>,
+    /// The number of bytes from an incomplete write carried over in the buffer.
+    pub carry: usize,
+    /// The write half of the stream.
+    pub writer: OwnedWriteHalf,
+}
+
+impl ConnectionWriter {
+    pub(crate) fn new(addr: SocketAddr, writer: OwnedWriteHalf, node: &Arc<Node>) -> Self {
+        Self {
+            node: Arc::clone(node),
+            addr,
+            buffer: vec![0; node.config.conn_write_buffer_size].into(),
+            carry: 0,
+            writer,
+        }
+    }
+
+    /// Writes the given buffer to the stream.
+    pub async fn write_all(&mut self, buffer: &[u8]) -> io::Result<()> {
+        self.writer.write_all(buffer).await?;
+        trace!(parent: self.node.span(), "wrote {}B to {}", buffer.len(), self.addr);
+
+        Ok(())
+    }
+}
+
+/// Keeps track of tasks that have been spawned for the purposes of a connection.
 pub struct Connection {
     /// A reference to the owning node.
-    node: Arc<Node>,
+    pub node: Arc<Node>,
     /// The address of the connection.
-    pub(crate) addr: SocketAddr,
+    pub addr: SocketAddr,
     /// The handle to the task performing reads from the stream.
-    pub inbound_reader_task: OnceCell<JoinHandle<()>>,
+    pub reader_task: OnceCell<JoinHandle<()>>,
     /// The handle to the task processing read messages.
     pub inbound_processing_task: OnceCell<JoinHandle<()>>,
     /// The handle to the task performing writes to the stream.
-    _writer_task: JoinHandle<()>,
+    pub writer_task: OnceCell<JoinHandle<()>>,
     /// Used to queue writes to the stream.
-    pub(crate) message_sender: Sender<Bytes>,
+    pub outbound_message_sender: OnceCell<Sender<Bytes>>,
     /// The connection's side in relation to the node.
     pub side: ConnectionSide,
 }
 
 impl Connection {
-    pub(crate) fn new(
-        addr: SocketAddr,
-        mut writer: OwnedWriteHalf,
-        node: Arc<Node>,
-        side: ConnectionSide,
-    ) -> Self {
-        let (message_sender, mut message_receiver) =
-            channel::<Bytes>(node.config.conn_outbound_queue_depth);
-
-        let node_clone = Arc::clone(&node);
-        let _writer_task = tokio::spawn(async move {
-            loop {
-                // TODO: when try_recv is available in tokio again (https://github.com/tokio-rs/tokio/issues/3350),
-                // try adding a buffer for extra writing perf
-                while let Some(msg) = message_receiver.recv().await {
-                    if let Err(e) = writer.write_all(&msg).await {
-                        node_clone.known_peers().register_failure(addr);
-                        error!(parent: node_clone.span(), "couldn't send {}B to {}: {}", msg.len(), addr, e);
-                    } else {
-                        node_clone
-                            .known_peers()
-                            .register_sent_message(addr, msg.len());
-                        node_clone.stats.register_sent_message(msg.len());
-                        trace!(parent: node_clone.span(), "sent {}B to {}", msg.len(), addr);
-                    }
-                }
-                if let Err(e) = writer.flush().await {
-                    node_clone.known_peers().register_failure(addr);
-                    error!(parent: node_clone.span(), "couldn't flush the stream to {}: {}", addr, e);
-                }
-            }
-        });
-        trace!(parent: node.span(), "spawned a task for writing messages to {}", addr);
-
+    /// Creates a Connection object with placeholders for tasks spawned by protocols.
+    pub(crate) fn new(addr: SocketAddr, side: ConnectionSide, node: &Arc<Node>) -> Self {
         Self {
-            node,
+            node: Arc::clone(node),
             addr,
-            inbound_reader_task: Default::default(),
-            inbound_processing_task: Default::default(),
-            _writer_task,
-            message_sender,
             side,
+            reader_task: Default::default(),
+            inbound_processing_task: Default::default(),
+            writer_task: Default::default(),
+            outbound_message_sender: Default::default(),
+        }
+    }
+
+    /// Returns a sender for outbound messages, as long as Writing is enabled.
+    fn sender(&self) -> io::Result<Sender<Bytes>> {
+        if let Some(sender) = self.outbound_message_sender.get() {
+            Ok(sender.clone())
+        } else {
+            error!(parent: self.node.span(), "can't send messages: the Writing protocol is disabled");
+            Err(ErrorKind::Other.into())
         }
     }
 
     /// Sends the given message to the peer associated with the connection.
-    pub async fn send_message(&self, message: Bytes) {
-        // can't recover if this happens
-        self.message_sender
+    pub async fn send_message(&self, message: Bytes) -> io::Result<()> {
+        // can't recover if the send fails
+        self.sender()?
             .send(message)
             .await
             .expect("the connection writer task is closed");
+
+        Ok(())
     }
 }
 

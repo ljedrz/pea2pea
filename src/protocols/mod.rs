@@ -3,13 +3,16 @@
 use once_cell::sync::OnceCell;
 
 mod handshaking;
-mod messaging;
+mod reading;
+mod writing;
 
 pub use handshaking::{HandshakeHandler, HandshakeObjects, Handshaking};
-pub use messaging::{InboundHandler, Messaging, MessagingObjects};
+pub use reading::{Reading, ReadingHandler, ReadingObjects};
+pub use writing::{Writing, WritingHandler, WritingObjects};
 
 #[derive(Default)]
 pub(crate) struct Protocols {
-    pub(crate) inbound_handler: OnceCell<InboundHandler>,
     pub(crate) handshake_handler: OnceCell<HandshakeHandler>,
+    pub(crate) reading_handler: OnceCell<ReadingHandler>,
+    pub(crate) writing_handler: OnceCell<WritingHandler>,
 }

@@ -4,8 +4,8 @@ use tracing::*;
 
 mod common;
 use pea2pea::{
-    connections::ConnectionSide,
-    protocols::{Handshaking, Messaging},
+    connections::{ConnectionSide, ConnectionWriter},
+    protocols::{Handshaking, Reading, Writing},
     Node, NodeConfig, Pea2Pea,
 };
 
@@ -94,8 +94,9 @@ macro_rules! read_handshake_message {
 macro_rules! send_handshake_message {
     ($msg: expr, $node: expr, $connection: expr, $addr: expr) => {
         $connection
-            .send_message($msg.serialize())
-            .await;
+            .write_all(&$msg.serialize())
+            .await
+            .unwrap();
 
         debug!(parent: $node.span(), "sent handshake message A to {}", $addr);
     }
@@ -112,20 +113,24 @@ impl Handshaking for SecureishNode {
         let self_clone = self.clone();
         tokio::spawn(async move {
             loop {
-                if let Some((mut conn_reader, conn, result_sender)) =
+                if let Some((mut conn_reader, mut conn_writer, node_side, result_sender)) =
                     from_node_receiver.recv().await
                 {
                     let node = Arc::clone(&conn_reader.node);
                     let addr = conn_reader.addr;
 
-                    let nonce_pair = match conn.side {
-                        // the connection is the Responder, so the node is the Initiator
-                        ConnectionSide::Responder => {
+                    let nonce_pair = match node_side {
+                        ConnectionSide::Initiator => {
                             debug!(parent: node.span(), "handshaking with {} as the initiator", addr);
 
                             // send A
                             let own_nonce = 0;
-                            send_handshake_message!(HandshakeMsg::A(own_nonce), node, conn, addr);
+                            send_handshake_message!(
+                                HandshakeMsg::A(own_nonce),
+                                node,
+                                conn_writer,
+                                addr
+                            );
 
                             // read B
                             let peer_nonce =
@@ -136,8 +141,7 @@ impl Handshaking for SecureishNode {
                                 Err(e) => Err(e),
                             }
                         }
-                        // the connection is the Initiator, so the node is the Responder
-                        ConnectionSide::Initiator => {
+                        ConnectionSide::Responder => {
                             debug!(parent: node.span(), "handshaking with {} as the responder", addr);
 
                             // read A
@@ -146,7 +150,12 @@ impl Handshaking for SecureishNode {
 
                             // send B
                             let own_nonce = 1;
-                            send_handshake_message!(HandshakeMsg::B(own_nonce), node, conn, addr);
+                            send_handshake_message!(
+                                HandshakeMsg::B(own_nonce),
+                                node,
+                                conn_writer,
+                                addr
+                            );
 
                             match peer_nonce {
                                 Ok(peer_nonce) => Ok(NoncePair(own_nonce, peer_nonce)),
@@ -170,7 +179,7 @@ impl Handshaking for SecureishNode {
                     self_clone.handshakes.write().insert(addr, nonce_pair);
 
                     // return the connection objects to the node
-                    if result_sender.send(Ok((conn_reader, conn))).is_err() {
+                    if result_sender.send(Ok((conn_reader, conn_writer))).is_err() {
                         // can't recover if this happens
                         unreachable!();
                     }
@@ -200,16 +209,16 @@ async fn handshake_example() {
         handshakes: Default::default(),
     };
 
-    // not required for the handshake; it's enabled only so that its relationship with the
-    // handshake protocol can be tested too; it should kick in only after the handshake
-    initiator.enable_messaging();
-    responder.enable_messaging();
-
-    initiator.enable_handshaking();
-    responder.enable_handshaking();
+    // Reading and Writing are not required for the handshake; they are enabled only so that their relationship
+    // with the handshaking protocol can be tested too; they should kick in only after the handshake concludes
+    for node in &[&initiator, &responder] {
+        node.enable_reading();
+        node.enable_writing();
+        node.enable_handshaking();
+    }
 
     initiator
-        .node
+        .node()
         .initiate_connection(responder.node().listening_addr)
         .await
         .unwrap();
@@ -239,14 +248,14 @@ async fn no_handshake_no_messaging() {
         handshakes: Default::default(),
     };
 
-    initiator.enable_messaging();
-    responder.enable_messaging();
+    initiator.enable_writing();
+    responder.enable_reading();
 
     // the initiator doesn't enable handshaking
     responder.enable_handshaking();
 
     initiator
-        .node
+        .node()
         .initiate_connection(responder.node().listening_addr)
         .await
         .unwrap();

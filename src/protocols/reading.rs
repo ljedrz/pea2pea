@@ -7,43 +7,45 @@ use async_trait::async_trait;
 use tokio::{
     io::AsyncReadExt,
     sync::{mpsc, oneshot},
+    task::JoinHandle,
     time::sleep,
 };
 use tracing::*;
 
-use std::{io, net::SocketAddr, sync::Arc, time::Duration};
+use std::{io, net::SocketAddr, time::Duration};
 
-/// This protocol can be used to specify and enable messaging, i.e. handling of inbound messages and replying to them.
+/// This protocol can be used to specify and enable reading, i.e. receiving inbound messages.
 /// If handshaking is enabled too, it goes into force only after the handshake has been concluded.
 #[async_trait]
-pub trait Messaging: Pea2Pea
+pub trait Reading: Pea2Pea
 where
     Self: Clone + Send + Sync + 'static,
 {
     /// The final type of incoming messages.
     type Message: Send;
 
-    /// Prepares the node to receive messages and optionally respond to them.
-    fn enable_messaging(&self) {
-        let (conn_reader_sender, mut conn_reader_receiver) =
-            mpsc::channel(self.node().config.inbound_handler_queue_depth);
-        self.node().set_inbound_handler(conn_reader_sender.into());
+    // TODO: add an associated type defaulting to ConnectionReader once
+    // https://github.com/rust-lang/rust/issues/29661 is resolved.
+
+    /// Prepares the node to receive messages.
+    fn enable_reading(&self) {
+        let (conn_sender, mut conn_receiver) =
+            mpsc::channel::<ReadingObjects>(self.node().config.reading_handler_queue_depth);
 
         // the task spawning tasks reading messages from the given stream
         let self_clone = self.clone();
-        tokio::spawn(async move {
+        let reading_task = tokio::spawn(async move {
             loop {
-                if let Some((mut conn_reader, conn, conn_returner)) =
-                    conn_reader_receiver.recv().await
-                {
+                if let Some((mut conn_reader, conn, conn_returner)) = conn_receiver.recv().await {
+                    let addr = conn.addr;
+
                     let (inbound_message_sender, mut inbound_message_receiver) =
                         mpsc::channel(self_clone.node().config.conn_inbound_queue_depth);
-                    let addr = conn_reader.addr;
 
                     // the task for reading messages from the stream
                     let reader_clone = self_clone.clone();
-                    let inbound_reader_task = tokio::spawn(async move {
-                        let node = Arc::clone(&conn_reader.node);
+                    let reader_task = tokio::spawn(async move {
+                        let node = reader_clone.node();
                         trace!(parent: node.span(), "spawned a task for reading messages from {}", addr);
 
                         loop {
@@ -76,6 +78,8 @@ where
                     let processing_clone = self_clone.clone();
                     let inbound_processing_task = tokio::spawn(async move {
                         let node = processing_clone.node();
+                        trace!(parent: node.span(), "spawned a task for processing messages from {}", addr);
+
                         loop {
                             if let Some(msg) = inbound_message_receiver.recv().await {
                                 if let Err(e) = processing_clone.process_message(addr, msg).await {
@@ -86,10 +90,12 @@ where
                         }
                     });
 
-                    conn.inbound_reader_task.set(inbound_reader_task).unwrap();
+                    conn.reader_task
+                        .set(reader_task)
+                        .expect("reader_task was set twice!");
                     conn.inbound_processing_task
                         .set(inbound_processing_task)
-                        .unwrap();
+                        .expect("inbound_processing_task was set twice!");
 
                     if conn_returner.send(Ok(conn)).is_err() {
                         // can't recover if this happens
@@ -98,6 +104,9 @@ where
                 }
             }
         });
+
+        self.node()
+            .set_reading_handler((conn_sender, reading_task).into());
     }
 
     /// Performs a read from the stream. The default implementation is buffered; it sacrifices a bit of simplicity for
@@ -208,28 +217,31 @@ where
     }
 }
 
-/// A set of objects required to handle inbound messages.
-pub type MessagingObjects = (
+/// A set of objects required to enable the `Reading` protocol.
+pub type ReadingObjects = (
     ConnectionReader,
     Connection,
     oneshot::Sender<io::Result<Connection>>,
 );
 
-/// An object dedicated to handling inbound messages; used in the `Messaging` protocol.
-pub struct InboundHandler(mpsc::Sender<MessagingObjects>);
+/// An object dedicated to spawning inbound message handlers; used in the `Reading` protocol.
+pub struct ReadingHandler {
+    sender: mpsc::Sender<ReadingObjects>,
+    _task: JoinHandle<()>,
+}
 
-impl InboundHandler {
-    /// Sends messaging-relevant objects to the messaging handler.
-    pub async fn send(&self, messaging_objects: MessagingObjects) {
-        if self.0.send(messaging_objects).await.is_err() {
+impl ReadingHandler {
+    /// Sends reading-relevant objects to the reading handler.
+    pub async fn send(&self, reading_objects: ReadingObjects) {
+        if self.sender.send(reading_objects).await.is_err() {
             // can't recover if this happens
             panic!("the inbound message handling task is down or its Receiver is closed")
         }
     }
 }
 
-impl From<mpsc::Sender<MessagingObjects>> for InboundHandler {
-    fn from(sender: mpsc::Sender<MessagingObjects>) -> Self {
-        Self(sender)
+impl From<(mpsc::Sender<ReadingObjects>, JoinHandle<()>)> for ReadingHandler {
+    fn from((sender, _task): (mpsc::Sender<ReadingObjects>, JoinHandle<()>)) -> Self {
+        Self { sender, _task }
     }
 }
