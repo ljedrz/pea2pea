@@ -5,7 +5,7 @@ use tracing::*;
 mod common;
 use pea2pea::{
     connections::ConnectionSide,
-    protocols::{HandshakeObjects, Handshaking, Messaging},
+    protocols::{Handshaking, Messaging},
     Node, NodeConfig, Pea2Pea,
 };
 
@@ -105,7 +105,8 @@ impl_messaging!(SecureishNode);
 
 impl Handshaking for SecureishNode {
     fn enable_handshaking(&self) {
-        let (from_node_sender, mut from_node_receiver) = mpsc::channel::<HandshakeObjects>(1);
+        let (from_node_sender, mut from_node_receiver) = mpsc::channel(1);
+        self.node().set_handshake_handler(from_node_sender.into());
 
         // spawn a background task dedicated to handling the handshakes
         let self_clone = self.clone();
@@ -176,8 +177,6 @@ impl Handshaking for SecureishNode {
                 }
             }
         });
-
-        self.node().set_handshake_handler(from_node_sender.into());
     }
 }
 
