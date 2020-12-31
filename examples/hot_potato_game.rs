@@ -6,8 +6,10 @@ use tokio::{sync::mpsc, time::sleep};
 use tracing::*;
 
 use pea2pea::{
-    connect_nodes, ConnectionSide, HandshakeObjects, Handshaking, Messaging, Node, NodeConfig,
-    Pea2Pea, Topology,
+    connect_nodes,
+    connections::ConnectionSide,
+    protocols::{HandshakeObjects, Handshaking, Messaging},
+    Node, NodeConfig, Pea2Pea, Topology,
 };
 
 use std::{

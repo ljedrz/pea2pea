@@ -1,4 +1,7 @@
-use crate::{Connection, ConnectionReader, Pea2Pea};
+use crate::{
+    connections::{Connection, ConnectionReader},
+    Pea2Pea,
+};
 
 use tokio::sync::{mpsc, oneshot};
 

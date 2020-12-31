@@ -4,7 +4,9 @@ use tracing::*;
 
 mod common;
 use pea2pea::{
-    ConnectionSide, HandshakeObjects, Handshaking, Messaging, Node, NodeConfig, Pea2Pea,
+    connections::ConnectionSide,
+    protocols::{HandshakeObjects, Handshaking, Messaging},
+    Node, NodeConfig, Pea2Pea,
 };
 
 use parking_lot::RwLock;

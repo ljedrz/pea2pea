@@ -3,7 +3,11 @@ use parking_lot::{Mutex, RwLock};
 use tokio::{sync::mpsc, time::sleep};
 use tracing::*;
 
-use pea2pea::*;
+use pea2pea::{
+    connections::ConnectionSide,
+    protocols::{HandshakeObjects, Handshaking, Messaging},
+    Node, NodeConfig, Pea2Pea,
+};
 
 use std::{
     collections::HashMap, convert::TryInto, io, net::SocketAddr, str, sync::Arc, time::Duration,

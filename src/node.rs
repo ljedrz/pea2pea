@@ -1,6 +1,5 @@
-use crate::connection::ConnectionSide;
-use crate::connections::Connections;
-use crate::protocols::Protocols;
+use crate::connections::{Connection, ConnectionReader, ConnectionSide, Connections};
+use crate::protocols::{HandshakeHandler, InboundHandler, Protocols};
 use crate::*;
 
 use bytes::Bytes;

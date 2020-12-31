@@ -1,7 +1,7 @@
 use tracing::*;
 
 mod common;
-use pea2pea::{connect_nodes, Messaging, Node, Pea2Pea, Topology};
+use pea2pea::{connect_nodes, protocols::Messaging, Node, Pea2Pea, Topology};
 
 use std::{io, net::SocketAddr, sync::Arc};
 

@@ -1,7 +1,7 @@
 use rand::{distributions::Standard, rngs::SmallRng, Rng, SeedableRng};
 
 mod common;
-use pea2pea::{Messaging, Node, NodeConfig, Pea2Pea};
+use pea2pea::{protocols::Messaging, Node, NodeConfig, Pea2Pea};
 
 use std::{io, net::SocketAddr, sync::Arc};
 

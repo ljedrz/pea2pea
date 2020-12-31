@@ -1,3 +1,5 @@
+//! Opt-in protocols available to the `Node`.
+
 use once_cell::sync::OnceCell;
 
 mod handshaking;

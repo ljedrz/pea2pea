@@ -2,7 +2,7 @@ use parking_lot::Mutex;
 use tracing::*;
 
 mod common;
-use pea2pea::{Messaging, Node, NodeConfig, Pea2Pea};
+use pea2pea::{protocols::Messaging, Node, NodeConfig, Pea2Pea};
 use TestMessage::*;
 
 use std::{collections::HashSet, io, net::SocketAddr, sync::Arc};

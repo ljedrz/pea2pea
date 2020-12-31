@@ -2,7 +2,7 @@ use tokio::time::sleep;
 use tracing::*;
 
 mod common;
-use pea2pea::{Messaging, Node, NodeConfig, Pea2Pea};
+use pea2pea::{protocols::Messaging, Node, NodeConfig, Pea2Pea};
 
 use std::{sync::Arc, time::Duration};
 

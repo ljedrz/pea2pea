@@ -3,7 +3,7 @@
 use bytes::Bytes;
 use tracing::*;
 
-use pea2pea::{Messaging, Node, NodeConfig, Pea2Pea};
+use pea2pea::{protocols::Messaging, Node, NodeConfig, Pea2Pea};
 
 use std::{convert::TryInto, io, net::SocketAddr, sync::Arc};
 
