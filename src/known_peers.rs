@@ -3,7 +3,7 @@ use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use fxhash::FxHashMap;
 use std::{net::SocketAddr, time::Instant};
 
-/// Contains statistics related to node's connections.
+/// Contains statistics related to node's peers, currently connected or not.
 #[derive(Default)]
 pub struct KnownPeers(RwLock<FxHashMap<SocketAddr, PeerStats>>);
 
@@ -54,26 +54,26 @@ impl KnownPeers {
     }
 }
 
-/// Contains statistics related to a single connection.
+/// Contains statistics related to a single peer.
 #[derive(Debug, Clone)]
 pub struct PeerStats {
-    /// The number of times the connection has been established.
+    /// The number of times a connection with the peer has been established.
     pub times_connected: usize,
-    /// The timestamp of the first connection.
+    /// The timestamp of the first connection with the peer.
     pub first_seen: Instant,
-    /// The timestamp of the current connection.
+    /// The timestamp of the current connection with the peer.
     pub last_connected: Instant,
-    /// The timestamp of the connection's last activity.
+    /// The timestamp of the peer's last activity.
     pub last_seen: Instant,
-    /// The number of messages sent to the connection.
+    /// The number of messages sent to the peer.
     pub msgs_sent: usize,
-    /// The number of messages received from the connection.
+    /// The number of messages received from the peer.
     pub msgs_received: usize,
-    /// The number of bytes sent to the connection.
+    /// The number of bytes sent to the peer.
     pub bytes_sent: u64,
-    /// The number of bytes received from the connection.
+    /// The number of bytes received from the peer.
     pub bytes_received: u64,
-    /// The number of failures related to the connection.
+    /// The number of failures related to the peer.
     pub failures: u8,
 }
 
