@@ -37,7 +37,7 @@ pub struct Node {
     protocols: Protocols,
     /// Contains objects related to the node's active connections.
     connections: Connections,
-    /// Collects statistics related to the node's connections.
+    /// Collects statistics related to the node's peers.
     known_peers: KnownPeers,
     /// Collects statistics related to the node itself.
     pub stats: NodeStats,
@@ -46,11 +46,12 @@ pub struct Node {
 }
 
 impl Node {
-    /// Returns a `Node` wrapped in an `Arc`.
+    /// Returns a `Node` wrapped in an `Arc`, so it can be cloned around.
     pub async fn new(config: Option<NodeConfig>) -> io::Result<Arc<Self>> {
         let local_ip = IpAddr::V4(Ipv4Addr::LOCALHOST);
         let mut config = config.unwrap_or_default();
 
+        // if there is no pre-configured name, assign a sequential numeric identifier
         if config.name.is_none() {
             config.name = Some(
                 SEQUENTIAL_NODE_ID
@@ -59,6 +60,7 @@ impl Node {
             );
         }
 
+        // create a tracing span containing the node's name
         let span = create_span(config.name.as_deref().unwrap());
 
         // procure a listening address
@@ -139,7 +141,7 @@ impl Node {
         &self.span
     }
 
-    /// Prepares the freshly acquired connection to handle the protocols it implements.
+    /// Prepares the freshly acquired connection to handle the protocols the Node implements.
     async fn adapt_stream(
         self: &Arc<Self>,
         stream: TcpStream,
@@ -169,10 +171,9 @@ impl Node {
         let (reader, writer) = stream.into_split();
         let reader = ConnectionReader::new(peer_addr, reader, self);
         let writer = ConnectionWriter::new(peer_addr, writer, self);
-
         let connection = Connection::new(peer_addr, !own_side, self);
 
-        // Handshaking
+        // enact the Handshaking protocol (if enabled)
         let (reader, writer) = if let Some(ref handshake_handler) = self.handshake_handler() {
             let (handshake_result_sender, handshake_result_receiver) = oneshot::channel();
 
@@ -183,7 +184,7 @@ impl Node {
             match handshake_result_receiver.await {
                 Ok(Ok(reader_and_writer)) => reader_and_writer,
                 _ => {
-                    error!(parent: self.span(), "handshake with {} failed; dropping the connection", peer_addr);
+                    error!(parent: self.span(), "handshake with {} failed", peer_addr);
                     self.known_peers().register_failure(peer_addr);
                     return Err(ErrorKind::Other.into());
                 }
@@ -192,7 +193,7 @@ impl Node {
             (reader, writer)
         };
 
-        // Reading
+        // enact the Reading protocol (if enabled)
         let connection = if let Some(ref reading_handler) = self.reading_handler() {
             let (conn_returner, conn_retriever) = oneshot::channel();
 
@@ -203,7 +204,7 @@ impl Node {
             match conn_retriever.await {
                 Ok(Ok(conn)) => conn,
                 _ => {
-                    error!(parent: self.span(), "can't spawn reading handlers; dropping the connection with {}", peer_addr);
+                    error!(parent: self.span(), "can't enact the Reading protocol");
                     self.known_peers().register_failure(peer_addr);
                     return Err(ErrorKind::Other.into());
                 }
@@ -212,7 +213,7 @@ impl Node {
             connection
         };
 
-        // Writing
+        // enact the Writing protocol (if enabled)
         let connection = if let Some(ref writing_handler) = self.writing_handler() {
             let (conn_returner, conn_retriever) = oneshot::channel();
 
@@ -223,7 +224,7 @@ impl Node {
             match conn_retriever.await {
                 Ok(Ok(conn)) => conn,
                 _ => {
-                    error!(parent: self.span(), "can't spawn writing handlers; dropping the connection with {}", peer_addr);
+                    error!(parent: self.span(), "can't enact the Writing protocol");
                     self.known_peers().register_failure(peer_addr);
                     return Err(ErrorKind::Other.into());
                 }

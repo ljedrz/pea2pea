@@ -3,7 +3,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 /// Contains statistics related to the node.
 #[derive(Default)]
 pub struct NodeStats {
-    /// The number of connections, active or not, the node has established.
+    /// The number of connections the node has established during its lifetime.
     connections: AtomicU64,
     /// The number of all messages sent.
     msgs_sent: AtomicU64,
