@@ -154,7 +154,7 @@ async fn run_bench_scenario(params: BenchParams) {
 
 #[ignore]
 #[allow(clippy::identity_op)]
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn bench_spam_to_one() {
     const KIB: usize = 1024;
     const MIB: usize = 1024 * 1024;
