@@ -5,9 +5,11 @@ use crate::protocols::{HandshakeHandler, Protocols, ReadingHandler, WritingHandl
 use crate::*;
 
 use bytes::Bytes;
+use once_cell::sync::OnceCell;
 use tokio::{
     net::{TcpListener, TcpStream},
     sync::oneshot,
+    task::JoinHandle,
 };
 use tracing::*;
 
@@ -39,6 +41,8 @@ pub struct Node {
     known_peers: KnownPeers,
     /// Collects statistics related to the node itself.
     pub stats: NodeStats,
+    /// The node's listening task.
+    listening_task: OnceCell<JoinHandle<()>>,
 }
 
 impl Node {
@@ -90,10 +94,11 @@ impl Node {
             connections: Default::default(),
             known_peers: Default::default(),
             stats: Default::default(),
+            listening_task: Default::default(),
         });
 
         let node_clone = Arc::clone(&node);
-        tokio::spawn(async move {
+        let listening_task = tokio::spawn(async move {
             trace!(parent: node_clone.span(), "spawned a listening task");
             loop {
                 match listener.accept().await {
@@ -111,6 +116,8 @@ impl Node {
                 }
             }
         });
+
+        node.listening_task.set(listening_task).unwrap();
 
         info!(
             parent: node.span(),
