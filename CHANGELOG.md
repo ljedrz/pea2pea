@@ -1,3 +1,16 @@
+# 0.8.1
+
+### Added
+- improved and extended some logs
+- added more comments
+
+### Changed
+- a small refactoring in `Node::new`
+
+### Fixed
+- the listening task handle is now kept within the `Node`
+- a new `clippy` lint introduced in Rust 1.49
+
 # 0.8.0
 
 ### Added
