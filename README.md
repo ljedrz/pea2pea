@@ -8,6 +8,8 @@
 - benchmarking and stress-testing P2P nodes (or other network entities)
 - substituting other, "heavier" nodes in local network tests
 
+The benchmarks demonstrate pretty good performance (over 1GB/s in favorable scenarios).
+
 ## goals
 - small, simple codebase
 - ease of use
@@ -19,11 +21,6 @@
 - becoming a framework
 - support for multiple `async` runtimes (it should be simple enough to change it, though)
 - any functionality that can be introduced "on top" (e.g. DHT, advanced topology formation algorithms etc.)
-
-## current state: _beta_
-- all the planned functionalities are available and operational
-- benchmarks demonstrate _very_ good performance (over 1GB/s in favorable scenarios)
-- the public APIs are unstable, but the overall architecture shouldn't change too much anymore
 
 ## how to use it
 1. define a clonable struct containing an `Arc<Node>` and any extra state you'd like to carry
