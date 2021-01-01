@@ -45,7 +45,7 @@ impl Connections {
         self.0.read().contains_key(&addr)
     }
 
-    pub(crate) fn disconnect(&self, addr: SocketAddr) -> bool {
+    pub(crate) fn remove(&self, addr: SocketAddr) -> bool {
         self.0.write().remove(&addr).is_some()
     }
 

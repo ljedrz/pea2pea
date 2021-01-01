@@ -109,6 +109,7 @@ impl Node {
                             .adapt_stream(stream, addr, ConnectionSide::Responder)
                             .await
                         {
+                            node_clone.known_peers().register_failure(addr);
                             error!(parent: node_clone.span(), "couldn't accept a connection: {}", e);
                         }
                     }
@@ -148,25 +149,19 @@ impl Node {
         peer_addr: SocketAddr,
         own_side: ConnectionSide,
     ) -> io::Result<()> {
-        self.known_peers.add(peer_addr);
+        self.stats.register_connection();
 
         // register the port seen by the peer
-        let port_seen_by_peer = if let ConnectionSide::Responder = own_side {
-            peer_addr.port()
-        } else if let Ok(addr) = stream.local_addr() {
-            addr.port()
-        } else {
-            error!(parent: self.span(), "couldn't determine the connection responder's port");
-            return Err(ErrorKind::Other.into());
-        };
-
-        debug!(parent: self.span(), "establishing connection with {}{}", peer_addr,
-            if peer_addr.port() != port_seen_by_peer {
-                format!("; the peer is connected on port {}", port_seen_by_peer)
+        if let ConnectionSide::Initiator = own_side {
+            if let Ok(addr) = stream.local_addr() {
+                debug!(
+                    parent: self.span(), "establishing connection with {}; the peer is connected on port {}",
+                    peer_addr, addr.port()
+                );
             } else {
-                "".into()
+                warn!(parent: self.span(), "couldn't determine the peer's port");
             }
-        );
+        }
 
         let (reader, writer) = stream.into_split();
         let reader = ConnectionReader::new(peer_addr, reader, self);
@@ -184,9 +179,7 @@ impl Node {
             match handshake_result_receiver.await {
                 Ok(Ok(reader_and_writer)) => reader_and_writer,
                 _ => {
-                    error!(parent: self.span(), "handshake with {} failed", peer_addr);
-                    self.known_peers().register_failure(peer_addr);
-                    return Err(ErrorKind::Other.into());
+                    return Err(io::Error::new(ErrorKind::Other, "handshake failed"));
                 }
             }
         } else {
@@ -203,11 +196,7 @@ impl Node {
 
             match conn_retriever.await {
                 Ok(Ok(conn)) => conn,
-                _ => {
-                    error!(parent: self.span(), "can't enact the Reading protocol");
-                    self.known_peers().register_failure(peer_addr);
-                    return Err(ErrorKind::Other.into());
-                }
+                _ => return Err(io::Error::new(ErrorKind::Other, "Reading protocol failed")),
             }
         } else {
             connection
@@ -223,18 +212,13 @@ impl Node {
 
             match conn_retriever.await {
                 Ok(Ok(conn)) => conn,
-                _ => {
-                    error!(parent: self.span(), "can't enact the Writing protocol");
-                    self.known_peers().register_failure(peer_addr);
-                    return Err(ErrorKind::Other.into());
-                }
+                _ => return Err(io::Error::new(ErrorKind::Other, "Writing protocol failed")),
             }
         } else {
             connection
         };
 
         self.connections.add(connection);
-        self.stats.register_connection();
         self.known_peers.register_connection(peer_addr);
 
         Ok(())
@@ -243,18 +227,23 @@ impl Node {
     /// Connects to the provided `SocketAddr`.
     pub async fn initiate_connection(self: &Arc<Self>, addr: SocketAddr) -> io::Result<()> {
         if self.connections.is_connected(addr) {
-            warn!(parent: self.span(), "already connecting/connected to {}", addr);
+            warn!(parent: self.span(), "already connected to {}", addr);
             return Err(ErrorKind::Other.into());
         }
 
         let stream = TcpStream::connect(addr).await?;
         self.adapt_stream(stream, addr, ConnectionSide::Initiator)
             .await
+            .map_err(|e| {
+                self.known_peers().register_failure(addr);
+                error!(parent: self.span(), "couldn't initiate a connection with {}: {}", addr, e);
+                e
+            })
     }
 
     /// Disconnects from the provided `SocketAddr`.
     pub fn disconnect(&self, addr: SocketAddr) -> bool {
-        let disconnected = self.connections.disconnect(addr);
+        let disconnected = self.connections.remove(addr);
 
         if disconnected {
             info!(parent: self.span(), "disconnected from {}", addr);

@@ -34,3 +34,11 @@ async fn node_connect_and_disconnect() {
     assert!(nodes[0].disconnect(nodes[1].listening_addr));
     assert!(!nodes[0].is_connected(nodes[1].listening_addr));
 }
+
+#[tokio::test]
+async fn node_duplicate_connection() {
+    tracing_subscriber::fmt::init();
+    let nodes = common::start_inert_nodes(2, None).await;
+    assert!(connect_nodes(&nodes, Topology::Line).await.is_ok());
+    assert!(connect_nodes(&nodes, Topology::Line).await.is_err());
+}
