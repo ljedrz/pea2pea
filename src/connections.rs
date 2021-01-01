@@ -205,17 +205,6 @@ impl Connection {
             Err(ErrorKind::Other.into())
         }
     }
-
-    /// Sends the given message to the peer associated with the connection.
-    pub async fn send_message(&self, message: Bytes) -> io::Result<()> {
-        // can't recover if the send fails
-        self.sender()?
-            .send(message)
-            .await
-            .expect("the connection writer task is closed");
-
-        Ok(())
-    }
 }
 
 impl Drop for Connection {
