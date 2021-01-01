@@ -4,7 +4,6 @@ use crate::Node;
 
 use bytes::Bytes;
 use fxhash::FxHashMap;
-use once_cell::sync::OnceCell;
 use parking_lot::RwLock;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
@@ -170,14 +169,10 @@ pub struct Connection {
     pub node: Arc<Node>,
     /// The address of the connection.
     pub addr: SocketAddr,
-    /// The handle to the task performing reads from the stream.
-    pub reader_task: OnceCell<JoinHandle<()>>,
-    /// The handle to the task processing read messages.
-    pub inbound_processing_task: OnceCell<JoinHandle<()>>,
-    /// The handle to the task performing writes to the stream.
-    pub writer_task: OnceCell<JoinHandle<()>>,
+    /// Handles to tasks spawned by the connection.
+    pub tasks: Vec<JoinHandle<()>>,
     /// Used to queue writes to the stream.
-    pub outbound_message_sender: OnceCell<Sender<Bytes>>,
+    pub outbound_message_sender: Option<Sender<Bytes>>,
     /// The connection's side in relation to the node.
     pub side: ConnectionSide,
 }
@@ -189,16 +184,14 @@ impl Connection {
             node: Arc::clone(node),
             addr,
             side,
-            reader_task: Default::default(),
-            inbound_processing_task: Default::default(),
-            writer_task: Default::default(),
+            tasks: Default::default(),
             outbound_message_sender: Default::default(),
         }
     }
 
     /// Returns a `Sender` for outbound messages, as long as `Writing` is enabled.
     fn sender(&self) -> io::Result<Sender<Bytes>> {
-        if let Some(sender) = self.outbound_message_sender.get() {
+        if let Some(ref sender) = self.outbound_message_sender {
             Ok(sender.clone())
         } else {
             error!(parent: self.node.span(), "can't send messages: the Writing protocol is disabled");

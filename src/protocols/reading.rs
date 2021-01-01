@@ -41,7 +41,8 @@ where
 
             loop {
                 // these objects are sent from `Node::adapt_stream`
-                if let Some((mut conn_reader, conn, conn_returner)) = conn_receiver.recv().await {
+                if let Some((mut conn_reader, mut conn, conn_returner)) = conn_receiver.recv().await
+                {
                     let addr = conn.addr;
 
                     let (inbound_message_sender, mut inbound_message_receiver) =
@@ -97,12 +98,8 @@ where
 
                     // the Connection object registers the handles of the
                     // newly created tasks before being returned to the Node
-                    conn.reader_task
-                        .set(reader_task)
-                        .expect("reader_task was set twice!");
-                    conn.inbound_processing_task
-                        .set(inbound_processing_task)
-                        .expect("inbound_processing_task was set twice!");
+                    conn.tasks.push(reader_task);
+                    conn.tasks.push(inbound_processing_task);
 
                     // return the Connection to the Node, resuming Node::adapt_stream
                     if conn_returner.send(Ok(conn)).is_err() {
