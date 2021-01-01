@@ -89,8 +89,10 @@ async fn messaging_example() {
     shouter.enable_reading();
     shouter.enable_writing();
 
-    let mut picky_echo_config = NodeConfig::default();
-    picky_echo_config.name = Some("picky_echo".into());
+    let picky_echo_config = NodeConfig {
+        name: Some("picky_echo".into()),
+        ..Default::default()
+    };
     let picky_echo = EchoNode {
         node: Node::new(Some(picky_echo_config)).await.unwrap(),
         echoed: Default::default(),
@@ -171,9 +173,11 @@ async fn drop_connection_on_oversized_message() {
     let writer = common::MessagingNode::new("writer").await;
     writer.enable_writing();
 
-    let mut config = NodeConfig::default();
-    config.name = Some("reader".into());
-    config.conn_read_buffer_size = MSG_SIZE_LIMIT;
+    let config = NodeConfig {
+        name: Some("reader".into()),
+        conn_read_buffer_size: MSG_SIZE_LIMIT,
+        ..Default::default()
+    };
     let reader = common::MessagingNode(Node::new(Some(config)).await.unwrap());
     reader.enable_reading();
 

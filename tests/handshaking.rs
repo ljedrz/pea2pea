@@ -193,16 +193,20 @@ impl Handshaking for SecureishNode {
 async fn handshake_example() {
     tracing_subscriber::fmt::init();
 
-    let mut initiator_config = NodeConfig::default();
-    initiator_config.name = Some("initiator".into());
+    let initiator_config = NodeConfig {
+        name: Some("initiator".into()),
+        ..Default::default()
+    };
     let initiator = Node::new(Some(initiator_config)).await.unwrap();
     let initiator = SecureishNode {
         node: initiator,
         handshakes: Default::default(),
     };
 
-    let mut responder_config = NodeConfig::default();
-    responder_config.name = Some("responder".into());
+    let responder_config = NodeConfig {
+        name: Some("responder".into()),
+        ..Default::default()
+    };
     let responder = Node::new(Some(responder_config)).await.unwrap();
     let responder = SecureishNode {
         node: responder,
@@ -232,16 +236,20 @@ async fn handshake_example() {
 
 #[tokio::test]
 async fn no_handshake_no_messaging() {
-    let mut initiator_config = NodeConfig::default();
-    initiator_config.name = Some("initiator".into());
+    let initiator_config = NodeConfig {
+        name: Some("initiator".into()),
+        ..Default::default()
+    };
     let initiator = Node::new(Some(initiator_config)).await.unwrap();
     let initiator = SecureishNode {
         node: initiator,
         handshakes: Default::default(),
     };
 
-    let mut responder_config = NodeConfig::default();
-    responder_config.name = Some("responder".into());
+    let responder_config = NodeConfig {
+        name: Some("responder".into()),
+        ..Default::default()
+    };
     let responder = Node::new(Some(responder_config)).await.unwrap();
     let responder = SecureishNode {
         node: responder,

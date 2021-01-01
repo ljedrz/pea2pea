@@ -66,9 +66,11 @@ fn packet_message(message: &[u8]) -> Bytes {
 impl SecureNode {
     // create a SecureNode
     async fn new(name: &str) -> io::Result<Self> {
-        let mut config = NodeConfig::default();
-        config.name = Some(name.into());
-        config.conn_read_buffer_size = NOISE_BUF_LEN + 2; // 2 for the encrypted message length
+        let config = NodeConfig {
+            name: Some(name.into()),
+            conn_read_buffer_size: NOISE_BUF_LEN + 2, // 2 for the encrypted message length,
+            ..Default::default()
+        };
         let node = Node::new(Some(config)).await?;
 
         Ok(Self {

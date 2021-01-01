@@ -69,7 +69,7 @@ struct BenchParams {
     msg_count: usize,
     msg_size: usize,
     conn_read_buffer_size: usize,
-    inbound_channel_depth: usize,
+    conn_inbound_queue_depth: usize,
 }
 
 impl From<[usize; 5]> for BenchParams {
@@ -79,7 +79,7 @@ impl From<[usize; 5]> for BenchParams {
             msg_count: params[1],
             msg_size: params[2],
             conn_read_buffer_size: params[3],
-            inbound_channel_depth: params[4],
+            conn_inbound_queue_depth: params[4],
         }
     }
 }
@@ -90,11 +90,13 @@ async fn run_bench_scenario(params: BenchParams) {
         msg_count,
         msg_size,
         conn_read_buffer_size,
-        inbound_channel_depth,
+        conn_inbound_queue_depth,
     } = params;
 
-    let mut config = NodeConfig::default();
-    config.conn_outbound_queue_depth = msg_count;
+    let config = NodeConfig {
+        conn_outbound_queue_depth: msg_count,
+        ..Default::default()
+    };
     let spammers = common::start_nodes(spammer_count, Some(config)).await;
     let spammers = spammers.into_iter().map(Spammer).collect::<Vec<_>>();
 
@@ -102,9 +104,11 @@ async fn run_bench_scenario(params: BenchParams) {
         spammer.enable_writing();
     }
 
-    let mut config = NodeConfig::default();
-    config.conn_inbound_queue_depth = inbound_channel_depth;
-    config.conn_read_buffer_size = conn_read_buffer_size;
+    let config = NodeConfig {
+        conn_inbound_queue_depth,
+        conn_read_buffer_size,
+        ..Default::default()
+    };
     let sink = Sink(Node::new(Some(config)).await.unwrap());
 
     sink.enable_reading();
@@ -158,11 +162,11 @@ async fn bench_spam_to_one() {
     let spammer_counts = [1, 5, 10];
     let msg_sizes = [256, 1 * KIB, 64 * KIB, 1 * MIB];
     let conn_read_buffer_sizes = [1 * MIB, 4 * MIB, 8 * MIB];
-    let inbound_channel_depths = [100, 250, 1000];
+    let conn_inbound_queue_depths = [100, 250, 1000];
 
     let mut scenarios = Vec::new();
     for spammer_count in spammer_counts.iter().copied() {
-        for inbound_channel_depth in inbound_channel_depths.iter().copied() {
+        for conn_inbound_queue_depth in conn_inbound_queue_depths.iter().copied() {
             for conn_read_buffer_size in conn_read_buffer_sizes.iter().copied() {
                 for msg_size in msg_sizes
                     .iter()
@@ -182,7 +186,7 @@ async fn bench_spam_to_one() {
                         msg_count,
                         msg_size,
                         conn_read_buffer_size,
-                        inbound_channel_depth,
+                        conn_inbound_queue_depth,
                     });
                 }
             }

@@ -43,8 +43,10 @@ struct PlayerNode {
 
 impl PlayerNode {
     async fn new(name: PlayerName, rng: Arc<Mutex<SmallRng>>) -> Self {
-        let mut config = NodeConfig::default();
-        config.name = Some(name);
+        let config = NodeConfig {
+            name: Some(name),
+            ..Default::default()
+        };
         let node = Node::new(Some(config)).await.unwrap();
 
         Self {

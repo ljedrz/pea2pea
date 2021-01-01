@@ -49,9 +49,11 @@ async fn maintenance_example() {
 
     let rando = common::MessagingNode::new("0").await;
 
-    let mut tidy_config = NodeConfig::default();
-    tidy_config.name = Some("tidy".into());
-    tidy_config.max_allowed_failures = 0;
+    let tidy_config = NodeConfig {
+        name: Some("tidy".into()),
+        max_allowed_failures: 0,
+        ..Default::default()
+    };
     let tidy = Node::new(Some(tidy_config)).await.unwrap();
     let tidy = TidyNode(tidy);
 

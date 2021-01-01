@@ -64,8 +64,10 @@ async fn broadcast_example() {
         rando.enable_reading();
     }
 
-    let mut broadcaster_config = NodeConfig::default();
-    broadcaster_config.name = Some("chatty".into());
+    let broadcaster_config = NodeConfig {
+        name: Some("chatty".into()),
+        ..Default::default()
+    };
     let broadcaster = Node::new(Some(broadcaster_config)).await.unwrap();
     let broadcaster = ChattyNode(broadcaster);
 

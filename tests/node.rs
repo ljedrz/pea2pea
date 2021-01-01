@@ -9,16 +9,20 @@ async fn node_creation_any_port_works() {
 #[should_panic]
 #[tokio::test]
 async fn node_creation_bad_params() {
-    let mut config = NodeConfig::default();
-    config.allow_random_port = false;
+    let config = NodeConfig {
+        allow_random_port: false,
+        ..Default::default()
+    };
     let _node = Node::new(Some(config)).await.unwrap();
 }
 
 #[tokio::test]
 async fn node_creation_used_port_fails() {
-    let mut config = NodeConfig::default();
-    config.desired_listening_port = Some(9); // the official Discard Protocol port
-    config.allow_random_port = false;
+    let config = NodeConfig {
+        desired_listening_port: Some(9), // the official Discard Protocol port
+        allow_random_port: false,
+        ..Default::default()
+    };
     assert!(Node::new(Some(config)).await.is_err());
 }
 

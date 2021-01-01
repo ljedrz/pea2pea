@@ -37,8 +37,10 @@ impl Reading for Tester {
 async fn fuzzing() {
     const MAX_MSG_SIZE: usize = 256;
 
-    let mut config = NodeConfig::default();
-    config.conn_read_buffer_size = MAX_MSG_SIZE;
+    let config = NodeConfig {
+        conn_read_buffer_size: MAX_MSG_SIZE,
+        ..Default::default()
+    };
     let tester = Tester(Node::new(Some(config)).await.unwrap());
     tester.enable_reading();
 

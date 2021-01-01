@@ -52,8 +52,10 @@ pub struct MessagingNode(pub Arc<Node>);
 
 impl MessagingNode {
     pub async fn new<T: AsRef<str>>(name: T) -> Self {
-        let mut config = NodeConfig::default();
-        config.name = Some(name.as_ref().into());
+        let config = NodeConfig {
+            name: Some(name.as_ref().into()),
+            ..Default::default()
+        };
         Self(Node::new(Some(config)).await.unwrap())
     }
 }
