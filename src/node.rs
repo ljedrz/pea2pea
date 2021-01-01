@@ -57,29 +57,29 @@ impl Node {
 
         let span = create_span(config.name.as_deref().unwrap());
 
-        let desired_listener = if let Some(port) = config.desired_listening_port {
+        // procure a listening address
+        let listener = if let Some(port) = config.desired_listening_port {
             let desired_listening_addr = SocketAddr::new(local_ip, port);
-            TcpListener::bind(desired_listening_addr).await
+            match TcpListener::bind(desired_listening_addr).await {
+                Ok(listener) => listener,
+                Err(e) => {
+                    if config.allow_random_port {
+                        warn!(parent: span.clone(), "trying any port, the desired one is unavailable: {}", e);
+                        let random_available_addr = SocketAddr::new(local_ip, 0);
+                        TcpListener::bind(random_available_addr).await?
+                    } else {
+                        error!(parent: span.clone(), "the desired port is unavailable: {}", e);
+                        return Err(e);
+                    }
+                }
+            }
         } else if config.allow_random_port {
             let random_available_addr = SocketAddr::new(local_ip, 0);
-            TcpListener::bind(random_available_addr).await
+            TcpListener::bind(random_available_addr).await?
         } else {
             panic!("you must either provide a desired port or allow a random port to be chosen");
         };
 
-        let listener = match desired_listener {
-            Ok(listener) => listener,
-            Err(e) => {
-                if config.allow_random_port {
-                    warn!(parent: span.clone(), "trying any port, the desired one is unavailable: {}", e);
-                    let random_available_addr = SocketAddr::new(local_ip, 0);
-                    TcpListener::bind(random_available_addr).await?
-                } else {
-                    error!(parent: span.clone(), "the desired port is unavailable: {}", e);
-                    return Err(e);
-                }
-            }
-        };
         let listening_addr = listener.local_addr()?;
 
         let node = Arc::new(Self {
