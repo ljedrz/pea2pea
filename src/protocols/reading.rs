@@ -14,35 +14,40 @@ use tracing::*;
 
 use std::{io, net::SocketAddr, time::Duration};
 
-/// This protocol can be used to specify and enable reading, i.e. receiving inbound messages.
+/// Can be used to specify and enable reading, i.e. receiving inbound messages.
 /// If handshaking is enabled too, it goes into force only after the handshake has been concluded.
 #[async_trait]
 pub trait Reading: Pea2Pea
 where
     Self: Clone + Send + Sync + 'static,
 {
-    /// The final type of incoming messages.
+    /// The final (deserialized) type of incoming messages.
     type Message: Send;
 
     // TODO: add an associated type defaulting to ConnectionReader once
     // https://github.com/rust-lang/rust/issues/29661 is resolved.
 
-    /// Prepares the node to receive messages.
+    /// Prepares the node to receive messages; failures to read from a connection's stream are penalized by a timeout
+    /// defined in `NodeConfig`, while broken/unreadable messages result in an immediate disconnect (in order to avoid
+    /// accidentally reading "borked" messages).
     fn enable_reading(&self) {
         let (conn_sender, mut conn_receiver) =
             mpsc::channel::<ReadingObjects>(self.node().config.reading_handler_queue_depth);
 
-        // the task spawning tasks reading messages from the given stream
+        // the main task spawning per-connection tasks reading messages from their streams
         let self_clone = self.clone();
         let reading_task = tokio::spawn(async move {
+            trace!(parent: self_clone.node().span(), "spawned the `Reading` handler task");
+
             loop {
+                // these objects are sent from `Node::adapt_stream`
                 if let Some((mut conn_reader, conn, conn_returner)) = conn_receiver.recv().await {
                     let addr = conn.addr;
 
                     let (inbound_message_sender, mut inbound_message_receiver) =
                         mpsc::channel(self_clone.node().config.conn_inbound_queue_depth);
 
-                    // the task for reading messages from the stream
+                    // the task for reading messages from a stream
                     let reader_clone = self_clone.clone();
                     let reader_task = tokio::spawn(async move {
                         let node = reader_clone.node();
@@ -90,6 +95,8 @@ where
                         }
                     });
 
+                    // the Connection object registers the handles of the
+                    // newly created tasks before being returned to the Node
                     conn.reader_task
                         .set(reader_task)
                         .expect("reader_task was set twice!");
@@ -97,6 +104,7 @@ where
                         .set(inbound_processing_task)
                         .expect("inbound_processing_task was set twice!");
 
+                    // return the Connection to the Node, resuming Node::adapt_stream
                     if conn_returner.send(Ok(conn)).is_err() {
                         // can't recover if this happens
                         panic!("can't return a Connection to the Node");
@@ -105,14 +113,14 @@ where
             }
         });
 
+        // register the ReadingHandler with the Node
         self.node()
             .set_reading_handler((conn_sender, reading_task).into());
     }
 
     /// Performs a read from the stream. The default implementation is buffered; it sacrifices a bit of simplicity for
-    /// better performance. A naive approach would be to read only the number of bytes expected for a single message
-    /// (if all of them have a fixed size) or first the number of bytes expected for a header, and then the number of
-    /// bytes of the payload, as specified by the header.
+    /// better performance. Read messages are sent to a message processing task, in order to allow faster reads from
+    /// the stream.
     async fn read_from_stream(
         &self,
         conn_reader: &mut ConnectionReader,
@@ -126,14 +134,16 @@ where
             carry,
         } = conn_reader;
 
+        // perform a read from the stream, being careful not to overwrite any bytes carried over from the previous read
         match reader.read(&mut buffer[*carry..]).await {
             Ok(n) => {
                 trace!(parent: node.span(), "read {}B from {}", n, addr);
                 let mut processed = 0;
                 let mut left = *carry + n;
 
-                // several messages could have been read at once; process the contents of the bufer
+                // several messages could have been read at once; process the contents of the buffer
                 loop {
+                    // try to read a single message from the buffer
                     match self.read_message(*addr, &buffer[processed..processed + left]) {
                         // a full message was read successfully
                         Ok(Some((msg, len))) => {
@@ -163,7 +173,7 @@ where
                                 return Ok(());
                             }
                         }
-                        // an incomplete message
+                        // the message in the buffer is incomplete
                         Ok(None) => {
                             // forbid messages that are larger than the read buffer
                             if left >= buffer.len() {
@@ -193,6 +203,7 @@ where
                     }
                 }
             }
+            // a stream read error
             Err(e) => {
                 error!(parent: node.span(), "can't read from {}: {}", addr, e);
                 Err(io::ErrorKind::Other.into())
@@ -201,8 +212,8 @@ where
     }
 
     /// Reads a single inbound message from the given buffer; `Ok(None)` indicates that the message is incomplete,
-    /// i.e. another read from the stream must be performed in order to produce the whole message. Alongside the
-    /// message it returns the number of bytes it occupied in the buffer.
+    /// i.e. further reads from the stream must be performed in order to produce the whole message. Alongside the
+    /// message it returns the number of bytes the read message occupied in the buffer.
     fn read_message(
         &self,
         source: SocketAddr,
@@ -224,18 +235,19 @@ pub type ReadingObjects = (
     oneshot::Sender<io::Result<Connection>>,
 );
 
-/// An object dedicated to spawning inbound message handlers; used in the `Reading` protocol.
+/// An object dedicated to spawning tasks handling inbound messages
+/// from new connections; used in the `Reading` protocol.
 pub struct ReadingHandler {
     sender: mpsc::Sender<ReadingObjects>,
     _task: JoinHandle<()>,
 }
 
 impl ReadingHandler {
-    /// Sends reading-relevant objects to the reading handler.
+    /// Sends reading-relevant objects to the task spawned by the ReadingHandler.
     pub async fn send(&self, reading_objects: ReadingObjects) {
         if self.sender.send(reading_objects).await.is_err() {
             // can't recover if this happens
-            panic!("the inbound message handling task is down or its Receiver is closed")
+            panic!("ReadingHandler's Receiver is closed")
         }
     }
 }

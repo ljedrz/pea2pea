@@ -31,7 +31,10 @@ where
         // the task spawning tasks reading messages from the given stream
         let self_clone = self.clone();
         let writing_task = tokio::spawn(async move {
+            trace!(parent: self_clone.node().span(), "spawned the `Writing` handler task");
+
             loop {
+                // these objects are sent from `Node::adapt_stream`
                 if let Some((mut conn_writer, conn, conn_returner)) = conn_receiver.recv().await {
                     let addr = conn.addr;
 
@@ -62,6 +65,8 @@ where
                         }
                     });
 
+                    // the Connection object registers the handle of the newly created task and
+                    // the Sender that will allow the Node to transmit messages to it
                     conn.writer_task
                         .set(writer_task)
                         .expect("writer_task was set twice!");
@@ -69,6 +74,7 @@ where
                         .set(outbound_message_sender)
                         .expect("outbound_message_sender was set twice!");
 
+                    // return the Connection to the Node, resuming Node::adapt_stream
                     if conn_returner.send(Ok(conn)).is_err() {
                         // can't recover if this happens
                         panic!("can't return a Connection to the Node");
@@ -77,6 +83,7 @@ where
             }
         });
 
+        // register the WritingHandler with the Node
         self.node()
             .set_writing_handler((conn_sender, writing_task).into());
     }
@@ -99,11 +106,11 @@ pub struct WritingHandler {
 }
 
 impl WritingHandler {
-    /// Sends writing-relevant objects to the writing handler.
+    /// Sends writing-relevant objects to the task spawned by the WritingHandler.
     pub async fn send(&self, writing_objects: WritingObjects) {
         if self.sender.send(writing_objects).await.is_err() {
             // can't recover if this happens
-            panic!("the outbound message handling task is down or its Receiver is closed")
+            panic!("WritingHandler's Receiver is closed")
         }
     }
 }

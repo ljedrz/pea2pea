@@ -7,11 +7,11 @@ use tokio::sync::{mpsc, oneshot};
 
 use std::io;
 
-/// This protocol can be used to specify and enable network handshakes. Upon establishing a connection, both sides will
-/// need to adhere to the specified handshake rules in order to finalize the connection and be able to transmit any
-/// messages.
+/// Can be used to specify and enable network handshakes. Upon establishing a connection, both sides will
+/// need to adhere to the specified handshake rules in order to finalize the connection and be able to send
+/// or receive any messages.
 pub trait Handshaking: Pea2Pea {
-    /// Prepares the node to produce and handle network handshakes.
+    /// Prepares the node to perform specified network handshakes.
     fn enable_handshaking(&self);
 }
 
@@ -31,7 +31,7 @@ impl HandshakeHandler {
     pub async fn send(&self, handshake_objects: HandshakeObjects) {
         if self.0.send(handshake_objects).await.is_err() {
             // can't recover if this happens
-            panic!("the handshake handling task is down or its Receiver is closed")
+            panic!("HandshakeHandler's Receiver is closed")
         }
     }
 }
