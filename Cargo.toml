@@ -6,6 +6,7 @@ edition = "2018"
 description = "A small library allowing simple and quick creation of custom P2P nodes and networks."
 license = "CC0-1.0"
 repository = "https://github.com/ljedrz/pea2pea"
+documentation = "https://docs.rs/pea2pea"
 readme = "README.md"
 categories = ["network-programming", "asynchronous"]
 keywords = ["p2p", "peer-to-peer", "networking"]
