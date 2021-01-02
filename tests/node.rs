@@ -37,7 +37,6 @@ async fn node_connect_and_disconnect() {
 
 #[tokio::test]
 async fn node_duplicate_connection() {
-    tracing_subscriber::fmt::init();
     let nodes = common::start_inert_nodes(2, None).await;
     assert!(connect_nodes(&nodes, Topology::Line).await.is_ok());
     assert!(connect_nodes(&nodes, Topology::Line).await.is_err());
