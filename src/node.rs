@@ -20,6 +20,28 @@ use std::{
     },
 };
 
+macro_rules! enable_protocol {
+    ($protocol_name: expr, $handler_type: ident, $node:expr, $conn: expr) => {
+        if let Some(ref handler) = $node.$handler_type() {
+            let (conn_returner, conn_retriever) = oneshot::channel();
+
+            handler.send(($conn, conn_returner)).await;
+
+            match conn_retriever.await {
+                Ok(Ok(conn)) => conn,
+                _ => {
+                    return Err(io::Error::new(
+                        ErrorKind::Other,
+                        format!("{} failed", $protocol_name),
+                    ));
+                }
+            }
+        } else {
+            $conn
+        }
+    };
+}
+
 // A seuential numeric identifier assigned to `Node`s that were not provided with a name.
 static SEQUENTIAL_NODE_ID: AtomicUsize = AtomicUsize::new(0);
 
@@ -163,47 +185,10 @@ impl Node {
 
         let connection = Connection::new(peer_addr, stream, !own_side, self);
 
-        // enact the Handshaking protocol (if enabled)
-        let connection = if let Some(ref handshake_handler) = self.handshake_handler() {
-            let (conn_returner, conn_retriever) = oneshot::channel();
-
-            handshake_handler.send((connection, conn_returner)).await;
-
-            match conn_retriever.await {
-                Ok(Ok(conn)) => conn,
-                _ => return Err(io::Error::new(ErrorKind::Other, "handshake failed")),
-            }
-        } else {
-            connection
-        };
-
-        // enact the Reading protocol (if enabled)
-        let connection = if let Some(ref reading_handler) = self.reading_handler() {
-            let (conn_returner, conn_retriever) = oneshot::channel();
-
-            reading_handler.send((connection, conn_returner)).await;
-
-            match conn_retriever.await {
-                Ok(Ok(conn)) => conn,
-                _ => return Err(io::Error::new(ErrorKind::Other, "Reading protocol failed")),
-            }
-        } else {
-            connection
-        };
-
-        // enact the Writing protocol (if enabled)
-        let connection = if let Some(ref writing_handler) = self.writing_handler() {
-            let (conn_returner, conn_retriever) = oneshot::channel();
-
-            writing_handler.send((connection, conn_returner)).await;
-
-            match conn_retriever.await {
-                Ok(Ok(conn)) => conn,
-                _ => return Err(io::Error::new(ErrorKind::Other, "Writing protocol failed")),
-            }
-        } else {
-            connection
-        };
+        // enact the enabled protocols
+        let connection = enable_protocol!("HandshakeProtocol", handshake_handler, self, connection);
+        let connection = enable_protocol!("ReadingProtocol", reading_handler, self, connection);
+        let connection = enable_protocol!("WritingProtocol", writing_handler, self, connection);
 
         self.connections.add(connection);
         self.known_peers.register_connection(peer_addr);
