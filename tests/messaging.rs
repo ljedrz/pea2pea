@@ -110,21 +110,14 @@ async fn messaging_example() {
 
     wait_until!(1, picky_echo.node().num_connected() == 1);
 
-    shouter
-        .node()
-        .send_direct_message(picky_echo_addr, [Herp as u8][..].into())
-        .await
-        .unwrap();
-    shouter
-        .node()
-        .send_direct_message(picky_echo_addr, [Derp as u8][..].into())
-        .await
-        .unwrap();
-    shouter
-        .node()
-        .send_direct_message(picky_echo_addr, [Herp as u8][..].into())
-        .await
-        .unwrap();
+    for message in &[Herp, Derp, Herp] {
+        let msg = Bytes::copy_from_slice(&[*message as u8]);
+        shouter
+            .node()
+            .send_direct_message(picky_echo_addr, msg)
+            .await
+            .unwrap();
+    }
 
     // let echo send one message on its own too, for good measure
     let shouter_addr = picky_echo.node().connected_addrs()[0];
