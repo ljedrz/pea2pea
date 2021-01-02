@@ -1,3 +1,12 @@
+# 0.10
+
+### Added
+- `Writing::write_to_stream` with a default implementation
+
+### Changed
+- renamed `Node::initiate_connection` to `::connect`
+- `Writing::write_message` requires a `SocketAddr` and `&mut [u8]` instead of `&mut ConnectionWriter`
+
 # 0.9
 
 ### Added
