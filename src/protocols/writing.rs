@@ -13,7 +13,7 @@ use tracing::*;
 
 use std::io;
 
-/// This protocol can be used to specify and enable writing, i.e. sending outbound messages.
+/// Can be used to specify and enable writing, i.e. sending outbound messages.
 /// If handshaking is enabled too, it goes into force only after the handshake has been concluded.
 #[async_trait]
 pub trait Writing: Pea2Pea

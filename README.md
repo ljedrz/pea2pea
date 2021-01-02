@@ -8,7 +8,9 @@
 - benchmarking and stress-testing P2P nodes (or other network entities)
 - substituting other, "heavier" nodes in local network tests
 
-The benchmarks demonstrate pretty good performance (over 1GB/s in favorable scenarios).
+The benchmarks demonstrate pretty good performance (over 1GB/s in favorable scenarios), and the resource use is quite
+low; if you start a LOT of nodes, the only limit you'll encounter is most likely going to be the file descriptor one
+(due to every node opening a TCP socket to listen for connection requests).
 
 ## goals
 - small, simple codebase
@@ -29,8 +31,95 @@ The benchmarks demonstrate pretty good performance (over 1GB/s in favorable scen
 4. create that struct (or as many of them as you like)
 5. enable protocols you'd like the node(s) to utilize
 
-that's it!
+That's it!
 
 - the `tests` directory contains some examples of simple use
 - `examples` contain more advanced setups, e.g. using [noise](https://noiseprotocol.org/noise.html) encryption
 - try different `RUST_LOG` verbosity levels to check out what's going on under the hood
+
+## example
+
+Creating and starting 2 nodes, one of which writes and the other reads textual messages prefixed with their length:
+
+```rust
+use async_trait::async_trait;
+use pea2pea::{connections::ConnectionWriter, protocols::{Reading, Writing}, *};
+use tokio::time::sleep;
+use tracing::*;
+
+use std::{convert::TryInto, io::{ErrorKind, Result}, net::SocketAddr, sync::Arc, time::Duration};
+
+#[derive(Clone)]
+struct ExampleNode(Arc<Node>);
+
+impl Pea2Pea for ExampleNode {
+    fn node(&self) -> &Arc<Node> { &self.0 }
+}
+
+impl ExampleNode {
+    async fn new(name: &str) -> Self {
+        let config = NodeConfig { name: Some(name.into()), ..Default::default() };
+        ExampleNode(Node::new(Some(config)).await.unwrap())
+    }
+}
+
+#[async_trait]
+impl Reading for ExampleNode {
+    type Message = String;
+
+    fn read_message(&self, source: SocketAddr, buffer: &[u8]) -> Result<Option<(String, usize)>> {
+        debug!(parent: self.node().span(), "attempting to read a message from {}", source);
+
+        // expecting incoming messages to be prefixed with their length encoded as a LE u16
+        if buffer.len() >= 2 {
+            let payload_len = u16::from_le_bytes(buffer[..2].try_into().unwrap()) as usize;
+
+            if payload_len == 0 { return Err(ErrorKind::InvalidData.into()); }
+
+            if buffer[2..].len() >= payload_len {
+                let message = String::from_utf8(buffer[2..][..payload_len].to_vec())
+                    .map_err(|_| ErrorKind::InvalidData)?;
+
+                Ok(Some((message, 2 + payload_len)))
+            } else {
+                Ok(None)
+            }
+        } else {
+            Ok(None)
+        }
+    }
+
+    async fn process_message(&self, source: SocketAddr, message: String) -> Result<()> {
+        info!(parent: self.node().span(), "received a message from {}: {}", source, message);
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl Writing for ExampleNode {
+    async fn write_message(&self, writer: &mut ConnectionWriter, payload: &[u8]) -> Result<()> {
+        let mut message = Vec::with_capacity(2 + payload.len());
+        message.extend_from_slice(&(payload.len() as u16).to_le_bytes());
+        message.extend_from_slice(payload);
+
+        writer.write_all(&message).await
+    }
+}
+
+#[tokio::main]
+async fn main() {
+    tracing_subscriber::fmt::init();
+
+    let alice = ExampleNode::new("Alice").await;
+    let bob = ExampleNode::new("Bob").await;
+    let bobs_addr = bob.node().listening_addr;
+
+    alice.enable_writing();
+    bob.enable_reading();
+
+    alice.node().initiate_connection(bobs_addr).await.unwrap();
+    alice.node().send_direct_message(bobs_addr, b"Hello there!"[..].into()).await.unwrap();
+
+    sleep(Duration::from_millis(10)).await; // a small delay to allow all the logs to be displayed
+}
+```

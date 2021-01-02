@@ -210,7 +210,8 @@ where
 
     /// Reads a single inbound message from the given buffer; `Ok(None)` indicates that the message is incomplete,
     /// i.e. further reads from the stream must be performed in order to produce the whole message. Alongside the
-    /// message it returns the number of bytes the read message occupied in the buffer.
+    /// message it returns the number of bytes the read message occupied in the buffer. An `Err` returned here will
+    /// result in the connection being dropped.
     fn read_message(
         &self,
         source: SocketAddr,
