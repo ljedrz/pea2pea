@@ -1,3 +1,22 @@
+# 0.9
+
+### Added
+- a test with a duplicate connection
+- an example in the README
+
+### Changed
+- refactored code around establishing connections
+- `Connections::disconnect` is now `::remove`
+- `NodeStats::register_connection` now happens as soon as the connection is barely established
+- `KnownPeers::add` doesn't occur before the connection is fully established
+- `Connection` now carries its task handles in a single `Vec`
+- `Connection` no longer uses `OnceCell` internally (`Option` is used instead)
+- `Connection` now carries `ConnectionReader` and `ConnectionWriter` while the procols are being enabled
+- `HandshakingObjects`, `ReadingObjects`, and `WritingObjects` are now merged into `ReturnableConnection`
+
+### Removed
+- `Connection::send_message` (unused)
+
 # 0.8.1
 
 ### Added
