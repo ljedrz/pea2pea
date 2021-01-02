@@ -49,7 +49,7 @@ async fn fuzzing() {
 
     sender
         .node()
-        .initiate_connection(tester.node().listening_addr)
+        .connect(tester.node().listening_addr)
         .await
         .unwrap();
 

@@ -58,7 +58,7 @@ async fn maintenance_example() {
     let tidy = TidyNode(tidy);
 
     tidy.node()
-        .initiate_connection(rando.node().listening_addr)
+        .connect(rando.node().listening_addr)
         .await
         .unwrap();
 

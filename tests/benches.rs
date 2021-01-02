@@ -116,7 +116,7 @@ async fn run_bench_scenario(params: BenchParams) {
     for spammer in &spammers {
         spammer
             .node()
-            .initiate_connection(sink.node().listening_addr)
+            .connect(sink.node().listening_addr)
             .await
             .unwrap();
     }

@@ -32,13 +32,13 @@ pub async fn connect_nodes<T: Pea2Pea>(nodes: &[T], topology: Topology) -> io::R
             for i in 0..(count - 1) {
                 nodes[i]
                     .node()
-                    .initiate_connection(nodes[i + 1].node().listening_addr)
+                    .connect(nodes[i + 1].node().listening_addr)
                     .await?;
             }
             if topology == Topology::Ring {
                 nodes[count - 1]
                     .node()
-                    .initiate_connection(nodes[0].node().listening_addr)
+                    .connect(nodes[0].node().listening_addr)
                     .await?;
             }
         }
@@ -47,10 +47,7 @@ pub async fn connect_nodes<T: Pea2Pea>(nodes: &[T], topology: Topology) -> io::R
             for i in 0..count {
                 for (j, peer) in nodes.iter().enumerate() {
                     if i != j && connected_pairs.insert((i, j)) && connected_pairs.insert((j, i)) {
-                        nodes[i]
-                            .node()
-                            .initiate_connection(peer.node().listening_addr)
-                            .await?;
+                        nodes[i].node().connect(peer.node().listening_addr).await?;
                     }
                 }
             }
@@ -58,7 +55,7 @@ pub async fn connect_nodes<T: Pea2Pea>(nodes: &[T], topology: Topology) -> io::R
         Topology::Star => {
             let hub_addr = nodes[0].node().listening_addr;
             for node in nodes.iter().skip(1) {
-                node.node().initiate_connection(hub_addr).await?;
+                node.node().connect(hub_addr).await?;
             }
         }
     }

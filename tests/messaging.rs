@@ -102,11 +102,7 @@ async fn messaging_example() {
 
     let picky_echo_addr = picky_echo.node().listening_addr;
 
-    shouter
-        .node()
-        .initiate_connection(picky_echo_addr)
-        .await
-        .unwrap();
+    shouter.node().connect(picky_echo_addr).await.unwrap();
 
     wait_until!(1, picky_echo.node().num_connected() == 1);
 
@@ -141,7 +137,7 @@ async fn drop_connection_on_invalid_message() {
 
     writer
         .node()
-        .initiate_connection(reader.node().listening_addr)
+        .connect(reader.node().listening_addr)
         .await
         .unwrap();
 
@@ -176,7 +172,7 @@ async fn drop_connection_on_oversized_message() {
 
     writer
         .node()
-        .initiate_connection(reader.node().listening_addr)
+        .connect(reader.node().listening_addr)
         .await
         .unwrap();
 

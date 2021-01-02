@@ -250,7 +250,7 @@ async fn main() {
     // connect the initiator to the responder
     initiator
         .node()
-        .initiate_connection(responder.node().listening_addr)
+        .connect(responder.node().listening_addr)
         .await
         .unwrap();
 

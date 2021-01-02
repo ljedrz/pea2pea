@@ -194,7 +194,7 @@ impl Node {
     }
 
     /// Connects to the provided `SocketAddr`.
-    pub async fn initiate_connection(self: &Arc<Self>, addr: SocketAddr) -> io::Result<()> {
+    pub async fn connect(self: &Arc<Self>, addr: SocketAddr) -> io::Result<()> {
         if self.connections.is_connected(addr) {
             warn!(parent: self.span(), "already connected to {}", addr);
             return Err(ErrorKind::Other.into());
