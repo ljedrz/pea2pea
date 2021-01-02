@@ -4,7 +4,7 @@ use tokio::{sync::mpsc, time::sleep};
 use tracing::*;
 
 use pea2pea::{
-    connections::{ConnectionSide, ConnectionWriter},
+    connections::ConnectionSide,
     protocols::{Handshaking, Reading, Writing},
     Node, NodeConfig, Pea2Pea,
 };
@@ -214,11 +214,14 @@ impl Reading for SecureNode {
     }
 }
 
-#[async_trait::async_trait]
 impl Writing for SecureNode {
-    async fn write_message(&self, writer: &mut ConnectionWriter, payload: &[u8]) -> io::Result<()> {
+    fn write_message(
+        &self,
+        target: SocketAddr,
+        payload: &[u8],
+        conn_buffer: &mut [u8],
+    ) -> io::Result<usize> {
         let to_encrypt = str::from_utf8(payload).unwrap();
-        let target = writer.addr;
         info!(parent: self.node.span(), "sending an encrypted message to {}: \"{}\"", target, to_encrypt);
 
         let noise = Arc::clone(&self.noise_states.read().get(&target).unwrap());
@@ -230,7 +233,9 @@ impl Writing for SecureNode {
             packet_message(encrypted_message)
         };
 
-        writer.write_all(&message).await
+        conn_buffer[..message.len()].copy_from_slice(&message);
+
+        Ok(message.len())
     }
 }
 

@@ -2,10 +2,10 @@ use crate::{connections::ConnectionWriter, protocols::ReturnableConnection, Pea2
 
 use async_trait::async_trait;
 use bytes::Bytes;
-use tokio::{sync::mpsc, task::JoinHandle};
+use tokio::{io::AsyncWriteExt, sync::mpsc, task::JoinHandle};
 use tracing::*;
 
-use std::io;
+use std::{io, net::SocketAddr};
 
 /// Can be used to specify and enable writing, i.e. sending outbound messages.
 /// If handshaking is enabled too, it goes into force only after the handshake has been concluded.
@@ -44,18 +44,22 @@ where
 
                         loop {
                             // TODO: when try_recv is available in tokio again (https://github.com/tokio-rs/tokio/issues/3350),
-                            // try adding a buffer for extra writing perf
-                            while let Some(msg) = outbound_message_receiver.recv().await {
-                                if let Err(e) =
-                                    writer_clone.write_message(&mut conn_writer, &msg).await
-                                {
-                                    node.known_peers().register_failure(addr);
-                                    error!(parent: node.span(), "couldn't send {}B to {}: {}", msg.len(), addr, e);
-                                } else {
-                                    node.known_peers().register_sent_message(addr, msg.len());
-                                    node.stats.register_sent_message(msg.len());
-                                    trace!(parent: node.span(), "sent {}B to {}", msg.len(), addr);
+                            // use try_recv() in order to write to the stream less often
+                            if let Some(msg) = outbound_message_receiver.recv().await {
+                                match writer_clone.write_to_stream(&msg, &mut conn_writer).await {
+                                    Ok(len) => {
+                                        node.known_peers().register_sent_message(addr, len);
+                                        node.stats.register_sent_message(len);
+                                        trace!(parent: node.span(), "sent {}B to {}", len, addr);
+                                    }
+                                    Err(e) => {
+                                        node.known_peers().register_failure(addr);
+                                        error!(parent: node.span(), "couldn't send a message to {}: {}", addr, e);
+                                    }
                                 }
+                            } else {
+                                panic!("can't receive messages sent to {}", addr);
+                                // can't recover
                             }
                         }
                     });
@@ -79,8 +83,35 @@ where
             .set_writing_handler((conn_sender, writing_task).into());
     }
 
-    /// Writes the provided bytes to the connection's stream.
-    async fn write_message(&self, writer: &mut ConnectionWriter, payload: &[u8]) -> io::Result<()>;
+    /// Writes the given message to `ConnectionWriter`'s stream; returns the number of bytes written.
+    async fn write_to_stream(
+        &self,
+        message: &[u8],
+        conn_writer: &mut ConnectionWriter,
+    ) -> io::Result<usize> {
+        let ConnectionWriter {
+            node: _,
+            addr,
+            writer,
+            buffer,
+            carry: _,
+        } = conn_writer;
+
+        let len = self.write_message(*addr, message, buffer)?;
+        writer.write_all(&buffer[..len]).await?;
+
+        Ok(len)
+    }
+
+    /// Writes the provided payload to `ConnectionWriter`'s buffer; the payload can get prepended with a header
+    /// indicating its length, be suffixed with a character indicating that it's complete, etc. Returns the number
+    /// of bytes written to the buffer.
+    fn write_message(
+        &self,
+        target: SocketAddr,
+        payload: &[u8],
+        buffer: &mut [u8],
+    ) -> io::Result<usize>;
 }
 
 /// An object dedicated to spawning outbound message handlers; used in the `Writing` protocol.

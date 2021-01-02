@@ -4,7 +4,6 @@ use bytes::Bytes;
 use tracing::*;
 
 use pea2pea::{
-    connections::ConnectionWriter,
     protocols::{Reading, Writing},
     Node, NodeConfig, Pea2Pea,
 };
@@ -122,12 +121,11 @@ macro_rules! impl_messaging {
             }
         }
 
-        #[async_trait::async_trait]
         impl Writing for $target {
-            async fn write_message(&self, writer: &mut ConnectionWriter, payload: &[u8]) -> io::Result<()> {
-                let message = crate::common::prefix_with_len(2, payload);
-
-                writer.write_all(&message).await
+            fn write_message(&self, _target: SocketAddr, payload: &[u8], buffer: &mut [u8]) -> io::Result<usize> {
+                buffer[..2].copy_from_slice(&(payload.len() as u16).to_le_bytes());
+                buffer[2..][..payload.len()].copy_from_slice(&payload);
+                Ok(2 + payload.len())
             }
         }
     };

@@ -4,7 +4,6 @@ use tracing::*;
 
 mod common;
 use pea2pea::{
-    connections::ConnectionWriter,
     protocols::{Reading, Writing},
     Node, NodeConfig, Pea2Pea,
 };
@@ -72,12 +71,11 @@ impl Reading for EchoNode {
     }
 }
 
-#[async_trait::async_trait]
 impl Writing for EchoNode {
-    async fn write_message(&self, writer: &mut ConnectionWriter, payload: &[u8]) -> io::Result<()> {
-        let message = crate::common::prefix_with_len(2, payload);
-
-        writer.write_all(&message).await
+    fn write_message(&self, _: SocketAddr, payload: &[u8], buffer: &mut [u8]) -> io::Result<usize> {
+        buffer[..2].copy_from_slice(&(payload.len() as u16).to_le_bytes());
+        buffer[2..][..payload.len()].copy_from_slice(&payload);
+        Ok(2 + payload.len())
     }
 }
 

@@ -17,7 +17,6 @@ impl Pea2Pea for Tester {
     }
 }
 
-#[async_trait::async_trait]
 impl Reading for Tester {
     type Message = ();
 

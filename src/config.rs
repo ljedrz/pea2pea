@@ -34,7 +34,7 @@ impl Default for NodeConfig {
             reading_handler_queue_depth: 16,
             writing_handler_queue_depth: 16,
             conn_read_buffer_size: 64 * 1024,
-            conn_write_buffer_size: 0, // currently unused; see note on ConnectionWriter
+            conn_write_buffer_size: 64 * 1024,
             conn_inbound_queue_depth: 256,
             conn_outbound_queue_depth: 16,
             invalid_message_penalty_secs: 10,

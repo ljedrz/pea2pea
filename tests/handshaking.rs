@@ -4,7 +4,7 @@ use tracing::*;
 
 mod common;
 use pea2pea::{
-    connections::{ConnectionSide, ConnectionWriter},
+    connections::ConnectionSide,
     protocols::{Handshaking, Reading, Writing},
     Node, NodeConfig, Pea2Pea,
 };

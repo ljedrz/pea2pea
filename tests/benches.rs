@@ -1,6 +1,7 @@
+use bytes::Bytes;
+
 mod common;
 use pea2pea::{
-    connections::ConnectionWriter,
     protocols::{Reading, Writing},
     Node, NodeConfig, Pea2Pea,
 };
@@ -16,10 +17,11 @@ impl Pea2Pea for Spammer {
     }
 }
 
-#[async_trait::async_trait]
 impl Writing for Spammer {
-    async fn write_message(&self, writer: &mut ConnectionWriter, payload: &[u8]) -> io::Result<()> {
-        writer.write_all(payload).await
+    fn write_message(&self, _: SocketAddr, payload: &[u8], buffer: &mut [u8]) -> io::Result<usize> {
+        buffer[..4].copy_from_slice(&(payload.len() as u32).to_le_bytes());
+        buffer[4..][..payload.len()].copy_from_slice(&payload);
+        Ok(4 + payload.len())
     }
 }
 
@@ -32,7 +34,6 @@ impl Pea2Pea for Sink {
     }
 }
 
-#[async_trait::async_trait]
 impl Reading for Sink {
     type Message = ();
 
@@ -95,6 +96,7 @@ async fn run_bench_scenario(params: BenchParams) {
 
     let config = NodeConfig {
         conn_outbound_queue_depth: msg_count,
+        conn_write_buffer_size: msg_size,
         ..Default::default()
     };
     let spammers = common::start_nodes(spammer_count, Some(config)).await;
@@ -124,7 +126,7 @@ async fn run_bench_scenario(params: BenchParams) {
     wait_until!(1, sink.node().num_connected() == spammer_count);
 
     let sink_addr = sink.node().listening_addr;
-    let msg = common::prefix_with_len(4, &vec![0u8; msg_size - 4]);
+    let msg = Bytes::from(vec![0u8; msg_size - 4]); // account for the length prefix
 
     let start = Instant::now();
     for spammer in spammers {
