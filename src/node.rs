@@ -15,7 +15,7 @@ use std::{
     io::{self, ErrorKind},
     net::{IpAddr, Ipv4Addr, SocketAddr},
     sync::{
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicUsize, Ordering::*},
         Arc,
     },
 };
@@ -73,11 +73,7 @@ impl Node {
 
         // if there is no pre-configured name, assign a sequential numeric identifier
         if config.name.is_none() {
-            config.name = Some(
-                SEQUENTIAL_NODE_ID
-                    .fetch_add(1, Ordering::SeqCst)
-                    .to_string(),
-            );
+            config.name = Some(SEQUENTIAL_NODE_ID.fetch_add(1, SeqCst).to_string());
         }
 
         // create a tracing span containing the node's name
@@ -142,11 +138,7 @@ impl Node {
 
         node.listening_task.set(listening_task).unwrap();
 
-        info!(
-            parent: node.span(),
-            "the node is ready; listening on {}",
-            listening_addr
-        );
+        info!(parent: node.span(), "the node is ready; listening on {}", listening_addr);
 
         Ok(node)
     }
