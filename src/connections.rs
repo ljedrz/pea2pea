@@ -152,9 +152,9 @@ pub struct Connection {
     pub node: Arc<Node>,
     /// The address of the connection.
     pub addr: SocketAddr,
-    ///
+    /// Kept only until the protocols are enabled (`Reading` should `take()` it).
     pub reader: Option<ConnectionReader>,
-    ///
+    /// Kept only until the protocols are enabled (`Writing` should `take()` it).
     pub writer: Option<ConnectionWriter>,
     /// Handles to tasks spawned by the connection.
     pub tasks: Vec<JoinHandle<()>>,

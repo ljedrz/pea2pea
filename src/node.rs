@@ -180,7 +180,12 @@ impl Node {
         // enact the enabled protocols
         let connection = enable_protocol!("HandshakeProtocol", handshake_handler, self, connection);
         let connection = enable_protocol!("ReadingProtocol", reading_handler, self, connection);
-        let connection = enable_protocol!("WritingProtocol", writing_handler, self, connection);
+        let mut connection = enable_protocol!("WritingProtocol", writing_handler, self, connection);
+
+        // the protocols are responsible for doing reads and writes; ensure that the Connection object
+        // is not capable of performing them if the protocols haven't been enabled.
+        connection.reader = None;
+        connection.writer = None;
 
         self.connections.add(connection);
         self.known_peers.register_connection(peer_addr);
