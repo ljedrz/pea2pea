@@ -165,17 +165,13 @@ impl Node {
 
         // enact the Handshaking protocol (if enabled)
         let connection = if let Some(ref handshake_handler) = self.handshake_handler() {
-            let (handshake_result_sender, handshake_result_receiver) = oneshot::channel();
+            let (conn_returner, conn_retriever) = oneshot::channel();
 
-            handshake_handler
-                .send((connection, handshake_result_sender))
-                .await;
+            handshake_handler.send((connection, conn_returner)).await;
 
-            match handshake_result_receiver.await {
+            match conn_retriever.await {
                 Ok(Ok(conn)) => conn,
-                _ => {
-                    return Err(io::Error::new(ErrorKind::Other, "handshake failed"));
-                }
+                _ => return Err(io::Error::new(ErrorKind::Other, "handshake failed")),
             }
         } else {
             connection
