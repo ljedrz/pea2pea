@@ -1,6 +1,4 @@
-use crate::connections::{
-    Connection, ConnectionReader, ConnectionSide, ConnectionWriter, Connections,
-};
+use crate::connections::{Connection, ConnectionSide, Connections};
 use crate::protocols::{HandshakeHandler, Protocols, ReadingHandler, WritingHandler};
 use crate::*;
 
@@ -163,36 +161,31 @@ impl Node {
             }
         }
 
-        let (reader, writer) = stream.into_split();
-        let reader = ConnectionReader::new(peer_addr, reader, self);
-        let writer = ConnectionWriter::new(peer_addr, writer, self);
-        let connection = Connection::new(peer_addr, !own_side, self);
+        let connection = Connection::new(peer_addr, stream, !own_side, self);
 
         // enact the Handshaking protocol (if enabled)
-        let (reader, writer) = if let Some(ref handshake_handler) = self.handshake_handler() {
+        let connection = if let Some(ref handshake_handler) = self.handshake_handler() {
             let (handshake_result_sender, handshake_result_receiver) = oneshot::channel();
 
             handshake_handler
-                .send((reader, writer, own_side, handshake_result_sender))
+                .send((connection, handshake_result_sender))
                 .await;
 
             match handshake_result_receiver.await {
-                Ok(Ok(reader_and_writer)) => reader_and_writer,
+                Ok(Ok(conn)) => conn,
                 _ => {
                     return Err(io::Error::new(ErrorKind::Other, "handshake failed"));
                 }
             }
         } else {
-            (reader, writer)
+            connection
         };
 
         // enact the Reading protocol (if enabled)
         let connection = if let Some(ref reading_handler) = self.reading_handler() {
             let (conn_returner, conn_retriever) = oneshot::channel();
 
-            reading_handler
-                .send((reader, connection, conn_returner))
-                .await;
+            reading_handler.send((connection, conn_returner)).await;
 
             match conn_retriever.await {
                 Ok(Ok(conn)) => conn,
@@ -206,9 +199,7 @@ impl Node {
         let connection = if let Some(ref writing_handler) = self.writing_handler() {
             let (conn_returner, conn_retriever) = oneshot::channel();
 
-            writing_handler
-                .send((writer, connection, conn_returner))
-                .await;
+            writing_handler.send((connection, conn_returner)).await;
 
             match conn_retriever.await {
                 Ok(Ok(conn)) => conn,

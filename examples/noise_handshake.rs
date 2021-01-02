@@ -93,14 +93,10 @@ impl Handshaking for SecureNode {
         let self_clone = self.clone();
         tokio::spawn(async move {
             loop {
-                if let Some((mut conn_reader, mut conn_writer, node_side, result_sender)) =
-                    from_node_receiver.recv().await
-                {
-                    let addr = conn_reader.addr;
-
-                    let noise_state = match node_side {
+                if let Some((mut conn, result_sender)) = from_node_receiver.recv().await {
+                    let noise_state = match !conn.side {
                         ConnectionSide::Initiator => {
-                            info!(parent: conn_reader.node.span(), "handshaking with {} as the initiator", addr);
+                            info!(parent: conn.node.span(), "handshaking with {} as the initiator", conn.addr);
 
                             let builder = snow::Builder::new(HANDSHAKE_PATTERN.parse().unwrap());
                             let static_key = builder.generate_keypair().unwrap().private;
@@ -113,19 +109,19 @@ impl Handshaking for SecureNode {
 
                             // -> e
                             let len = noise.write_message(&[], &mut buffer).unwrap();
-                            conn_writer
+                            conn.writer()
                                 .write_all(&packet_message(&buffer[..len]))
                                 .await
                                 .unwrap();
 
                             // <- e, ee, s, es
-                            let queued_bytes = conn_reader.read_queued_bytes().await.unwrap();
+                            let queued_bytes = conn.reader().read_queued_bytes().await.unwrap();
                             let message = read_message(queued_bytes).unwrap().unwrap();
                             noise.read_message(message, &mut buffer).unwrap();
 
                             // -> s, se, psk
                             let len = noise.write_message(&[], &mut buffer).unwrap();
-                            conn_writer
+                            conn.writer()
                                 .write_all(&packet_message(&buffer[..len]))
                                 .await
                                 .unwrap();
@@ -136,7 +132,7 @@ impl Handshaking for SecureNode {
                             }
                         }
                         ConnectionSide::Responder => {
-                            info!(parent: conn_reader.node.span(), "handshaking with {} as the responder", addr);
+                            info!(parent: conn.node.span(), "handshaking with {} as the responder", conn.addr);
 
                             let builder = snow::Builder::new(HANDSHAKE_PATTERN.parse().unwrap());
                             let static_key = builder.generate_keypair().unwrap().private;
@@ -148,19 +144,19 @@ impl Handshaking for SecureNode {
                             let mut buffer: Box<[u8]> = vec![0u8; NOISE_BUF_LEN].into();
 
                             // <- e
-                            let queued_bytes = conn_reader.read_queued_bytes().await.unwrap();
+                            let queued_bytes = conn.reader().read_queued_bytes().await.unwrap();
                             let message = read_message(queued_bytes).unwrap().unwrap();
                             noise.read_message(message, &mut buffer).unwrap();
 
                             // -> e, ee, s, es
                             let len = noise.write_message(&[], &mut buffer).unwrap();
-                            conn_writer
+                            conn.writer()
                                 .write_all(&packet_message(&buffer[..len]))
                                 .await
                                 .unwrap();
 
                             // <- s, se, psk
-                            let queued_bytes = conn_reader.read_queued_bytes().await.unwrap();
+                            let queued_bytes = conn.reader().read_queued_bytes().await.unwrap();
                             let message = read_message(queued_bytes).unwrap().unwrap();
                             noise.read_message(message, &mut buffer).unwrap();
 
@@ -172,10 +168,13 @@ impl Handshaking for SecureNode {
                     };
 
                     let noise_state = Arc::new(Mutex::new(noise_state));
-                    self_clone.noise_states.write().insert(addr, noise_state);
+                    self_clone
+                        .noise_states
+                        .write()
+                        .insert(conn.addr, noise_state);
 
                     // return the connection objects to the node
-                    if result_sender.send(Ok((conn_reader, conn_writer))).is_err() {
+                    if result_sender.send(Ok(conn)).is_err() {
                         // can't recover if this happens
                         unreachable!();
                     }

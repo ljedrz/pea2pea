@@ -1,15 +1,7 @@
-use crate::{
-    connections::{Connection, ConnectionReader},
-    Pea2Pea,
-};
+use crate::{connections::ConnectionReader, protocols::ReturnableConnection, Pea2Pea};
 
 use async_trait::async_trait;
-use tokio::{
-    io::AsyncReadExt,
-    sync::{mpsc, oneshot},
-    task::JoinHandle,
-    time::sleep,
-};
+use tokio::{io::AsyncReadExt, sync::mpsc, task::JoinHandle, time::sleep};
 use tracing::*;
 
 use std::{io, net::SocketAddr, time::Duration};
@@ -32,7 +24,7 @@ where
     /// accidentally reading "borked" messages).
     fn enable_reading(&self) {
         let (conn_sender, mut conn_receiver) =
-            mpsc::channel::<ReadingObjects>(self.node().config.reading_handler_queue_depth);
+            mpsc::channel::<ReturnableConnection>(self.node().config.reading_handler_queue_depth);
 
         // the main task spawning per-connection tasks reading messages from their streams
         let self_clone = self.clone();
@@ -41,9 +33,9 @@ where
 
             loop {
                 // these objects are sent from `Node::adapt_stream`
-                if let Some((mut conn_reader, mut conn, conn_returner)) = conn_receiver.recv().await
-                {
+                if let Some((mut conn, conn_returner)) = conn_receiver.recv().await {
                     let addr = conn.addr;
+                    let mut conn_reader = conn.reader.take().unwrap(); // safe; it is available at this point
 
                     let (inbound_message_sender, mut inbound_message_receiver) =
                         mpsc::channel(self_clone.node().config.conn_inbound_queue_depth);
@@ -226,32 +218,25 @@ where
     }
 }
 
-/// A set of objects required to enable the `Reading` protocol.
-pub type ReadingObjects = (
-    ConnectionReader,
-    Connection,
-    oneshot::Sender<io::Result<Connection>>,
-);
-
 /// An object dedicated to spawning tasks handling inbound messages
 /// from new connections; used in the `Reading` protocol.
 pub struct ReadingHandler {
-    sender: mpsc::Sender<ReadingObjects>,
+    sender: mpsc::Sender<ReturnableConnection>,
     _task: JoinHandle<()>,
 }
 
 impl ReadingHandler {
-    /// Sends reading-relevant objects to the task spawned by the ReadingHandler.
-    pub async fn send(&self, reading_objects: ReadingObjects) {
-        if self.sender.send(reading_objects).await.is_err() {
+    /// Sends a returnable `Connection` to a task spawned by the `ReadingHandler`.
+    pub async fn send(&self, returnable_conn: ReturnableConnection) {
+        if self.sender.send(returnable_conn).await.is_err() {
             // can't recover if this happens
             panic!("ReadingHandler's Receiver is closed")
         }
     }
 }
 
-impl From<(mpsc::Sender<ReadingObjects>, JoinHandle<()>)> for ReadingHandler {
-    fn from((sender, _task): (mpsc::Sender<ReadingObjects>, JoinHandle<()>)) -> Self {
+impl From<(mpsc::Sender<ReturnableConnection>, JoinHandle<()>)> for ReadingHandler {
+    fn from((sender, _task): (mpsc::Sender<ReturnableConnection>, JoinHandle<()>)) -> Self {
         Self { sender, _task }
     }
 }

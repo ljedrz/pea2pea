@@ -68,37 +68,37 @@ impl Pea2Pea for SecureishNode {
 }
 
 macro_rules! read_handshake_message {
-    ($expected: path, $node: expr, $conn_reader: expr, $addr: expr) => {
-        if let Ok(bytes) = $conn_reader.read_exact(9).await {
+    ($expected: path, $conn: expr) => {
+        if let Ok(bytes) = $conn.reader().read_exact(9).await {
             let msg: io::Result<HandshakeMsg> = if let Ok(msg) = HandshakeMsg::deserialize(bytes) {
                 Ok(msg)
             } else {
-                error!(parent: $node.span(), "unrecognized handshake message (neither A nor B)");
+                error!(parent: $conn.node.span(), "unrecognized handshake message (neither A nor B)");
                 Err(ErrorKind::Other.into())
             };
 
             if let Ok($expected(nonce)) = msg {
-                debug!(parent: $node.span(), "received handshake message B from {}", $addr);
+                debug!(parent: $conn.node.span(), "received handshake message B from {}", $conn.addr);
                 Ok(nonce)
             } else {
-                error!(parent: $node.span(), "received an invalid handshake message from {} (expected B)", $addr);
+                error!(parent: $conn.node.span(), "received an invalid handshake message from {} (expected B)", $conn.addr);
                 Err(ErrorKind::Other.into())
             }
         } else {
-            error!(parent: $node.span(), "couldn't read handshake message B");
+            error!(parent: $conn.node.span(), "couldn't read handshake message B");
             Err(ErrorKind::Other.into())
         }
     }
 }
 
 macro_rules! send_handshake_message {
-    ($msg: expr, $node: expr, $connection: expr, $addr: expr) => {
-        $connection
+    ($msg: expr, $conn: expr) => {
+        $conn.writer()
             .write_all(&$msg.serialize())
             .await
             .unwrap();
 
-        debug!(parent: $node.span(), "sent handshake message A to {}", $addr);
+        debug!(parent: $conn.node.span(), "sent handshake message A to {}", $conn.addr);
     }
 }
 
@@ -113,54 +113,31 @@ impl Handshaking for SecureishNode {
         let self_clone = self.clone();
         tokio::spawn(async move {
             loop {
-                if let Some((mut conn_reader, mut conn_writer, node_side, result_sender)) =
-                    from_node_receiver.recv().await
-                {
-                    let node = Arc::clone(&conn_reader.node);
-                    let addr = conn_reader.addr;
-
-                    let nonce_pair = match node_side {
+                if let Some((mut conn, result_sender)) = from_node_receiver.recv().await {
+                    let nonce_pair = match !conn.side {
                         ConnectionSide::Initiator => {
-                            debug!(parent: node.span(), "handshaking with {} as the initiator", addr);
+                            debug!(parent: conn.node.span(), "handshaking with {} as the initiator", conn.addr);
 
                             // send A
                             let own_nonce = 0;
-                            send_handshake_message!(
-                                HandshakeMsg::A(own_nonce),
-                                node,
-                                conn_writer,
-                                addr
-                            );
+                            send_handshake_message!(HandshakeMsg::A(own_nonce), conn);
 
                             // read B
-                            let peer_nonce =
-                                read_handshake_message!(HandshakeMsg::B, node, conn_reader, addr);
+                            let peer_nonce = read_handshake_message!(HandshakeMsg::B, conn);
 
-                            match peer_nonce {
-                                Ok(peer_nonce) => Ok(NoncePair(own_nonce, peer_nonce)),
-                                Err(e) => Err(e),
-                            }
+                            peer_nonce.map(|peer_nonce| NoncePair(own_nonce, peer_nonce))
                         }
                         ConnectionSide::Responder => {
-                            debug!(parent: node.span(), "handshaking with {} as the responder", addr);
+                            debug!(parent: conn.node.span(), "handshaking with {} as the responder", conn.addr);
 
                             // read A
-                            let peer_nonce =
-                                read_handshake_message!(HandshakeMsg::A, node, conn_reader, addr);
+                            let peer_nonce = read_handshake_message!(HandshakeMsg::A, conn);
 
                             // send B
                             let own_nonce = 1;
-                            send_handshake_message!(
-                                HandshakeMsg::B(own_nonce),
-                                node,
-                                conn_writer,
-                                addr
-                            );
+                            send_handshake_message!(HandshakeMsg::B(own_nonce), conn);
 
-                            match peer_nonce {
-                                Ok(peer_nonce) => Ok(NoncePair(own_nonce, peer_nonce)),
-                                Err(e) => Err(e),
-                            }
+                            peer_nonce.map(|peer_nonce| NoncePair(own_nonce, peer_nonce))
                         }
                     };
 
@@ -168,20 +145,18 @@ impl Handshaking for SecureishNode {
                         Ok(pair) => pair,
                         Err(e) => {
                             if result_sender.send(Err(e)).is_err() {
-                                // can't recover if this happens
-                                unreachable!();
+                                unreachable!(); // can't recover if this happens
                             }
                             return;
                         }
                     };
 
                     // register the handshake nonce
-                    self_clone.handshakes.write().insert(addr, nonce_pair);
+                    self_clone.handshakes.write().insert(conn.addr, nonce_pair);
 
-                    // return the connection objects to the node
-                    if result_sender.send(Ok((conn_reader, conn_writer))).is_err() {
-                        // can't recover if this happens
-                        unreachable!();
+                    // return the Connection to the node
+                    if result_sender.send(Ok(conn)).is_err() {
+                        unreachable!(); // can't recover if this happens
                     }
                 }
             }

@@ -7,7 +7,10 @@ use fxhash::FxHashMap;
 use parking_lot::RwLock;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
-    net::tcp::{OwnedReadHalf, OwnedWriteHalf},
+    net::{
+        tcp::{OwnedReadHalf, OwnedWriteHalf},
+        TcpStream,
+    },
     sync::mpsc::Sender,
     task::JoinHandle,
 };
@@ -93,16 +96,6 @@ pub struct ConnectionReader {
 }
 
 impl ConnectionReader {
-    pub(crate) fn new(addr: SocketAddr, reader: OwnedReadHalf, node: &Arc<Node>) -> Self {
-        Self {
-            node: Arc::clone(node),
-            addr,
-            buffer: vec![0; node.config.conn_read_buffer_size].into(),
-            carry: 0,
-            reader,
-        }
-    }
-
     /// Reads as many bytes as there are queued to be read from the stream.
     pub async fn read_queued_bytes(&mut self) -> io::Result<&[u8]> {
         let len = self.reader.read(&mut self.buffer).await?;
@@ -143,16 +136,6 @@ pub struct ConnectionWriter {
 }
 
 impl ConnectionWriter {
-    pub(crate) fn new(addr: SocketAddr, writer: OwnedWriteHalf, node: &Arc<Node>) -> Self {
-        Self {
-            node: Arc::clone(node),
-            addr,
-            buffer: vec![0; node.config.conn_write_buffer_size].into(),
-            carry: 0,
-            writer,
-        }
-    }
-
     /// Writes the given buffer to the stream.
     pub async fn write_all(&mut self, buffer: &[u8]) -> io::Result<()> {
         self.writer.write_all(buffer).await?;
@@ -169,6 +152,10 @@ pub struct Connection {
     pub node: Arc<Node>,
     /// The address of the connection.
     pub addr: SocketAddr,
+    ///
+    pub reader: Option<ConnectionReader>,
+    ///
+    pub writer: Option<ConnectionWriter>,
     /// Handles to tasks spawned by the connection.
     pub tasks: Vec<JoinHandle<()>>,
     /// Used to queue writes to the stream.
@@ -179,14 +166,53 @@ pub struct Connection {
 
 impl Connection {
     /// Creates a `Connection` with placeholders for protocol-related objects.
-    pub(crate) fn new(addr: SocketAddr, side: ConnectionSide, node: &Arc<Node>) -> Self {
+    pub(crate) fn new(
+        addr: SocketAddr,
+        stream: TcpStream,
+        side: ConnectionSide,
+        node: &Arc<Node>,
+    ) -> Self {
+        let (reader, writer) = stream.into_split();
+
+        let reader = ConnectionReader {
+            node: Arc::clone(node),
+            addr,
+            buffer: vec![0; node.config.conn_read_buffer_size].into(),
+            carry: 0,
+            reader,
+        };
+
+        let writer = ConnectionWriter {
+            node: Arc::clone(node),
+            addr,
+            buffer: vec![0; node.config.conn_write_buffer_size].into(),
+            carry: 0,
+            writer,
+        };
+
         Self {
             node: Arc::clone(node),
             addr,
+            reader: Some(reader),
+            writer: Some(writer),
             side,
             tasks: Default::default(),
             outbound_message_sender: Default::default(),
         }
+    }
+
+    /// Provides mutable access to the underlying `ConnectionReader`; it should only be used in protocol definitions.
+    pub fn reader(&mut self) -> &mut ConnectionReader {
+        self.reader
+            .as_mut()
+            .expect("ConnectionReader is not available!")
+    }
+
+    /// Provides mutable access to the underlying `ConnectionWriter`; it should only be used in protocol definitions.
+    pub fn writer(&mut self) -> &mut ConnectionWriter {
+        self.writer
+            .as_mut()
+            .expect("ConnectionWriter is not available!")
     }
 
     /// Returns a `Sender` for outbound messages, as long as `Writing` is enabled.

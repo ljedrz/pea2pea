@@ -1,14 +1,8 @@
-use crate::{
-    connections::{Connection, ConnectionWriter},
-    Pea2Pea,
-};
+use crate::{connections::ConnectionWriter, protocols::ReturnableConnection, Pea2Pea};
 
 use async_trait::async_trait;
 use bytes::Bytes;
-use tokio::{
-    sync::{mpsc, oneshot},
-    task::JoinHandle,
-};
+use tokio::{sync::mpsc, task::JoinHandle};
 use tracing::*;
 
 use std::io;
@@ -26,7 +20,7 @@ where
     /// Prepares the node to send messages.
     fn enable_writing(&self) {
         let (conn_sender, mut conn_receiver) =
-            mpsc::channel::<WritingObjects>(self.node().config.writing_handler_queue_depth);
+            mpsc::channel::<ReturnableConnection>(self.node().config.writing_handler_queue_depth);
 
         // the task spawning tasks reading messages from the given stream
         let self_clone = self.clone();
@@ -35,9 +29,9 @@ where
 
             loop {
                 // these objects are sent from `Node::adapt_stream`
-                if let Some((mut conn_writer, mut conn, conn_returner)) = conn_receiver.recv().await
-                {
+                if let Some((mut conn, conn_returner)) = conn_receiver.recv().await {
                     let addr = conn.addr;
+                    let mut conn_writer = conn.writer.take().unwrap(); // safe; it is available at this point
 
                     let (outbound_message_sender, mut outbound_message_receiver) =
                         mpsc::channel::<Bytes>(self_clone.node().config.conn_outbound_queue_depth);
@@ -89,31 +83,24 @@ where
     async fn write_message(&self, writer: &mut ConnectionWriter, payload: &[u8]) -> io::Result<()>;
 }
 
-/// A set of objects required to enable the `Writing` protocol.
-pub type WritingObjects = (
-    ConnectionWriter,
-    Connection,
-    oneshot::Sender<io::Result<Connection>>,
-);
-
 /// An object dedicated to spawning outbound message handlers; used in the `Writing` protocol.
 pub struct WritingHandler {
-    sender: mpsc::Sender<WritingObjects>,
+    sender: mpsc::Sender<ReturnableConnection>,
     _task: JoinHandle<()>,
 }
 
 impl WritingHandler {
-    /// Sends writing-relevant objects to the task spawned by the WritingHandler.
-    pub async fn send(&self, writing_objects: WritingObjects) {
-        if self.sender.send(writing_objects).await.is_err() {
+    /// Sends a returnable `Connection` to a task spawned by the `WritingHandler`.
+    pub async fn send(&self, returnable_conn: ReturnableConnection) {
+        if self.sender.send(returnable_conn).await.is_err() {
             // can't recover if this happens
             panic!("WritingHandler's Receiver is closed")
         }
     }
 }
 
-impl From<(mpsc::Sender<WritingObjects>, JoinHandle<()>)> for WritingHandler {
-    fn from((sender, _task): (mpsc::Sender<WritingObjects>, JoinHandle<()>)) -> Self {
+impl From<(mpsc::Sender<ReturnableConnection>, JoinHandle<()>)> for WritingHandler {
+    fn from((sender, _task): (mpsc::Sender<ReturnableConnection>, JoinHandle<()>)) -> Self {
         Self { sender, _task }
     }
 }

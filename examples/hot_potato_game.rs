@@ -104,37 +104,32 @@ impl Handshaking for PlayerNode {
         let self_clone = self.clone();
         tokio::spawn(async move {
             loop {
-                if let Some((mut conn_reader, mut conn_writer, node_side, result_sender)) =
-                    from_node_receiver.recv().await
-                {
-                    let node = Arc::clone(&conn_reader.node);
-                    let addr = conn_reader.addr;
-
-                    let peer_name = match node_side {
+                if let Some((mut conn, result_sender)) = from_node_receiver.recv().await {
+                    let peer_name = match !conn.side {
                         ConnectionSide::Initiator => {
-                            debug!(parent: node.span(), "handshaking with {} as the initiator", addr);
+                            debug!(parent: conn.node.span(), "handshaking with {} as the initiator", conn.addr);
 
                             // send own PlayerName
-                            let own_name = node.name();
+                            let own_name = conn.node.name();
                             let message = prefix_message(own_name.as_bytes());
-                            conn_writer.write_all(&message).await.unwrap();
+                            conn.writer().write_all(&message).await.unwrap();
 
                             // receive the peer's PlayerName
-                            let message = conn_reader.read_queued_bytes().await.unwrap();
+                            let message = conn.reader().read_queued_bytes().await.unwrap();
 
                             String::from_utf8(message[2..].to_vec()).unwrap()
                         }
                         ConnectionSide::Responder => {
-                            debug!(parent: node.span(), "handshaking with {} as the responder", addr);
+                            debug!(parent: conn.node.span(), "handshaking with {} as the responder", conn.addr);
 
                             // receive the peer's PlayerName
-                            let message = conn_reader.read_queued_bytes().await.unwrap();
+                            let message = conn.reader().read_queued_bytes().await.unwrap();
                             let peer_name = String::from_utf8(message[2..].to_vec()).unwrap();
 
                             // send own PlayerName
-                            let own_name = node.name();
+                            let own_name = conn.node.name();
                             let message = prefix_message(own_name.as_bytes());
-                            conn_writer.write_all(&message).await.unwrap();
+                            conn.writer().write_all(&message).await.unwrap();
 
                             peer_name
                         }
@@ -142,13 +137,13 @@ impl Handshaking for PlayerNode {
 
                     let player = Player {
                         name: peer_name.clone(),
-                        addr,
+                        addr: conn.addr,
                         is_carrier: false,
                     };
                     self_clone.other_players.lock().insert(peer_name, player);
 
                     // return the connection objects to the node
-                    if result_sender.send(Ok((conn_reader, conn_writer))).is_err() {
+                    if result_sender.send(Ok(conn)).is_err() {
                         // can't recover if this happens
                         unreachable!();
                     }
