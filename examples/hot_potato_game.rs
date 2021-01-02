@@ -142,10 +142,9 @@ impl Handshaking for PlayerNode {
                     };
                     self_clone.other_players.lock().insert(peer_name, player);
 
-                    // return the connection objects to the node
+                    // return the Connection to the node
                     if result_sender.send(Ok(conn)).is_err() {
-                        // can't recover if this happens
-                        unreachable!();
+                        unreachable!(); // can't recover if this happens
                     }
                 }
             }

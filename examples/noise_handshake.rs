@@ -167,16 +167,14 @@ impl Handshaking for SecureNode {
                         }
                     };
 
-                    let noise_state = Arc::new(Mutex::new(noise_state));
                     self_clone
                         .noise_states
                         .write()
-                        .insert(conn.addr, noise_state);
+                        .insert(conn.addr, Arc::new(Mutex::new(noise_state)));
 
-                    // return the connection objects to the node
+                    // return the Connection to the node
                     if result_sender.send(Ok(conn)).is_err() {
-                        // can't recover if this happens
-                        unreachable!();
+                        unreachable!(); // can't recover if this happens
                     }
                 }
             }
