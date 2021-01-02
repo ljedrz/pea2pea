@@ -27,21 +27,21 @@ use std::{
 type PlayerName = String;
 
 #[derive(Debug)]
-struct Player {
+struct PlayerInfo {
     name: PlayerName,
     addr: SocketAddr,
     is_carrier: bool,
 }
 
 #[derive(Clone)]
-struct PlayerNode {
+struct Player {
     node: Arc<Node>,
-    other_players: Arc<Mutex<HashMap<PlayerName, Player>>>,
+    other_players: Arc<Mutex<HashMap<PlayerName, PlayerInfo>>>,
     rng: Arc<Mutex<SmallRng>>,
     potato_count: Arc<AtomicUsize>,
 }
 
-impl PlayerNode {
+impl Player {
     async fn new(name: PlayerName, rng: Arc<Mutex<SmallRng>>) -> Self {
         let config = NodeConfig {
             name: Some(name),
@@ -81,7 +81,7 @@ impl PlayerNode {
     }
 }
 
-impl Pea2Pea for PlayerNode {
+impl Pea2Pea for Player {
     fn node(&self) -> &Arc<Node> {
         &self.node
     }
@@ -95,7 +95,7 @@ fn prefix_message(message: &[u8]) -> Bytes {
     bytes.into()
 }
 
-impl Handshaking for PlayerNode {
+impl Handshaking for Player {
     fn enable_handshaking(&self) {
         let (from_node_sender, mut from_node_receiver) = mpsc::channel(1);
         self.node().set_handshake_handler(from_node_sender.into());
@@ -135,7 +135,7 @@ impl Handshaking for PlayerNode {
                         }
                     };
 
-                    let player = Player {
+                    let player = PlayerInfo {
                         name: peer_name.clone(),
                         addr: conn.addr,
                         is_carrier: false,
@@ -159,7 +159,7 @@ enum Message {
 }
 
 #[async_trait::async_trait]
-impl Reading for PlayerNode {
+impl Reading for Player {
     type Message = Message;
 
     fn read_message(
@@ -219,7 +219,7 @@ impl Reading for PlayerNode {
 }
 
 #[async_trait::async_trait]
-impl Writing for PlayerNode {
+impl Writing for Player {
     async fn write_message(&self, writer: &mut ConnectionWriter, payload: &[u8]) -> io::Result<()> {
         let message = prefix_message(payload);
 
@@ -243,7 +243,7 @@ async fn main() {
 
     let mut players = Vec::with_capacity(NUM_PLAYERS);
     for i in 0..NUM_PLAYERS {
-        players.push(PlayerNode::new(format!("player {}", i), rng.clone()).await);
+        players.push(Player::new(format!("player {}", i), rng.clone()).await);
     }
 
     for player in &players {
