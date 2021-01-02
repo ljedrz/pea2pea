@@ -43,7 +43,7 @@ Creating and starting 2 nodes, one of which writes and the other reads textual m
 
 ```rust
 use async_trait::async_trait;
-use pea2pea::{connections::ConnectionWriter, protocols::{Reading, Writing}, *};
+use pea2pea::{protocols::{Reading, Writing}, *};
 use tokio::time::sleep;
 use tracing::*;
 
@@ -95,14 +95,12 @@ impl Reading for ExampleNode {
     }
 }
 
-#[async_trait]
 impl Writing for ExampleNode {
-    async fn write_message(&self, writer: &mut ConnectionWriter, payload: &[u8]) -> Result<()> {
-        let mut message = Vec::with_capacity(2 + payload.len());
-        message.extend_from_slice(&(payload.len() as u16).to_le_bytes());
-        message.extend_from_slice(payload);
-
-        writer.write_all(&message).await
+    fn write_message(&self, _target: SocketAddr, payload: &[u8], buffer: &mut [u8]) -> Result<usize> {
+        assert!(buffer.len() >= payload.len() + 2);
+        buffer[..2].copy_from_slice(&(payload.len() as u16).to_le_bytes());
+        buffer[2..][..payload.len()].copy_from_slice(&payload);
+        Ok(2 + payload.len())
     }
 }
 
@@ -117,7 +115,7 @@ async fn main() {
     alice.enable_writing();
     bob.enable_reading();
 
-    alice.node().initiate_connection(bobs_addr).await.unwrap();
+    alice.node().connect(bobs_addr).await.unwrap();
     alice.node().send_direct_message(bobs_addr, b"Hello there!"[..].into()).await.unwrap();
 
     sleep(Duration::from_millis(10)).await; // a small delay to allow all the logs to be displayed
