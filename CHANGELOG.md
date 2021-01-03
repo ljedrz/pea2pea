@@ -3,6 +3,7 @@
 ### Added
 - `Writing::write_to_stream` with a default implementation
 - a new example with fixed-length messages
+- average throughput is now displayed at the end of the benchmark in `benches`
 
 ### Changed
 - renamed `Node::initiate_connection` to `::connect`
