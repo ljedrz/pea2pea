@@ -85,7 +85,7 @@ impl From<[usize; 5]> for BenchParams {
     }
 }
 
-async fn run_bench_scenario(params: BenchParams) {
+async fn run_bench_scenario(params: BenchParams) -> f64 {
     let BenchParams {
         spammer_count,
         msg_count,
@@ -152,6 +152,7 @@ async fn run_bench_scenario(params: BenchParams) {
 
     let throughput = (bytes_received as f64) / (time_elapsed as f64 / 100.0);
     display_throughput(throughput);
+    throughput
 }
 
 #[ignore]
@@ -195,9 +196,16 @@ async fn bench_spam_to_one() {
         }
     }
 
+    let mut results = Vec::with_capacity(scenarios.len());
+
     println!("benchmarking {} scenarios", scenarios.len());
     for params in scenarios.into_iter() {
         println!("using {:?}", params);
-        run_bench_scenario(params).await
+        let result = run_bench_scenario(params).await;
+        results.push(result);
     }
+
+    println!("\naverage:");
+    let avg_throughput = results.iter().sum::<f64>() / results.len() as f64;
+    display_throughput(avg_throughput);
 }
