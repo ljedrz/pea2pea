@@ -138,7 +138,7 @@ impl Node {
 
         node.listening_task.set(listening_task).unwrap();
 
-        info!(parent: node.span(), "the node is ready; listening on {}", listening_addr);
+        debug!(parent: node.span(), "the node is ready; listening on {}", listening_addr);
 
         Ok(node)
     }
