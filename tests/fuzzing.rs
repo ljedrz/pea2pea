@@ -25,16 +25,29 @@ impl Reading for Tester {
         _source: SocketAddr,
         buffer: &[u8],
     ) -> io::Result<Option<(Self::Message, usize)>> {
-        let bytes = common::read_len_prefixed_message(2, buffer)?;
+        let bytes = common::read_len_prefixed_message(4, buffer)?;
 
         Ok(bytes.map(|bytes| ((), bytes.len())))
+    }
+}
+
+impl Writing for Tester {
+    fn write_message(
+        &self,
+        _target: SocketAddr,
+        payload: &[u8],
+        buffer: &mut [u8],
+    ) -> io::Result<usize> {
+        buffer[..4].copy_from_slice(&(payload.len() as u32).to_le_bytes());
+        buffer[4..][..payload.len()].copy_from_slice(&payload);
+        Ok(4 + payload.len())
     }
 }
 
 #[ignore]
 #[tokio::test]
 async fn fuzzing() {
-    const MAX_MSG_SIZE: usize = 256;
+    const MAX_MSG_SIZE: usize = 1024 * 1024;
 
     let config = NodeConfig {
         conn_read_buffer_size: MAX_MSG_SIZE,
@@ -43,7 +56,11 @@ async fn fuzzing() {
     let tester = Tester(Node::new(Some(config)).await.unwrap());
     tester.enable_reading();
 
-    let sender = common::MessagingNode::new("sender").await;
+    let config = NodeConfig {
+        conn_write_buffer_size: MAX_MSG_SIZE,
+        ..Default::default()
+    };
+    let sender = Tester(Node::new(Some(config)).await.unwrap());
     sender.enable_writing();
 
     sender
