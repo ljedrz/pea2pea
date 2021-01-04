@@ -28,7 +28,7 @@ impl TidyNode {
                 let mut addrs_to_disconnect = Vec::new();
 
                 for (addr, stats) in node.known_peers().read().iter() {
-                    if stats.failures > node.config.max_allowed_failures {
+                    if stats.failures > 0 {
                         addrs_to_disconnect.push(*addr);
                     }
                 }
@@ -51,7 +51,6 @@ async fn maintenance_example() {
 
     let tidy_config = NodeConfig {
         name: Some("tidy".into()),
-        max_allowed_failures: 0,
         ..Default::default()
     };
     let tidy = Node::new(Some(tidy_config)).await.unwrap();
