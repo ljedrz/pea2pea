@@ -23,11 +23,6 @@ impl KnownPeers {
         self.write().entry(addr).or_default().new_connection();
     }
 
-    /// Updates the "last seen" timestamp of the given address, adding a peer if it hasn't been known.
-    pub fn update_last_seen(&self, addr: SocketAddr) {
-        self.write().entry(addr).or_default().update_last_seen();
-    }
-
     /// Registers a submission of a message to the given address, adding a peer if it hasn't been known.
     pub fn register_sent_message(&self, to: SocketAddr, len: usize) {
         self.write().entry(to).or_default().sent_message(len);
@@ -64,8 +59,6 @@ pub struct PeerStats {
     /// The timestamp of the current connection with the peer.
     pub last_connected: Instant,
     /// The timestamp of the peer's last activity.
-    pub last_seen: Instant,
-    /// The number of messages sent to the peer.
     pub msgs_sent: usize,
     /// The number of messages received from the peer.
     pub msgs_received: usize,
@@ -85,7 +78,6 @@ impl Default for PeerStats {
             times_connected: 1,
             first_seen: now,
             last_connected: now,
-            last_seen: now,
             msgs_sent: 0,
             msgs_received: 0,
             bytes_sent: 0,
@@ -96,14 +88,6 @@ impl Default for PeerStats {
 }
 
 impl PeerStats {
-    pub(crate) fn update_last_seen(&mut self) {
-        // last_seen is not updated automatically, as many messages can be read
-        // from the stream at once, and each one would cause a costly system call;
-        // since it is a costly operation, it is opt-in; it can be included in
-        // one of the methods provided by the Messaging protocol
-        self.last_seen = Instant::now();
-    }
-
     pub(crate) fn new_connection(&mut self) {
         self.last_connected = Instant::now();
         self.times_connected += 1;
