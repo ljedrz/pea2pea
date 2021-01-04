@@ -10,7 +10,7 @@ pub struct KnownPeers(RwLock<FxHashMap<SocketAddr, PeerStats>>);
 impl KnownPeers {
     /// Adds an address to the list of known peers.
     pub fn add(&self, addr: SocketAddr) {
-        self.write().entry(addr).or_default().new_connection();
+        self.write().entry(addr).or_default();
     }
 
     /// Removes an address to the list of known peers.
@@ -18,24 +18,32 @@ impl KnownPeers {
         self.write().remove(&addr)
     }
 
-    /// Registers a connection to the given address, adding a peer if it hasn't been known.
+    /// Registers a connection to the given address.
     pub fn register_connection(&self, addr: SocketAddr) {
-        self.write().entry(addr).or_default().new_connection();
+        if let Some(ref mut stats) = self.write().get_mut(&addr) {
+            stats.new_connection();
+        }
     }
 
-    /// Registers a submission of a message to the given address, adding a peer if it hasn't been known.
+    /// Registers a submission of a message to the given address.
     pub fn register_sent_message(&self, to: SocketAddr, len: usize) {
-        self.write().entry(to).or_default().sent_message(len);
+        if let Some(ref mut stats) = self.write().get_mut(&to) {
+            stats.sent_message(len);
+        }
     }
 
-    /// Registers a receipt of a message to the given address, adding a peer if it hasn't been known.
+    /// Registers a receipt of a message to the given address.
     pub fn register_received_message(&self, from: SocketAddr, len: usize) {
-        self.write().entry(from).or_default().received_message(len);
+        if let Some(ref mut stats) = self.write().get_mut(&from) {
+            stats.received_message(len);
+        }
     }
 
-    /// Registers a failure associated with the given address, adding a peer if it hasn't been known.
+    /// Registers a failure associated with the given address.
     pub fn register_failure(&self, addr: SocketAddr) {
-        self.write().entry(addr).or_default().register_failure();
+        if let Some(ref mut stats) = self.write().get_mut(&addr) {
+            stats.register_failure();
+        }
     }
 
     /// Acquires a read lock over the collection of known peers.

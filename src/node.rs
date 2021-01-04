@@ -162,6 +162,7 @@ impl Node {
         own_side: ConnectionSide,
     ) -> io::Result<()> {
         self.stats.register_connection();
+        self.known_peers.add(peer_addr);
 
         // register the port seen by the peer
         if let ConnectionSide::Initiator = own_side {
