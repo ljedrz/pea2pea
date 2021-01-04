@@ -56,8 +56,8 @@ pub struct PeerStats {
     pub times_connected: usize,
     /// The timestamp of inclusion of the peer in `KnownPeers`.
     pub added: Instant,
-    /// The timestamp of the current connection with the peer.
-    pub last_connected: Instant,
+    /// The timestamp of the most recent connection with the peer.
+    pub last_connected: Option<Instant>,
     /// The timestamp of the peer's last activity.
     pub msgs_sent: usize,
     /// The number of messages received from the peer.
@@ -72,12 +72,10 @@ pub struct PeerStats {
 
 impl Default for PeerStats {
     fn default() -> Self {
-        let now = Instant::now();
-
         Self {
-            times_connected: 1,
-            added: now,
-            last_connected: now,
+            times_connected: 0,
+            added: Instant::now(),
+            last_connected: None,
             msgs_sent: 0,
             msgs_received: 0,
             bytes_sent: 0,
@@ -89,7 +87,7 @@ impl Default for PeerStats {
 
 impl PeerStats {
     pub(crate) fn new_connection(&mut self) {
-        self.last_connected = Instant::now();
+        self.last_connected = Some(Instant::now());
         self.times_connected += 1;
     }
 
