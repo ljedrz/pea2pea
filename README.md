@@ -43,7 +43,7 @@ Creating and starting 2 nodes, one of which writes and the other reads textual m
 
 ```rust
 use async_trait::async_trait;
-use pea2pea::{protocols::{Reading, Writing}, *};
+use pea2pea::{protocols::{Reading, Writing}, Node, NodeConfig, Pea2Pea};
 use tokio::time::sleep;
 use tracing::*;
 
