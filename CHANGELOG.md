@@ -1,3 +1,20 @@
+# 0.11.0
+
+### Added
+- `NodeConfig.max_connections` with a default value of 100
+
+### Changed
+- updading `PeerStats` no longer implicitly adds an entry
+
+### Fixed
+- `PeerStats.last_connected` no longer shows a timestamp if there were no connections
+- `PeerStats.times_connected` no longer shows one extra connection
+- `Node::connect` is now guarded against overlapping connection attempts
+
+### Removed
+- `NodeConfig.max_allowed_failures` - not used internally, not necessarily needed, easy to handle on user side
+- `PeerStats.last_seen` - ditto
+
 # 0.10.0
 
 ### Added
