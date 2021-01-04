@@ -42,7 +42,6 @@ impl Handshaking for JoJoNode {
                             warn!(parent: conn.node.span(), "Oh, you're approaching me? Instead of running away, you're coming right to me?");
                             sleep(Duration::from_secs(6)).await;
                             warn!(parent: conn.node.span(), "Oh ho! Then come as close as you like.");
-                            sleep(Duration::from_secs(1)).await;
                         }
                     };
 
