@@ -54,8 +54,8 @@ impl KnownPeers {
 pub struct PeerStats {
     /// The number of times a connection with the peer has been established.
     pub times_connected: usize,
-    /// The timestamp of the first connection with the peer.
-    pub first_seen: Instant,
+    /// The timestamp of inclusion of the peer in `KnownPeers`.
+    pub added: Instant,
     /// The timestamp of the current connection with the peer.
     pub last_connected: Instant,
     /// The timestamp of the peer's last activity.
@@ -76,7 +76,7 @@ impl Default for PeerStats {
 
         Self {
             times_connected: 1,
-            first_seen: now,
+            added: now,
             last_connected: now,
             msgs_sent: 0,
             msgs_received: 0,
