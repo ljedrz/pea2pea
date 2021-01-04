@@ -126,6 +126,17 @@ impl Node {
             loop {
                 match listener.accept().await {
                     Ok((stream, addr)) => {
+                        let num_connections =
+                            node_clone.num_connected() + node_clone.connecting.lock().len();
+                        if num_connections >= node_clone.config.max_connections as usize {
+                            error!(
+                                parent: node_clone.span(),
+                                "maximum number of connections reached: {}/{}; rejecting {}",
+                                num_connections, node_clone.config.max_connections, addr
+                            );
+                            continue;
+                        }
+
                         if let Err(e) = node_clone
                             .adapt_stream(stream, addr, ConnectionSide::Responder)
                             .await
@@ -201,13 +212,22 @@ impl Node {
 
     /// Connects to the provided `SocketAddr`.
     pub async fn connect(self: &Arc<Self>, addr: SocketAddr) -> io::Result<()> {
-        if !self.connecting.lock().insert(addr) {
-            warn!(parent: self.span(), "already connecting to {}", addr);
+        let num_connections = self.num_connected() + self.connecting.lock().len();
+        if num_connections >= self.config.max_connections as usize {
+            error!(
+                parent: self.span(), "maximum number of connections reached: {}/{}; refusing to connect to {}",
+                num_connections, self.config.max_connections, addr
+            );
             return Err(ErrorKind::Other.into());
         }
 
         if self.connections.is_connected(addr) {
             warn!(parent: self.span(), "already connected to {}", addr);
+            return Err(ErrorKind::Other.into());
+        }
+
+        if !self.connecting.lock().insert(addr) {
+            warn!(parent: self.span(), "already connecting to {}", addr);
             return Err(ErrorKind::Other.into());
         }
 
@@ -221,7 +241,6 @@ impl Node {
             .await;
 
         if let Err(ref e) = ret {
-            self.connecting.lock().remove(&addr);
             self.known_peers().register_failure(addr);
             error!(parent: self.span(), "couldn't initiate a connection with {}: {}", addr, e);
         }

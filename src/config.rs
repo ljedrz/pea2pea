@@ -21,6 +21,8 @@ pub struct NodeConfig {
     pub conn_outbound_queue_depth: usize,
     /// The delay on the next read from a node that provided an invalid message.
     pub invalid_message_penalty_secs: u64,
+    /// The maximum number of active connections the node can maintain.
+    pub max_connections: u16,
 }
 
 impl Default for NodeConfig {
@@ -36,6 +38,7 @@ impl Default for NodeConfig {
             conn_inbound_queue_depth: 256,
             conn_outbound_queue_depth: 16,
             invalid_message_penalty_secs: 10,
+            max_connections: 100,
         }
     }
 }
