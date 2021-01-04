@@ -3,7 +3,9 @@ use crate::protocols::{HandshakeHandler, Protocols, ReadingHandler, WritingHandl
 use crate::*;
 
 use bytes::Bytes;
+use fxhash::FxHashSet;
 use once_cell::sync::OnceCell;
+use parking_lot::Mutex;
 use tokio::{
     net::{TcpListener, TcpStream},
     sync::oneshot,
@@ -55,6 +57,8 @@ pub struct Node {
     pub listening_addr: SocketAddr,
     /// Contains objects used by the protocols implemented by the node.
     protocols: Protocols,
+    /// A list of connections that have not been finalized yet.
+    connecting: Mutex<FxHashSet<SocketAddr>>,
     /// Contains objects related to the node's active connections.
     connections: Connections,
     /// Collects statistics related to the node's peers.
@@ -109,6 +113,7 @@ impl Node {
             config,
             listening_addr,
             protocols: Default::default(),
+            connecting: Default::default(),
             connections: Default::default(),
             known_peers: Default::default(),
             stats: Default::default(),
@@ -196,19 +201,34 @@ impl Node {
 
     /// Connects to the provided `SocketAddr`.
     pub async fn connect(self: &Arc<Self>, addr: SocketAddr) -> io::Result<()> {
+        if !self.connecting.lock().insert(addr) {
+            warn!(parent: self.span(), "already connecting to {}", addr);
+            return Err(ErrorKind::Other.into());
+        }
+
         if self.connections.is_connected(addr) {
             warn!(parent: self.span(), "already connected to {}", addr);
             return Err(ErrorKind::Other.into());
         }
 
-        let stream = TcpStream::connect(addr).await?;
-        self.adapt_stream(stream, addr, ConnectionSide::Initiator)
-            .await
-            .map_err(|e| {
-                self.known_peers().register_failure(addr);
-                error!(parent: self.span(), "couldn't initiate a connection with {}: {}", addr, e);
-                e
-            })
+        let stream = TcpStream::connect(addr).await.map_err(|e| {
+            self.connecting.lock().remove(&addr);
+            e
+        })?;
+
+        let ret = self
+            .adapt_stream(stream, addr, ConnectionSide::Initiator)
+            .await;
+
+        if let Err(ref e) = ret {
+            self.connecting.lock().remove(&addr);
+            self.known_peers().register_failure(addr);
+            error!(parent: self.span(), "couldn't initiate a connection with {}: {}", addr, e);
+        }
+
+        self.connecting.lock().remove(&addr);
+
+        ret
     }
 
     /// Disconnects from the provided `SocketAddr`.
