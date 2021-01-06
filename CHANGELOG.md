@@ -1,3 +1,8 @@
+# 0.13.0
+
+### Changed
+- exposed previously public `Node` members as public methods
+
 # 0.12.0
 
 ### Added
