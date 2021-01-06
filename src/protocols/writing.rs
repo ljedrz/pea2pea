@@ -20,7 +20,7 @@ where
     /// Prepares the node to send messages.
     fn enable_writing(&self) {
         let (conn_sender, mut conn_receiver) =
-            mpsc::channel::<ReturnableConnection>(self.node().config.writing_handler_queue_depth);
+            mpsc::channel::<ReturnableConnection>(self.node().config().writing_handler_queue_depth);
 
         // the task spawning tasks reading messages from the given stream
         let self_clone = self.clone();
@@ -34,7 +34,9 @@ where
                     let mut conn_writer = conn.writer.take().unwrap(); // safe; it is available at this point
 
                     let (outbound_message_sender, mut outbound_message_receiver) =
-                        mpsc::channel::<Bytes>(self_clone.node().config.conn_outbound_queue_depth);
+                        mpsc::channel::<Bytes>(
+                            self_clone.node().config().conn_outbound_queue_depth,
+                        );
 
                     // the task for writing outbound messages
                     let writer_clone = self_clone.clone();
@@ -49,7 +51,7 @@ where
                                 match writer_clone.write_to_stream(&msg, &mut conn_writer).await {
                                     Ok(len) => {
                                         node.known_peers().register_sent_message(addr, len);
-                                        node.stats.register_sent_message(len);
+                                        node.stats().register_sent_message(len);
                                         trace!(parent: node.span(), "sent {}B to {}", len, addr);
                                     }
                                     Err(e) => {

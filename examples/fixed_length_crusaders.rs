@@ -147,7 +147,7 @@ async fn main() {
 
     jotaro
         .node()
-        .connect(dio.node().listening_addr)
+        .connect(dio.node().listening_addr())
         .await
         .unwrap();
 
@@ -156,7 +156,7 @@ async fn main() {
     jotaro
         .node()
         .send_direct_message(
-            dio.node().listening_addr,
+            dio.node().listening_addr(),
             Bytes::copy_from_slice(&[BattleCry::Ora as u8]),
         )
         .await

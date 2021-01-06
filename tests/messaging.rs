@@ -98,7 +98,7 @@ async fn messaging_example() {
     picky_echo.enable_reading();
     picky_echo.enable_writing();
 
-    let picky_echo_addr = picky_echo.node().listening_addr;
+    let picky_echo_addr = picky_echo.node().listening_addr();
 
     shouter.node().connect(picky_echo_addr).await.unwrap();
 
@@ -123,7 +123,7 @@ async fn messaging_example() {
         .unwrap();
 
     // check if the shouter heard the (non-duplicate) echoes and the last, non-reply one
-    wait_until!(1, shouter.node().stats.received().0 == 3);
+    wait_until!(1, shouter.node().stats().received().0 == 3);
 }
 
 #[tokio::test]
@@ -135,7 +135,7 @@ async fn drop_connection_on_invalid_message() {
 
     writer
         .node()
-        .connect(reader.node().listening_addr)
+        .connect(reader.node().listening_addr())
         .await
         .unwrap();
 
@@ -146,7 +146,7 @@ async fn drop_connection_on_invalid_message() {
 
     writer
         .node()
-        .send_direct_message(reader.node().listening_addr, bad_message.into())
+        .send_direct_message(reader.node().listening_addr(), bad_message.into())
         .await
         .unwrap();
 
@@ -170,7 +170,7 @@ async fn drop_connection_on_oversized_message() {
 
     writer
         .node()
-        .connect(reader.node().listening_addr)
+        .connect(reader.node().listening_addr())
         .await
         .unwrap();
 
@@ -182,7 +182,7 @@ async fn drop_connection_on_oversized_message() {
     writer
         .node()
         .send_direct_message(
-            reader.node().listening_addr,
+            reader.node().listening_addr(),
             common::prefix_with_len(2, &oversized_payload),
         )
         .await

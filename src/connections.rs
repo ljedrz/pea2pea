@@ -176,7 +176,7 @@ impl Connection {
         let reader = ConnectionReader {
             node: node.clone(),
             addr,
-            buffer: vec![0; node.config.conn_read_buffer_size].into(),
+            buffer: vec![0; node.config().conn_read_buffer_size].into(),
             carry: 0,
             reader,
         };
@@ -184,7 +184,7 @@ impl Connection {
         let writer = ConnectionWriter {
             node: node.clone(),
             addr,
-            buffer: vec![0; node.config.conn_write_buffer_size].into(),
+            buffer: vec![0; node.config().conn_write_buffer_size].into(),
             carry: 0,
             writer,
         };

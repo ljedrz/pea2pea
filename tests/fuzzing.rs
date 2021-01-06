@@ -65,7 +65,7 @@ async fn fuzzing() {
 
     sender
         .node()
-        .connect(tester.node().listening_addr)
+        .connect(tester.node().listening_addr())
         .await
         .unwrap();
 
@@ -78,7 +78,7 @@ async fn fuzzing() {
         let random_payload: Vec<u8> = (&mut rng).sample_iter(Standard).take(random_len).collect();
         sender
             .node()
-            .send_direct_message(tester.node().listening_addr, random_payload.into())
+            .send_direct_message(tester.node().listening_addr(), random_payload.into())
             .await
             .unwrap();
 

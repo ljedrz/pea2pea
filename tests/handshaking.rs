@@ -198,7 +198,7 @@ async fn handshake_example() {
 
     initiator
         .node()
-        .connect(responder.node().listening_addr)
+        .connect(responder.node().listening_addr())
         .await
         .unwrap();
 
@@ -239,7 +239,7 @@ async fn no_handshake_no_messaging() {
 
     initiator
         .node()
-        .connect(responder.node().listening_addr)
+        .connect(responder.node().listening_addr())
         .await
         .unwrap();
 
@@ -247,7 +247,7 @@ async fn no_handshake_no_messaging() {
 
     initiator
         .node()
-        .send_direct_message(responder.node().listening_addr, message)
+        .send_direct_message(responder.node().listening_addr(), message)
         .await
         .unwrap();
 

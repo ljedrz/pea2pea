@@ -93,7 +93,7 @@ async fn check_node_cleanups() {
 
     loop {
         let hapsburgs_thug = TestNode(Node::new(None).await.unwrap());
-        let thug_addr = hapsburgs_thug.node().listening_addr;
+        let thug_addr = hapsburgs_thug.node().listening_addr();
 
         hapsburgs_thug.enable_handshaking();
         hapsburgs_thug.enable_reading();
@@ -109,7 +109,7 @@ async fn check_node_cleanups() {
             .await
             .unwrap();
 
-        wait_until!(1, hapsburgs_thug.node().stats.received().0 != 0);
+        wait_until!(1, hapsburgs_thug.node().stats().received().0 != 0);
 
         // the thug dies before revealing the location of Hapsburg's Plan B
         hapsburgs_thug.node().shut_down();

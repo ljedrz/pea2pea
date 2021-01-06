@@ -272,7 +272,7 @@ async fn main() {
     // connect the initiator to the responder
     initiator
         .node()
-        .connect(responder.node().listening_addr)
+        .connect(responder.node().listening_addr())
         .await
         .unwrap();
 
@@ -283,7 +283,7 @@ async fn main() {
     let msg = b"why hello there, fellow noise protocol user; I'm the initiator";
     initiator
         .node()
-        .send_direct_message(responder.node().listening_addr, msg[..].into())
+        .send_direct_message(responder.node().listening_addr(), msg[..].into())
         .await
         .unwrap();
 

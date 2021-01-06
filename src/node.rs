@@ -65,9 +65,9 @@ pub struct InnerNode {
     /// The tracing span.
     span: Span,
     /// The node's configuration.
-    pub config: NodeConfig,
+    config: NodeConfig,
     /// The node's listening address.
-    pub listening_addr: SocketAddr,
+    listening_addr: SocketAddr,
     /// Contains objects used by the protocols implemented by the node.
     protocols: Protocols,
     /// A list of connections that have not been finalized yet.
@@ -77,7 +77,7 @@ pub struct InnerNode {
     /// Collects statistics related to the node's peers.
     known_peers: KnownPeers,
     /// Collects statistics related to the node itself.
-    pub stats: NodeStats,
+    stats: NodeStats,
     /// The node's listening task.
     listening_task: OnceCell<JoinHandle<()>>,
 }
@@ -178,9 +178,24 @@ impl Node {
         self.config.name.as_deref().unwrap()
     }
 
+    /// Returns a reference to the node's config.
+    pub fn config(&self) -> &NodeConfig {
+        &self.config
+    }
+
+    /// Returns a reference to the node's stats.
+    pub fn stats(&self) -> &NodeStats {
+        &self.stats
+    }
+
     /// Returns the tracing `Span` associated with the node.
     pub fn span(&self) -> &Span {
         &self.span
+    }
+
+    /// Returns the node's listening address.
+    pub fn listening_addr(&self) -> SocketAddr {
+        self.listening_addr
     }
 
     /// Prepares the freshly acquired connection to handle the protocols the Node implements.

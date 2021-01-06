@@ -85,9 +85,9 @@ async fn telephone_game() {
 
     players[0]
         .node()
-        .send_direct_message(players[1].node().listening_addr, message[..].into())
+        .send_direct_message(players[1].node().listening_addr(), message[..].into())
         .await
         .unwrap();
 
-    wait_until!(1, players.last().unwrap().node().stats.received().0 == 1);
+    wait_until!(1, players.last().unwrap().node().stats().received().0 == 1);
 }

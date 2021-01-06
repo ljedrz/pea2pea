@@ -118,14 +118,14 @@ async fn run_bench_scenario(params: BenchParams) -> f64 {
     for spammer in &spammers {
         spammer
             .node()
-            .connect(sink.node().listening_addr)
+            .connect(sink.node().listening_addr())
             .await
             .unwrap();
     }
 
     wait_until!(1, sink.node().num_connected() == spammer_count);
 
-    let sink_addr = sink.node().listening_addr;
+    let sink_addr = sink.node().listening_addr();
     let msg = Bytes::from(vec![0u8; msg_size - 4]); // account for the length prefix
 
     let start = Instant::now();
@@ -144,11 +144,11 @@ async fn run_bench_scenario(params: BenchParams) -> f64 {
 
     wait_until!(
         10,
-        sink.node().stats.received().0 as usize == spammer_count * msg_count
+        sink.node().stats().received().0 as usize == spammer_count * msg_count
     );
 
     let time_elapsed = start.elapsed().as_millis();
-    let bytes_received = sink.node().stats.received().1;
+    let bytes_received = sink.node().stats().received().1;
 
     let throughput = (bytes_received as f64) / (time_elapsed as f64 / 100.0);
     display_throughput(throughput);

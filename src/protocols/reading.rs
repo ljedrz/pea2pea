@@ -24,7 +24,7 @@ where
     /// accidentally reading "borked" messages).
     fn enable_reading(&self) {
         let (conn_sender, mut conn_receiver) =
-            mpsc::channel::<ReturnableConnection>(self.node().config.reading_handler_queue_depth);
+            mpsc::channel::<ReturnableConnection>(self.node().config().reading_handler_queue_depth);
 
         // the main task spawning per-connection tasks reading messages from their streams
         let self_clone = self.clone();
@@ -38,7 +38,7 @@ where
                     let mut conn_reader = conn.reader.take().unwrap(); // safe; it is available at this point
 
                     let (inbound_message_sender, mut inbound_message_receiver) =
-                        mpsc::channel(self_clone.node().config.conn_inbound_queue_depth);
+                        mpsc::channel(self_clone.node().config().conn_inbound_queue_depth);
 
                     // the task for reading messages from a stream
                     let reader_clone = self_clone.clone();
@@ -62,7 +62,7 @@ where
                                         // an unsuccessful read from the stream is not fatal; instead of disconnecting,
                                         // impose a timeout before attempting another read
                                         sleep(Duration::from_secs(
-                                            node.config.invalid_message_penalty_secs,
+                                            node.config().invalid_message_penalty_secs,
                                         ))
                                         .await;
                                     }
@@ -155,7 +155,7 @@ where
                                 left
                             );
                             node.known_peers().register_received_message(*addr, len);
-                            node.stats.register_received_message(len);
+                            node.stats().register_received_message(len);
 
                             // send the message for further processing
                             if message_sender.send(msg).await.is_err() {

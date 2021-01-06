@@ -57,14 +57,14 @@ async fn maintenance_example() {
     let tidy = TidyNode(tidy);
 
     tidy.node()
-        .connect(rando.node().listening_addr)
+        .connect(rando.node().listening_addr())
         .await
         .unwrap();
 
     tidy.perform_periodic_maintenance();
     tidy.node()
         .known_peers()
-        .register_failure(rando.node().listening_addr); // artificially report an issue with rando
+        .register_failure(rando.node().listening_addr()); // artificially report an issue with rando
 
     wait_until!(1, tidy.node().num_connected() == 0);
 }

@@ -110,7 +110,7 @@ async fn main() {
 
     let alice = ExampleNode::new("Alice").await;
     let bob = ExampleNode::new("Bob").await;
-    let bobs_addr = bob.node().listening_addr;
+    let bobs_addr = bob.node().listening_addr();
 
     alice.enable_writing();
     bob.enable_reading();

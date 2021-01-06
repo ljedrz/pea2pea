@@ -33,8 +33,8 @@ async fn node_connect_and_disconnect() {
     let nodes = common::start_inert_nodes(2, None).await;
     connect_nodes(&nodes, Topology::Line).await.unwrap();
 
-    assert!(nodes[0].disconnect(nodes[1].listening_addr));
-    assert!(!nodes[0].is_connected(nodes[1].listening_addr));
+    assert!(nodes[0].disconnect(nodes[1].listening_addr()));
+    assert!(!nodes[0].is_connected(nodes[1].listening_addr()));
 }
 
 #[tokio::test]
@@ -47,7 +47,7 @@ async fn node_duplicate_connection() {
 #[tokio::test]
 async fn drop_shuts_the_listener() {
     let node = Node::new(None).await.unwrap();
-    let addr = node.listening_addr;
+    let addr = node.listening_addr();
 
     assert!(TcpListener::bind(addr).await.is_err());
     node.shut_down();
