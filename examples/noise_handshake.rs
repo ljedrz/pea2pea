@@ -114,11 +114,13 @@ impl Handshaking for SecureNode {
                                 .write_all(&packet_message(&buffer[..len]))
                                 .await
                                 .unwrap();
+                            debug!(parent: conn.node.span(), "sent e (XX handshake part 1/3)");
 
                             // <- e, ee, s, es
                             let queued_bytes = conn.reader().read_queued_bytes().await.unwrap();
                             let message = read_message(queued_bytes).unwrap().unwrap();
                             noise.read_message(message, &mut buffer).unwrap();
+                            debug!(parent: conn.node.span(), "received e, ee, s, es (XX handshake part 2/3)");
 
                             // -> s, se, psk
                             let len = noise.write_message(&[], &mut buffer).unwrap();
@@ -126,6 +128,7 @@ impl Handshaking for SecureNode {
                                 .write_all(&packet_message(&buffer[..len]))
                                 .await
                                 .unwrap();
+                            debug!(parent: conn.node.span(), "sent s, se, psk (XX handshake part 3/3)");
 
                             NoiseState {
                                 state: noise.into_transport_mode().unwrap(),
@@ -148,6 +151,7 @@ impl Handshaking for SecureNode {
                             let queued_bytes = conn.reader().read_queued_bytes().await.unwrap();
                             let message = read_message(queued_bytes).unwrap().unwrap();
                             noise.read_message(message, &mut buffer).unwrap();
+                            debug!(parent: conn.node.span(), "received e (XX handshake part 1/3)");
 
                             // -> e, ee, s, es
                             let len = noise.write_message(&[], &mut buffer).unwrap();
@@ -155,11 +159,13 @@ impl Handshaking for SecureNode {
                                 .write_all(&packet_message(&buffer[..len]))
                                 .await
                                 .unwrap();
+                            debug!(parent: conn.node.span(), "sent e, ee, s, es (XX handshake part 2/3)");
 
                             // <- s, se, psk
                             let queued_bytes = conn.reader().read_queued_bytes().await.unwrap();
                             let message = read_message(queued_bytes).unwrap().unwrap();
                             noise.read_message(message, &mut buffer).unwrap();
+                            debug!(parent: conn.node.span(), "received s, se, psk (XX handshake part 3/3)");
 
                             NoiseState {
                                 state: noise.into_transport_mode().unwrap(),
@@ -167,6 +173,8 @@ impl Handshaking for SecureNode {
                             }
                         }
                     };
+
+                    debug!(parent: conn.node.span(), "XX handshake complete");
 
                     self_clone
                         .noise_states
