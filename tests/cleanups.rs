@@ -112,7 +112,7 @@ async fn check_node_cleanups() {
         wait_until!(1, hapsburgs_thug.node().stats.received().0 != 0);
 
         // the thug dies before revealing the location of Hapsburg's Plan B
-        drop(hapsburgs_thug);
+        hapsburgs_thug.node().shut_down();
 
         drebin.node().disconnect(thug_addr);
 
