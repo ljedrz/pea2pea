@@ -84,6 +84,9 @@ where
                                     error!(parent: node.span(), "can't process an inbound message: {}", e);
                                     node.known_peers().register_failure(addr);
                                 }
+                            } else {
+                                node.disconnect(addr);
+                                break;
                             }
                         }
                     });

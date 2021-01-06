@@ -58,8 +58,8 @@ where
                                     }
                                 }
                             } else {
-                                panic!("can't receive messages sent to {}", addr);
-                                // can't recover
+                                node.disconnect(addr);
+                                break;
                             }
                         }
                     });
