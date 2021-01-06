@@ -228,6 +228,12 @@ impl Connection {
 impl Drop for Connection {
     fn drop(&mut self) {
         debug!(parent: self.node.span(), "disconnecting from {}", self.addr);
+
+        // shut the associated tasks down
+        for task in &self.tasks {
+            task.abort();
+        }
+
         // if the (owning) node was not the initiator of the connection, it doesn't know the listening address
         // of the associated peer, so the related stats are unreliable; the next connection initiated by the
         // peer could be bound to an entirely different port number
