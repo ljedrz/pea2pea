@@ -25,7 +25,7 @@ where
         // the task spawning tasks reading messages from the given stream
         let self_clone = self.clone();
         let writing_task = tokio::spawn(async move {
-            trace!(parent: self_clone.node().span(), "spawned the `Writing` handler task");
+            trace!(parent: self_clone.node().span(), "spawned the Writing handler task");
 
             loop {
                 // these objects are sent from `Node::adapt_stream`

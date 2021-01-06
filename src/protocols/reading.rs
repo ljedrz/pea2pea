@@ -29,7 +29,7 @@ where
         // the main task spawning per-connection tasks reading messages from their streams
         let self_clone = self.clone();
         let reading_task = tokio::spawn(async move {
-            trace!(parent: self_clone.node().span(), "spawned the `Reading` handler task");
+            trace!(parent: self_clone.node().span(), "spawned the Reading handler task");
 
             loop {
                 // these objects are sent from `Node::adapt_stream`
