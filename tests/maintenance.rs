@@ -4,20 +4,20 @@ use tracing::*;
 mod common;
 use pea2pea::{Node, NodeConfig, Pea2Pea};
 
-use std::{sync::Arc, time::Duration};
+use std::time::Duration;
 
 #[derive(Clone)]
-struct TidyNode(Arc<Node>);
+struct TidyNode(Node);
 
 impl Pea2Pea for TidyNode {
-    fn node(&self) -> &Arc<Node> {
+    fn node(&self) -> &Node {
         &self.0
     }
 }
 
 impl TidyNode {
     fn perform_periodic_maintenance(&self) {
-        let node = Arc::clone(self.node());
+        let node = self.node().clone();
         tokio::spawn(async move {
             loop {
                 debug!(parent: node.span(), "performing maintenance");

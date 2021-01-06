@@ -1,3 +1,5 @@
+use tokio::net::TcpListener;
+
 mod common;
 use pea2pea::{connect_nodes, Node, NodeConfig, Topology};
 
@@ -40,4 +42,14 @@ async fn node_duplicate_connection() {
     let nodes = common::start_inert_nodes(2, None).await;
     assert!(connect_nodes(&nodes, Topology::Line).await.is_ok());
     assert!(connect_nodes(&nodes, Topology::Line).await.is_err());
+}
+
+#[tokio::test]
+async fn drop_shuts_the_listener() {
+    let node = Node::new(None).await.unwrap();
+    let addr = node.listening_addr;
+
+    assert!(TcpListener::bind(addr).await.is_err());
+    node.shut_down();
+    assert!(TcpListener::bind(addr).await.is_ok());
 }

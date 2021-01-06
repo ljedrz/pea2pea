@@ -29,12 +29,12 @@ impl From<u8> for TestMessage {
 
 #[derive(Clone)]
 struct EchoNode {
-    node: Arc<Node>,
+    node: Node,
     echoed: Arc<Mutex<HashSet<TestMessage>>>,
 }
 
 impl Pea2Pea for EchoNode {
-    fn node(&self) -> &Arc<Node> {
+    fn node(&self) -> &Node {
         &self.node
     }
 }

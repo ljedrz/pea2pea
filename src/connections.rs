@@ -20,7 +20,6 @@ use std::{
     io::{self, ErrorKind},
     net::SocketAddr,
     ops::Not,
-    sync::Arc,
 };
 
 #[derive(Default)]
@@ -84,7 +83,7 @@ impl Not for ConnectionSide {
 /// it is available only if the `Reading` protocol is enabled.
 pub struct ConnectionReader {
     /// A reference to the owning node.
-    pub node: Arc<Node>,
+    pub node: Node,
     /// The address of the connection.
     pub addr: SocketAddr,
     /// A buffer dedicated to reading from the stream.
@@ -124,7 +123,7 @@ impl ConnectionReader {
 /// it is available only if the `Writing` protocol is enabled.
 pub struct ConnectionWriter {
     /// A reference to the owning node.
-    pub node: Arc<Node>,
+    pub node: Node,
     /// The address of the connection.
     pub addr: SocketAddr,
     /// A buffer dedicated to buffering writes to the stream.
@@ -149,7 +148,7 @@ impl ConnectionWriter {
 /// also contains a sender that communicates with the `Writing` protocol handler.
 pub struct Connection {
     /// A reference to the owning node.
-    pub node: Arc<Node>,
+    pub node: Node,
     /// The address of the connection.
     pub addr: SocketAddr,
     /// Kept only until the protocols are enabled (`Reading` should `take()` it).
@@ -170,12 +169,12 @@ impl Connection {
         addr: SocketAddr,
         stream: TcpStream,
         side: ConnectionSide,
-        node: &Arc<Node>,
+        node: &Node,
     ) -> Self {
         let (reader, writer) = stream.into_split();
 
         let reader = ConnectionReader {
-            node: Arc::clone(node),
+            node: node.clone(),
             addr,
             buffer: vec![0; node.config.conn_read_buffer_size].into(),
             carry: 0,
@@ -183,7 +182,7 @@ impl Connection {
         };
 
         let writer = ConnectionWriter {
-            node: Arc::clone(node),
+            node: node.clone(),
             addr,
             buffer: vec![0; node.config.conn_write_buffer_size].into(),
             carry: 0,
@@ -191,7 +190,7 @@ impl Connection {
         };
 
         Self {
-            node: Arc::clone(node),
+            node: node.clone(),
             addr,
             reader: Some(reader),
             writer: Some(writer),

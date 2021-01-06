@@ -117,21 +117,20 @@ where
 /// An object dedicated to spawning outbound message handlers; used in the `Writing` protocol.
 pub struct WritingHandler {
     sender: mpsc::Sender<ReturnableConnection>,
-    _task: JoinHandle<()>,
+    pub(crate) task: JoinHandle<()>,
 }
 
 impl WritingHandler {
     /// Sends a returnable `Connection` to a task spawned by the `WritingHandler`.
     pub async fn send(&self, returnable_conn: ReturnableConnection) {
         if self.sender.send(returnable_conn).await.is_err() {
-            // can't recover if this happens
-            panic!("WritingHandler's Receiver is closed")
+            error!("WritingHandler's Receiver is closed")
         }
     }
 }
 
 impl From<(mpsc::Sender<ReturnableConnection>, JoinHandle<()>)> for WritingHandler {
-    fn from((sender, _task): (mpsc::Sender<ReturnableConnection>, JoinHandle<()>)) -> Self {
-        Self { sender, _task }
+    fn from((sender, task): (mpsc::Sender<ReturnableConnection>, JoinHandle<()>)) -> Self {
+        Self { sender, task }
     }
 }

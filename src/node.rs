@@ -16,6 +16,7 @@ use tracing::*;
 use std::{
     io::{self, ErrorKind},
     net::{IpAddr, Ipv4Addr, SocketAddr},
+    ops::Deref,
     sync::{
         atomic::{AtomicUsize, Ordering::*},
         Arc,
@@ -48,7 +49,19 @@ macro_rules! enable_protocol {
 static SEQUENTIAL_NODE_ID: AtomicUsize = AtomicUsize::new(0);
 
 /// The central object responsible for handling all the connections.
-pub struct Node {
+#[derive(Clone)]
+pub struct Node(Arc<InnerNode>);
+
+impl Deref for Node {
+    type Target = Arc<InnerNode>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+#[doc(hide)]
+pub struct InnerNode {
     /// The tracing span.
     span: Span,
     /// The node's configuration.
@@ -70,8 +83,8 @@ pub struct Node {
 }
 
 impl Node {
-    /// Returns a `Node` wrapped in an `Arc`, so it can be cloned around.
-    pub async fn new(config: Option<NodeConfig>) -> io::Result<Arc<Self>> {
+    /// Returns a `Node`.
+    pub async fn new(config: Option<NodeConfig>) -> io::Result<Self> {
         let local_ip = IpAddr::V4(Ipv4Addr::LOCALHOST);
         let mut config = config.unwrap_or_default();
 
@@ -108,7 +121,7 @@ impl Node {
 
         let listening_addr = listener.local_addr()?;
 
-        let node = Arc::new(Self {
+        let node = Node(Arc::new(InnerNode {
             span,
             config,
             listening_addr,
@@ -118,9 +131,9 @@ impl Node {
             known_peers: Default::default(),
             stats: Default::default(),
             listening_task: Default::default(),
-        });
+        }));
 
-        let node_clone = Arc::clone(&node);
+        let node_clone = node.clone();
         let listening_task = tokio::spawn(async move {
             trace!(parent: node_clone.span(), "spawned the listening task");
             loop {
@@ -172,7 +185,7 @@ impl Node {
 
     /// Prepares the freshly acquired connection to handle the protocols the Node implements.
     async fn adapt_stream(
-        self: &Arc<Self>,
+        &self,
         stream: TcpStream,
         peer_addr: SocketAddr,
         own_side: ConnectionSide,
@@ -211,7 +224,7 @@ impl Node {
     }
 
     /// Connects to the provided `SocketAddr`.
-    pub async fn connect(self: &Arc<Self>, addr: SocketAddr) -> io::Result<()> {
+    pub async fn connect(&self, addr: SocketAddr) -> io::Result<()> {
         let num_connections = self.num_connected() + self.connecting.lock().len();
         if num_connections >= self.config.max_connections as usize {
             error!(
@@ -339,6 +352,27 @@ impl Node {
     pub fn set_writing_handler(&self, handler: WritingHandler) {
         if self.protocols.writing_handler.set(handler).is_err() {
             panic!("the writing_handler field was set more than once!");
+        }
+    }
+
+    /// Gracefully shuts the node down.
+    pub fn shut_down(&self) {
+        debug!(parent: self.span(), "shutting down");
+
+        if let Some(handle) = self.listening_task.get() {
+            handle.abort();
+        }
+
+        for addr in self.connected_addrs() {
+            self.disconnect(addr);
+        }
+
+        if let Some(handler) = self.reading_handler() {
+            handler.task.abort()
+        }
+
+        if let Some(handler) = self.writing_handler() {
+            handler.task.abort()
         }
     }
 }

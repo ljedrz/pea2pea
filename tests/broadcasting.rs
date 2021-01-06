@@ -7,13 +7,13 @@ use pea2pea::{
     Node, NodeConfig, Pea2Pea,
 };
 
-use std::{io, net::SocketAddr, sync::Arc, time::Duration};
+use std::{io, net::SocketAddr, time::Duration};
 
 #[derive(Clone)]
-struct ChattyNode(Arc<Node>);
+struct ChattyNode(Node);
 
 impl Pea2Pea for ChattyNode {
-    fn node(&self) -> &Arc<Node> {
+    fn node(&self) -> &Node {
         &self.0
     }
 }
@@ -28,7 +28,7 @@ impl Writing for ChattyNode {
 
 impl ChattyNode {
     fn send_periodic_broadcasts(&self) {
-        let node = Arc::clone(&self.node());
+        let node = self.node().clone();
         tokio::spawn(async move {
             let message = "hello there ( ͡° ͜ʖ ͡°)";
             let bytes = common::prefix_with_len(2, message.as_bytes());

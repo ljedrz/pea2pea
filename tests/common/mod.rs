@@ -8,9 +8,9 @@ use pea2pea::{
     Node, NodeConfig, Pea2Pea,
 };
 
-use std::{convert::TryInto, io, net::SocketAddr, sync::Arc};
+use std::{convert::TryInto, io, net::SocketAddr};
 
-pub async fn start_nodes(count: usize, config: Option<NodeConfig>) -> Vec<Arc<Node>> {
+pub async fn start_nodes(count: usize, config: Option<NodeConfig>) -> Vec<Node> {
     let mut nodes = Vec::with_capacity(count);
 
     for _ in 0..count {
@@ -22,16 +22,16 @@ pub async fn start_nodes(count: usize, config: Option<NodeConfig>) -> Vec<Arc<No
 }
 
 #[derive(Clone)]
-pub struct InertNode(pub Arc<Node>);
+pub struct InertNode(pub Node);
 
 impl Pea2Pea for InertNode {
-    fn node(&self) -> &Arc<Node> {
+    fn node(&self) -> &Node {
         &self.0
     }
 }
 
 impl std::ops::Deref for InertNode {
-    type Target = Arc<Node>;
+    type Target = Node;
 
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -47,7 +47,7 @@ pub async fn start_inert_nodes(count: usize, config: Option<NodeConfig>) -> Vec<
 }
 
 #[derive(Clone)]
-pub struct MessagingNode(pub Arc<Node>);
+pub struct MessagingNode(pub Node);
 
 impl MessagingNode {
     pub async fn new<T: AsRef<str>>(name: T) -> Self {
@@ -60,7 +60,7 @@ impl MessagingNode {
 }
 
 impl Pea2Pea for MessagingNode {
-    fn node(&self) -> &Arc<Node> {
+    fn node(&self) -> &Node {
         &self.0
     }
 }

@@ -24,12 +24,12 @@ struct NoiseState {
 
 #[derive(Clone)]
 struct SecureNode {
-    node: Arc<Node>,
+    node: Node,
     noise_states: Arc<RwLock<HashMap<SocketAddr, Arc<Mutex<NoiseState>>>>>,
 }
 
 impl Pea2Pea for SecureNode {
-    fn node(&self) -> &Arc<Node> {
+    fn node(&self) -> &Node {
         &self.node
     }
 }

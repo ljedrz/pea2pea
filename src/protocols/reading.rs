@@ -225,21 +225,20 @@ where
 /// from new connections; used in the `Reading` protocol.
 pub struct ReadingHandler {
     sender: mpsc::Sender<ReturnableConnection>,
-    _task: JoinHandle<()>,
+    pub(crate) task: JoinHandle<()>,
 }
 
 impl ReadingHandler {
     /// Sends a returnable `Connection` to a task spawned by the `ReadingHandler`.
     pub async fn send(&self, returnable_conn: ReturnableConnection) {
         if self.sender.send(returnable_conn).await.is_err() {
-            // can't recover if this happens
-            panic!("ReadingHandler's Receiver is closed")
+            error!("ReadingHandler's Receiver is closed")
         }
     }
 }
 
 impl From<(mpsc::Sender<ReturnableConnection>, JoinHandle<()>)> for ReadingHandler {
-    fn from((sender, _task): (mpsc::Sender<ReturnableConnection>, JoinHandle<()>)) -> Self {
-        Self { sender, _task }
+    fn from((sender, task): (mpsc::Sender<ReturnableConnection>, JoinHandle<()>)) -> Self {
+        Self { sender, task }
     }
 }

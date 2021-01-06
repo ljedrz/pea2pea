@@ -25,7 +25,7 @@ low; if you start a LOT of nodes, the only limit you'll encounter is most likely
 - any functionality that can be introduced "on top" (e.g. DHT, advanced topology formation algorithms etc.)
 
 ## how to use it
-1. define a clonable struct containing an `Arc<Node>` and any extra state you'd like to carry
+1. define a clonable struct containing a `Node` and any extra state you'd like to carry
 2. `impl Pea2Pea` for it
 3. make it implement any/all of the protocols
 4. create that struct (or as many of them as you like)
@@ -47,13 +47,13 @@ use pea2pea::{protocols::{Reading, Writing}, Node, NodeConfig, Pea2Pea};
 use tokio::time::sleep;
 use tracing::*;
 
-use std::{convert::TryInto, io::{ErrorKind, Result}, net::SocketAddr, sync::Arc, time::Duration};
+use std::{convert::TryInto, io::{ErrorKind, Result}, net::SocketAddr, time::Duration};
 
 #[derive(Clone)]
-struct ExampleNode(Arc<Node>);
+struct ExampleNode(Node);
 
 impl Pea2Pea for ExampleNode {
-    fn node(&self) -> &Arc<Node> { &self.0 }
+    fn node(&self) -> &Node { &self.0 }
 }
 
 impl ExampleNode {
@@ -117,6 +117,11 @@ async fn main() {
 
     alice.node().connect(bobs_addr).await.unwrap();
     alice.node().send_direct_message(bobs_addr, b"Hello there!"[..].into()).await.unwrap();
+
+    sleep(Duration::from_millis(10)).await; // allow the message to be delivered
+
+    alice.node().shut_down();
+    bob.node().shut_down();
 
     sleep(Duration::from_millis(10)).await; // a small delay to allow all the logs to be displayed
 }

@@ -9,13 +9,13 @@ use pea2pea::{
     Node, NodeConfig, Pea2Pea,
 };
 
-use std::{io, net::SocketAddr, sync::Arc, time::Duration};
+use std::{io, net::SocketAddr, time::Duration};
 
 #[derive(Clone)]
-struct JoJoNode(Arc<Node>);
+struct JoJoNode(Node);
 
 impl Pea2Pea for JoJoNode {
-    fn node(&self) -> &Arc<Node> {
+    fn node(&self) -> &Node {
         &self.0
     }
 }

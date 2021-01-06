@@ -57,12 +57,12 @@ struct NoncePair(u64, u64); // (mine, peer's)
 
 #[derive(Clone)]
 struct SecureishNode {
-    node: Arc<Node>,
+    node: Node,
     handshakes: Arc<RwLock<HashMap<SocketAddr, NoncePair>>>,
 }
 
 impl Pea2Pea for SecureishNode {
-    fn node(&self) -> &Arc<Node> {
+    fn node(&self) -> &Node {
         &self.node
     }
 }

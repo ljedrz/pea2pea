@@ -36,7 +36,7 @@ struct PlayerInfo {
 
 #[derive(Clone)]
 struct Player {
-    node: Arc<Node>,
+    node: Node,
     other_players: Arc<Mutex<HashMap<PlayerName, PlayerInfo>>>,
     rng: Arc<Mutex<SmallRng>>,
     potato_count: Arc<AtomicUsize>,
@@ -83,7 +83,7 @@ impl Player {
 }
 
 impl Pea2Pea for Player {
-    fn node(&self) -> &Arc<Node> {
+    fn node(&self) -> &Node {
         &self.node
     }
 }

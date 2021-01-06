@@ -24,5 +24,5 @@ pub use topology::{connect_nodes, Topology};
 /// A trait for objects containing a `Node`; it is required to implement protocols.
 pub trait Pea2Pea {
     /// Returns a clonable reference to the node.
-    fn node(&self) -> &std::sync::Arc<Node>;
+    fn node(&self) -> &Node;
 }

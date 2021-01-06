@@ -6,13 +6,13 @@ use pea2pea::{
     Node, NodeConfig, Pea2Pea,
 };
 
-use std::{io, net::SocketAddr, sync::Arc, time::Instant};
+use std::{io, net::SocketAddr, time::Instant};
 
 #[derive(Clone)]
-struct Spammer(Arc<Node>);
+struct Spammer(Node);
 
 impl Pea2Pea for Spammer {
-    fn node(&self) -> &Arc<Node> {
+    fn node(&self) -> &Node {
         &self.0
     }
 }
@@ -26,10 +26,10 @@ impl Writing for Spammer {
 }
 
 #[derive(Clone)]
-struct Sink(Arc<Node>);
+struct Sink(Node);
 
 impl Pea2Pea for Sink {
-    fn node(&self) -> &Arc<Node> {
+    fn node(&self) -> &Node {
         &self.0
     }
 }

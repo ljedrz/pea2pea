@@ -8,13 +8,13 @@ use pea2pea::{
     Node, NodeConfig, Pea2Pea,
 };
 
-use std::{io, net::SocketAddr, sync::Arc};
+use std::{io, net::SocketAddr};
 
 #[derive(Clone)]
-struct TestNode(Arc<Node>);
+struct TestNode(Node);
 
 impl Pea2Pea for TestNode {
-    fn node(&self) -> &Arc<Node> {
+    fn node(&self) -> &Node {
         &self.0
     }
 }
