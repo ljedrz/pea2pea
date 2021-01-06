@@ -74,6 +74,9 @@ where
                         // can't recover if this happens
                         panic!("can't return a Connection to the Node");
                     }
+                } else {
+                    error!("the Writing protocol is down!");
+                    break;
                 }
             }
         });
@@ -124,7 +127,7 @@ impl WritingHandler {
     /// Sends a returnable `Connection` to a task spawned by the `WritingHandler`.
     pub async fn send(&self, returnable_conn: ReturnableConnection) {
         if self.sender.send(returnable_conn).await.is_err() {
-            error!("WritingHandler's Receiver is closed")
+            error!("WritingHandler's Receiver is closed");
         }
     }
 }

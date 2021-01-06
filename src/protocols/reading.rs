@@ -101,6 +101,9 @@ where
                         // can't recover if this happens
                         panic!("can't return a Connection to the Node");
                     }
+                } else {
+                    error!("the Reading protocol is down!");
+                    break;
                 }
             }
         });
@@ -128,6 +131,7 @@ where
 
         // perform a read from the stream, being careful not to overwrite any bytes carried over from the previous read
         match reader.read(&mut buffer[*carry..]).await {
+            Ok(0) => return Ok(()),
             Ok(n) => {
                 trace!(parent: node.span(), "read {}B from {}", n, addr);
                 let mut processed = 0;
@@ -232,7 +236,7 @@ impl ReadingHandler {
     /// Sends a returnable `Connection` to a task spawned by the `ReadingHandler`.
     pub async fn send(&self, returnable_conn: ReturnableConnection) {
         if self.sender.send(returnable_conn).await.is_err() {
-            error!("ReadingHandler's Receiver is closed")
+            error!("ReadingHandler's Receiver is closed");
         }
     }
 }
