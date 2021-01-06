@@ -81,7 +81,7 @@ where
                         loop {
                             if let Some(msg) = inbound_message_receiver.recv().await {
                                 if let Err(e) = processing_clone.process_message(addr, msg).await {
-                                    error!(parent: node.span(), "failed to respond to an inbound message: {}", e);
+                                    error!(parent: node.span(), "can't process an inbound message: {}", e);
                                     node.known_peers().register_failure(addr);
                                 }
                             }
