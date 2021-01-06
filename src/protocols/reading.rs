@@ -53,10 +53,10 @@ where
                             {
                                 node.known_peers().register_failure(addr);
                                 match e.kind() {
-                                    io::ErrorKind::InvalidData => {
-                                        // drop the connection to avoid reading borked messages
+                                    io::ErrorKind::InvalidData | io::ErrorKind::BrokenPipe => {
+                                        // can't recover; drop the connection
                                         node.disconnect(addr);
-                                        return;
+                                        break;
                                     }
                                     io::ErrorKind::Other => {
                                         // an unsuccessful read from the stream is not fatal; instead of disconnecting,
@@ -155,8 +155,8 @@ where
 
                             // send the message for further processing
                             if message_sender.send(msg).await.is_err() {
-                                // can't recover from an error here
-                                panic!("the inbound message channel is closed");
+                                error!("the inbound message channel is closed");
+                                return Err(io::ErrorKind::BrokenPipe.into());
                             }
 
                             // if the read is exhausted, reset the carry and return
