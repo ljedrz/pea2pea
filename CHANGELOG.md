@@ -1,3 +1,17 @@
+# 0.12.0
+
+### Added
+- `Node::shut_down` that performs a full shutdown of the node
+
+### Changed
+- `Pea2Pea::node` now returns a `&Node`
+- tweaked a few logs
+
+### Fixed
+- `Connection`s now shut their associated tasks down when dropped
+- critical protocol failures no longer cause panics in their main tasks
+- some edge cases in protocol handling
+
 # 0.11.0
 
 ### Added
