@@ -230,7 +230,7 @@ impl Drop for Connection {
         debug!(parent: self.node.span(), "disconnecting from {}", self.addr);
 
         // shut the associated tasks down
-        for task in &self.tasks {
+        for task in self.tasks.iter().rev() {
             task.abort();
         }
 
