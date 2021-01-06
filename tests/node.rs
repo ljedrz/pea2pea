@@ -3,6 +3,11 @@ use tokio::net::TcpListener;
 mod common;
 use pea2pea::{connect_nodes, Node, NodeConfig, Topology};
 
+use std::sync::{
+    atomic::{AtomicUsize, Ordering},
+    Arc,
+};
+
 #[tokio::test]
 async fn node_creation_any_port_works() {
     let _node = Node::new(None).await.unwrap();
@@ -38,10 +43,32 @@ async fn node_connect_and_disconnect() {
 }
 
 #[tokio::test]
-async fn node_duplicate_connection() {
+async fn node_duplicate_connection_failes() {
     let nodes = common::start_inert_nodes(2, None).await;
     assert!(connect_nodes(&nodes, Topology::Line).await.is_ok());
     assert!(connect_nodes(&nodes, Topology::Line).await.is_err());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn node_overlapping_connection_failes() {
+    const NUM_ATTEMPTS: usize = 5;
+
+    let connector = Node::new(None).await.unwrap();
+    let connectee = Node::new(None).await.unwrap();
+    let addr = connectee.listening_addr();
+
+    let err_count = Arc::new(AtomicUsize::new(0));
+    for _ in 0..NUM_ATTEMPTS {
+        let connector_clone = connector.clone();
+        let err_count_clone = err_count.clone();
+        tokio::spawn(async move {
+            if connector_clone.connect(addr).await.is_err() {
+                err_count_clone.fetch_add(1, Ordering::Relaxed);
+            }
+        });
+    }
+
+    wait_until!(1, err_count.load(Ordering::Relaxed) == NUM_ATTEMPTS - 1);
 }
 
 #[tokio::test]
