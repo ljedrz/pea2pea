@@ -53,11 +53,17 @@ impl Reading for TestNode {
         Ok(bytes.map(|bytes| (String::from_utf8(bytes[2..].to_vec()).unwrap(), bytes.len())))
     }
 
-    async fn process_message(&self, source: SocketAddr, _message: Self::Message) -> io::Result<()> {
+    async fn process_message(&self, source: SocketAddr, message: Self::Message) -> io::Result<()> {
         let reply = if self.node().name() == "Drebin" {
-            "Where?"
-        } else {
+            if message == "..." {
+                return Ok(());
+            } else {
+                "Where?"
+            }
+        } else if self.node().stats().sent().0 == 0 {
             "Hapsburg has Plan B in..."
+        } else {
+            "..."
         };
 
         info!(parent: self.node().span(), "{}", reply);
@@ -101,20 +107,24 @@ async fn check_node_cleanups() {
 
         drebin.node().connect(thug_addr).await.unwrap();
 
-        wait_until!(1, drebin.node().num_connected() == 1);
+        wait_until!(1, hapsburgs_thug.node().num_connected() == 1);
 
+        info!(parent: drebin.node().span(), "Talk!");
         drebin
             .node()
             .send_direct_message(thug_addr, Bytes::from(&b"Talk!"[..]))
             .await
             .unwrap();
 
-        wait_until!(1, hapsburgs_thug.node().stats().received().0 != 0);
+        wait_until!(1, hapsburgs_thug.node().stats().sent().0 == 2);
 
         // the thug dies before revealing the location of Hapsburg's Plan B
         hapsburgs_thug.node().shut_down();
 
+        // won't get anything out of this one
         drebin.node().disconnect(thug_addr);
+
+        info!(parent: drebin.node().span(), "All right. Who else is almost dead?");
 
         wait_until!(1, drebin.node().num_connected() == 0);
     }
