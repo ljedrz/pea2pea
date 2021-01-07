@@ -383,11 +383,11 @@ impl Node {
         }
 
         if let Some(handler) = self.reading_handler() {
-            handler.task.abort()
+            handler.task.abort();
         }
 
         if let Some(handler) = self.writing_handler() {
-            handler.task.abort()
+            handler.task.abort();
         }
     }
 }
@@ -411,10 +411,9 @@ fn create_span(node_name: &str) -> Span {
     } else {
         span
     };
-    let span = if span.is_disabled() {
+    if span.is_disabled() {
         error_span!("node", name = node_name)
     } else {
         span
-    };
-    span
+    }
 }
