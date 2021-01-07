@@ -50,7 +50,7 @@ async fn node_duplicate_connection_failes() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn node_overlapping_connection_failes() {
+async fn node_overlapping_duplicate_connection_attempts_fail() {
     const NUM_ATTEMPTS: usize = 5;
 
     let connector = Node::new(None).await.unwrap();
