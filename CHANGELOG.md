@@ -2,6 +2,7 @@
 
 ### Changed
 - exposed previously public `Node` members as public methods
+- `Connection` now drops its tasks in reverse order
 
 # 0.12.0
 
