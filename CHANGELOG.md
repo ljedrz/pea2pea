@@ -1,3 +1,8 @@
+# 0.13.1
+
+### Changed
+- the `Node` can no longer connect to its own listening address
+
 # 0.13.0
 
 ### Changed
