@@ -123,7 +123,7 @@ where
         message_sender: &mpsc::Sender<Self::Message>,
     ) -> io::Result<()> {
         let ConnectionReader {
-            node,
+            span: _,
             addr,
             reader,
             buffer,
@@ -134,7 +134,7 @@ where
         match reader.read(&mut buffer[*carry..]).await {
             Ok(0) => return Ok(()),
             Ok(n) => {
-                trace!(parent: node.span(), "read {}B from {}", n, addr);
+                trace!(parent: self.node().span(), "read {}B from {}", n, addr);
                 let mut processed = 0;
                 let mut left = *carry + n;
 
@@ -149,14 +149,16 @@ where
                             left -= len;
 
                             trace!(
-                                parent: node.span(),
+                                parent: self.node().span(),
                                 "isolated {}B as a message from {}; {}B left to process",
                                 len,
                                 addr,
                                 left
                             );
-                            node.known_peers().register_received_message(*addr, len);
-                            node.stats().register_received_message(len);
+                            self.node()
+                                .known_peers()
+                                .register_received_message(*addr, len);
+                            self.node().stats().register_received_message(len);
 
                             // send the message for further processing
                             if message_sender.send(msg).await.is_err() {
@@ -174,12 +176,12 @@ where
                         Ok(None) => {
                             // forbid messages that are larger than the read buffer
                             if left >= buffer.len() {
-                                error!(parent: node.span(), "a message from {} is too large", addr);
+                                error!(parent: self.node().span(), "a message from {} is too large", addr);
                                 return Err(io::ErrorKind::InvalidData.into());
                             }
 
                             trace!(
-                                parent: node.span(),
+                                parent: self.node().span(),
                                 "a message from {} is incomplete; carrying {}B over",
                                 addr,
                                 left
@@ -194,7 +196,7 @@ where
                         }
                         // an erroneous message (e.g. an unexpected zero-length payload)
                         Err(_) => {
-                            error!(parent: node.span(), "a message from {} is invalid", addr);
+                            error!(parent: self.node().span(), "a message from {} is invalid", addr);
                             return Err(io::ErrorKind::InvalidData.into());
                         }
                     }
@@ -202,7 +204,7 @@ where
             }
             // a stream read error
             Err(e) => {
-                error!(parent: node.span(), "can't read from {}: {}", addr, e);
+                error!(parent: self.node().span(), "can't read from {}: {}", addr, e);
                 Err(io::ErrorKind::Other.into())
             }
         }

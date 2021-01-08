@@ -82,8 +82,8 @@ impl Not for ConnectionSide {
 /// An object dedicated to performing reads from a connection's stream;
 /// it is available only if the `Reading` protocol is enabled.
 pub struct ConnectionReader {
-    /// A reference to the owning node.
-    pub node: Node,
+    /// The tracing span of the owning `Node`.
+    pub span: Span,
     /// The address of the connection.
     pub addr: SocketAddr,
     /// A buffer dedicated to reading from the stream.
@@ -98,7 +98,7 @@ impl ConnectionReader {
     /// Reads as many bytes as there are queued to be read from the stream.
     pub async fn read_queued_bytes(&mut self) -> io::Result<&[u8]> {
         let len = self.reader.read(&mut self.buffer).await?;
-        trace!(parent: self.node.span(), "read {}B from {}", len, self.addr);
+        trace!(parent: &self.span, "read {}B from {}", len, self.addr);
 
         Ok(&self.buffer[..len])
     }
@@ -108,12 +108,12 @@ impl ConnectionReader {
         let buffer = &mut self.buffer;
 
         if num > buffer.len() {
-            error!(parent: self.node.span(), "can' read {}B from the stream; the buffer is too small ({}B)", num, buffer.len());
+            error!(parent: &self.span, "can' read {}B from the stream; the buffer is too small ({}B)", num, buffer.len());
             return Err(ErrorKind::Other.into());
         }
 
         self.reader.read_exact(&mut buffer[..num]).await?;
-        trace!(parent: self.node.span(), "read {}B from {}", num, self.addr);
+        trace!(parent: &self.span, "read {}B from {}", num, self.addr);
 
         Ok(&buffer[..num])
     }
@@ -122,8 +122,8 @@ impl ConnectionReader {
 /// An object dedicated to performing writes to a connection's stream;
 /// it is available only if the `Writing` protocol is enabled.
 pub struct ConnectionWriter {
-    /// A reference to the owning node.
-    pub node: Node,
+    /// The tracing span of the owning `Node`.
+    pub span: Span,
     /// The address of the connection.
     pub addr: SocketAddr,
     /// A buffer dedicated to buffering writes to the stream.
@@ -138,7 +138,7 @@ impl ConnectionWriter {
     /// Writes the given buffer to the stream.
     pub async fn write_all(&mut self, buffer: &[u8]) -> io::Result<()> {
         self.writer.write_all(buffer).await?;
-        trace!(parent: self.node.span(), "wrote {}B to {}", buffer.len(), self.addr);
+        trace!(parent: &self.span, "wrote {}B to {}", buffer.len(), self.addr);
 
         Ok(())
     }
@@ -174,7 +174,7 @@ impl Connection {
         let (reader, writer) = stream.into_split();
 
         let reader = ConnectionReader {
-            node: node.clone(),
+            span: node.span().clone(),
             addr,
             buffer: vec![0; node.config().conn_read_buffer_size].into(),
             carry: 0,
@@ -182,7 +182,7 @@ impl Connection {
         };
 
         let writer = ConnectionWriter {
-            node: node.clone(),
+            span: node.span().clone(),
             addr,
             buffer: vec![0; node.config().conn_write_buffer_size].into(),
             carry: 0,

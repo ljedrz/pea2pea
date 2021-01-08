@@ -96,7 +96,7 @@ where
         conn_writer: &mut ConnectionWriter,
     ) -> io::Result<usize> {
         let ConnectionWriter {
-            node: _,
+            span: _,
             addr,
             writer,
             buffer,

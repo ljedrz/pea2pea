@@ -4,6 +4,7 @@
 
 - `ReadingHandler` and `WritingHandler` are now a common `ProtocolHandler` applicable also to `Handshaking`
 - `NodeConfig.{reading_handler_queue_depth, writing_handler_queue_depth}` were merged into `.protocol_handler_queue_depth`
+- instead of `Node`, keep a copy of its `Span` in `ConnectionReader` & `ConnectionWriter`
 
 ### Fixed
 
