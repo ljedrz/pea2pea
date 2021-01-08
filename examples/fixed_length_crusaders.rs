@@ -5,7 +5,7 @@ use tracing_subscriber::filter::{EnvFilter, LevelFilter};
 
 use pea2pea::{
     connections::ConnectionSide,
-    protocols::{Handshaking, Reading, Writing},
+    protocols::{Handshaking, Reading, ReturnableConnection, Writing},
     Node, NodeConfig, Pea2Pea,
 };
 
@@ -22,11 +22,10 @@ impl Pea2Pea for JoJoNode {
 
 impl Handshaking for JoJoNode {
     fn enable_handshaking(&self) {
-        let (from_node_sender, mut from_node_receiver) = mpsc::channel(1);
-        self.node().set_handshake_handler(from_node_sender.into());
+        let (from_node_sender, mut from_node_receiver) = mpsc::channel::<ReturnableConnection>(1);
 
         // spawn a background task dedicated to handling the handshakes
-        tokio::spawn(async move {
+        let handshaking_task = tokio::spawn(async move {
             loop {
                 if let Some((conn, result_sender)) = from_node_receiver.recv().await {
                     // some handshakes are useful, others are menacing ゴゴゴゴ
@@ -52,6 +51,9 @@ impl Handshaking for JoJoNode {
                 }
             }
         });
+
+        self.node()
+            .set_handshake_handler((from_node_sender, handshaking_task).into());
     }
 }
 

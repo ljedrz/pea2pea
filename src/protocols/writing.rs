@@ -2,7 +2,7 @@ use crate::{connections::ConnectionWriter, protocols::ReturnableConnection, Pea2
 
 use async_trait::async_trait;
 use bytes::Bytes;
-use tokio::{io::AsyncWriteExt, sync::mpsc, task::JoinHandle};
+use tokio::{io::AsyncWriteExt, sync::mpsc};
 use tracing::*;
 
 use std::{io, net::SocketAddr};
@@ -117,25 +117,4 @@ where
         payload: &[u8],
         buffer: &mut [u8],
     ) -> io::Result<usize>;
-}
-
-/// An object dedicated to spawning outbound message handlers; used in the `Writing` protocol.
-pub struct WritingHandler {
-    sender: mpsc::Sender<ReturnableConnection>,
-    pub(crate) task: JoinHandle<()>,
-}
-
-impl WritingHandler {
-    /// Sends a returnable `Connection` to a task spawned by the `WritingHandler`.
-    pub async fn send(&self, returnable_conn: ReturnableConnection) {
-        if self.sender.send(returnable_conn).await.is_err() {
-            error!("WritingHandler's Receiver is closed");
-        }
-    }
-}
-
-impl From<(mpsc::Sender<ReturnableConnection>, JoinHandle<()>)> for WritingHandler {
-    fn from((sender, task): (mpsc::Sender<ReturnableConnection>, JoinHandle<()>)) -> Self {
-        Self { sender, task }
-    }
 }

@@ -1,7 +1,7 @@
 use crate::{connections::ConnectionReader, protocols::ReturnableConnection, Pea2Pea};
 
 use async_trait::async_trait;
-use tokio::{io::AsyncReadExt, sync::mpsc, task::JoinHandle, time::sleep};
+use tokio::{io::AsyncReadExt, sync::mpsc, time::sleep};
 use tracing::*;
 
 use std::{io, net::SocketAddr, time::Duration};
@@ -222,27 +222,5 @@ where
     async fn process_message(&self, source: SocketAddr, message: Self::Message) -> io::Result<()> {
         // don't do anything by default
         Ok(())
-    }
-}
-
-/// An object dedicated to spawning tasks handling inbound messages
-/// from new connections; used in the `Reading` protocol.
-pub struct ReadingHandler {
-    sender: mpsc::Sender<ReturnableConnection>,
-    pub(crate) task: JoinHandle<()>,
-}
-
-impl ReadingHandler {
-    /// Sends a returnable `Connection` to a task spawned by the `ReadingHandler`.
-    pub async fn send(&self, returnable_conn: ReturnableConnection) {
-        if self.sender.send(returnable_conn).await.is_err() {
-            error!("ReadingHandler's Receiver is closed");
-        }
-    }
-}
-
-impl From<(mpsc::Sender<ReturnableConnection>, JoinHandle<()>)> for ReadingHandler {
-    fn from((sender, task): (mpsc::Sender<ReturnableConnection>, JoinHandle<()>)) -> Self {
-        Self { sender, task }
     }
 }

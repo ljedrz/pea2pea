@@ -1,3 +1,13 @@
+# 0.14.0
+
+### Changed
+
+- `ReadingHandler` and `WritingHandler` are now a common `ProtocolHandler` applicable also to `Handshaking`
+
+### Fixed
+
+- `Node::shutdown` now also shuts down the handshaking task if `Handshaking` is enabled
+
 # 0.13.1
 
 ### Changed

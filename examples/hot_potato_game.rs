@@ -9,7 +9,7 @@ use tracing_subscriber::filter::{EnvFilter, LevelFilter};
 use pea2pea::{
     connect_nodes,
     connections::ConnectionSide,
-    protocols::{Handshaking, Reading, Writing},
+    protocols::{Handshaking, Reading, ReturnableConnection, Writing},
     Node, NodeConfig, Pea2Pea, Topology,
 };
 
@@ -98,12 +98,11 @@ fn prefix_message(message: &[u8]) -> Bytes {
 
 impl Handshaking for Player {
     fn enable_handshaking(&self) {
-        let (from_node_sender, mut from_node_receiver) = mpsc::channel(1);
-        self.node().set_handshake_handler(from_node_sender.into());
+        let (from_node_sender, mut from_node_receiver) = mpsc::channel::<ReturnableConnection>(1);
 
         // spawn a background task dedicated to handling the handshakes
         let self_clone = self.clone();
-        tokio::spawn(async move {
+        let handshaking_task = tokio::spawn(async move {
             loop {
                 if let Some((mut conn, result_sender)) = from_node_receiver.recv().await {
                     let peer_name = match !conn.side {
@@ -150,6 +149,9 @@ impl Handshaking for Player {
                 }
             }
         });
+
+        self.node()
+            .set_handshake_handler((from_node_sender, handshaking_task).into());
     }
 }
 

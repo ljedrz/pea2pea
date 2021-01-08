@@ -1,5 +1,5 @@
 use crate::connections::{Connection, ConnectionSide, Connections};
-use crate::protocols::{HandshakeHandler, Protocols, ReadingHandler, WritingHandler};
+use crate::protocols::{ProtocolHandler, Protocols};
 use crate::*;
 
 use bytes::Bytes;
@@ -340,36 +340,36 @@ impl Node {
     }
 
     /// Returns a reference to the handshake handler, if the `Handshaking` protocol is enabled.
-    fn handshake_handler(&self) -> Option<&HandshakeHandler> {
+    fn handshake_handler(&self) -> Option<&ProtocolHandler> {
         self.protocols.handshake_handler.get()
     }
 
     /// Returns a reference to the reading handler, if the `Reading` protocol is enabled.
-    pub fn reading_handler(&self) -> Option<&ReadingHandler> {
+    pub fn reading_handler(&self) -> Option<&ProtocolHandler> {
         self.protocols.reading_handler.get()
     }
 
     /// Returns a reference to the writing handler, if the `Writing` protocol is enabled.
-    pub fn writing_handler(&self) -> Option<&WritingHandler> {
+    pub fn writing_handler(&self) -> Option<&ProtocolHandler> {
         self.protocols.writing_handler.get()
     }
 
     /// Sets up the handshake handler, as part of the `Handshaking` protocol.
-    pub fn set_handshake_handler(&self, handler: HandshakeHandler) {
+    pub fn set_handshake_handler(&self, handler: ProtocolHandler) {
         if self.protocols.handshake_handler.set(handler).is_err() {
             panic!("the handshake_handler field was set more than once!");
         }
     }
 
     /// Sets up the reading handler, as part of enabling the `Reading` protocol.
-    pub fn set_reading_handler(&self, handler: ReadingHandler) {
+    pub fn set_reading_handler(&self, handler: ProtocolHandler) {
         if self.protocols.reading_handler.set(handler).is_err() {
             panic!("the reading_handler field was set more than once!");
         }
     }
 
     /// Sets up the writing handler, as part of enabling the `Writing` protocol.
-    pub fn set_writing_handler(&self, handler: WritingHandler) {
+    pub fn set_writing_handler(&self, handler: ProtocolHandler) {
         if self.protocols.writing_handler.set(handler).is_err() {
             panic!("the writing_handler field was set more than once!");
         }
@@ -387,10 +387,12 @@ impl Node {
             self.disconnect(addr);
         }
 
+        if let Some(handler) = self.handshake_handler() {
+            handler.task.abort();
+        }
         if let Some(handler) = self.reading_handler() {
             handler.task.abort();
         }
-
         if let Some(handler) = self.writing_handler() {
             handler.task.abort();
         }

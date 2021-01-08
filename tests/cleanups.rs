@@ -4,7 +4,7 @@ use tracing::*;
 
 mod common;
 use pea2pea::{
-    protocols::{Handshaking, Reading, Writing},
+    protocols::{Handshaking, Reading, ReturnableConnection, Writing},
     Node, NodeConfig, Pea2Pea,
 };
 
@@ -21,11 +21,10 @@ impl Pea2Pea for TestNode {
 
 impl Handshaking for TestNode {
     fn enable_handshaking(&self) {
-        let (from_node_sender, mut from_node_receiver) = mpsc::channel(1);
-        self.node().set_handshake_handler(from_node_sender.into());
+        let (from_node_sender, mut from_node_receiver) = mpsc::channel::<ReturnableConnection>(1);
 
         // spawn a background task dedicated to handling the handshakes
-        tokio::spawn(async move {
+        let handshaking_task = tokio::spawn(async move {
             loop {
                 if let Some((conn, result_sender)) = from_node_receiver.recv().await {
                     // nothing of interest going on here
@@ -36,6 +35,9 @@ impl Handshaking for TestNode {
                 }
             }
         });
+
+        self.node()
+            .set_handshake_handler((from_node_sender, handshaking_task).into());
     }
 }
 
