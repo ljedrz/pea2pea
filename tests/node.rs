@@ -15,7 +15,7 @@ async fn node_creation_any_port_works() {
 
 #[should_panic]
 #[tokio::test]
-async fn node_creation_bad_params() {
+async fn node_creation_bad_params_panic() {
     let config = NodeConfig {
         allow_random_port: false,
         ..Default::default()
@@ -78,7 +78,7 @@ async fn node_overlapping_duplicate_connection_attempts_fail() {
 }
 
 #[tokio::test]
-async fn drop_shuts_the_listener() {
+async fn node_shutdown_closes_the_listener() {
     let node = Node::new(None).await.unwrap();
     let addr = node.listening_addr();
 
