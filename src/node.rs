@@ -240,6 +240,11 @@ impl Node {
 
     /// Connects to the provided `SocketAddr`.
     pub async fn connect(&self, addr: SocketAddr) -> io::Result<()> {
+        if addr == self.listening_addr() {
+            error!(parent: self.span(), "can't connect to node's own listening address ({})", addr);
+            return Err(ErrorKind::Other.into());
+        }
+
         let num_connections = self.num_connected() + self.connecting.lock().len();
         if num_connections >= self.config.max_connections as usize {
             error!(

@@ -43,6 +43,12 @@ async fn node_connect_and_disconnect() {
 }
 
 #[tokio::test]
+async fn node_self_connection_fails() {
+    let node = Node::new(None).await.unwrap();
+    assert!(node.connect(node.listening_addr()).await.is_err());
+}
+
+#[tokio::test]
 async fn node_duplicate_connection_fails() {
     let nodes = common::start_inert_nodes(2, None).await;
     assert!(connect_nodes(&nodes, Topology::Line).await.is_ok());
