@@ -55,6 +55,34 @@ async fn node_duplicate_connection_fails() {
     assert!(connect_nodes(&nodes, Topology::Line).await.is_err());
 }
 
+#[tokio::test]
+async fn node_connector_limit_breach_fails() {
+    let config = NodeConfig {
+        max_connections: 0,
+        ..Default::default()
+    };
+    let connector = Node::new(Some(config)).await.unwrap();
+    let connectee = Node::new(None).await.unwrap();
+
+    assert!(connector.connect(connectee.listening_addr()).await.is_err());
+}
+
+#[tokio::test]
+async fn node_connectee_limit_breach_fails() {
+    let config = NodeConfig {
+        max_connections: 0,
+        ..Default::default()
+    };
+    let connectee = Node::new(Some(config)).await.unwrap();
+    let connector = Node::new(None).await.unwrap();
+
+    // a breached connection limit doesn't close the listener, so this works
+    connector.connect(connectee.listening_addr()).await.unwrap();
+
+    // the number of connections on connectee side needs to be checked instead
+    wait_until!(1, connectee.num_connected() == 0);
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn node_overlapping_duplicate_connection_attempts_fail() {
     const NUM_ATTEMPTS: usize = 5;
