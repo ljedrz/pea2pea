@@ -23,8 +23,9 @@ where
     /// defined in `NodeConfig`, while broken/unreadable messages result in an immediate disconnect (in order to avoid
     /// accidentally reading "borked" messages).
     fn enable_reading(&self) {
-        let (conn_sender, mut conn_receiver) =
-            mpsc::channel::<ReturnableConnection>(self.node().config().reading_handler_queue_depth);
+        let (conn_sender, mut conn_receiver) = mpsc::channel::<ReturnableConnection>(
+            self.node().config().protocol_handler_queue_depth,
+        );
 
         // the main task spawning per-connection tasks reading messages from their streams
         let self_clone = self.clone();

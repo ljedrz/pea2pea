@@ -83,7 +83,9 @@ impl SecureNode {
 
 impl Handshaking for SecureNode {
     fn enable_handshaking(&self) {
-        let (from_node_sender, mut from_node_receiver) = mpsc::channel::<ReturnableConnection>(1);
+        let (from_node_sender, mut from_node_receiver) = mpsc::channel::<ReturnableConnection>(
+            self.node().config().protocol_handler_queue_depth,
+        );
 
         // the noise handshake settings used by snow
         const HANDSHAKE_PATTERN: &str = "Noise_XXpsk3_25519_ChaChaPoly_BLAKE2s";

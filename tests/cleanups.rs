@@ -21,7 +21,9 @@ impl Pea2Pea for TestNode {
 
 impl Handshaking for TestNode {
     fn enable_handshaking(&self) {
-        let (from_node_sender, mut from_node_receiver) = mpsc::channel::<ReturnableConnection>(1);
+        let (from_node_sender, mut from_node_receiver) = mpsc::channel::<ReturnableConnection>(
+            self.node().config().protocol_handler_queue_depth,
+        );
 
         // spawn a background task dedicated to handling the handshakes
         let handshaking_task = tokio::spawn(async move {

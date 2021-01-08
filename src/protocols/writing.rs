@@ -19,8 +19,9 @@ where
 
     /// Prepares the node to send messages.
     fn enable_writing(&self) {
-        let (conn_sender, mut conn_receiver) =
-            mpsc::channel::<ReturnableConnection>(self.node().config().writing_handler_queue_depth);
+        let (conn_sender, mut conn_receiver) = mpsc::channel::<ReturnableConnection>(
+            self.node().config().protocol_handler_queue_depth,
+        );
 
         // the task spawning tasks reading messages from the given stream
         let self_clone = self.clone();
