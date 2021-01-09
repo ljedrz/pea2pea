@@ -9,6 +9,7 @@
 ### Fixed
 
 - `Node::shutdown` now also shuts down the handshaking task if `Handshaking` is enabled
+- the `Node` no longer panics on attempts to send to dying connections
 
 # 0.13.1
 

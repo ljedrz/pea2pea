@@ -302,18 +302,14 @@ impl Node {
             .sender(addr)?
             .send(message)
             .await
-            .expect("the connection writer task is closed"); // can't recover if this happens
-
-        Ok(())
+            .map_err(|_| ErrorKind::NotConnected.into()) // an error here means the connection was shut down
     }
 
     /// Broadcasts the provided message to all peers, as long as the `Writing` protocol is enabled.
     pub async fn send_broadcast(&self, message: Bytes) -> io::Result<()> {
         for message_sender in self.connections.senders()? {
-            message_sender
-                .send(message.clone())
-                .await
-                .expect("the connection writer task is closed"); // can't recover if this happens
+            // an error means the connection is shutting down, which is already reported in logs
+            let _ = message_sender.send(message.clone()).await;
         }
 
         Ok(())
