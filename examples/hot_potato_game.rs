@@ -1,4 +1,5 @@
 use bytes::Bytes;
+use once_cell::sync::Lazy;
 use parking_lot::Mutex;
 use rand::{rngs::SmallRng, seq::IteratorRandom, Rng, SeedableRng};
 use serde::{Deserialize, Serialize};
@@ -25,6 +26,8 @@ use std::{
     time::Duration,
 };
 
+static RNG: Lazy<Mutex<SmallRng>> = Lazy::new(|| Mutex::new(SmallRng::from_entropy()));
+
 type PlayerName = String;
 
 #[derive(Debug)]
@@ -38,12 +41,11 @@ struct PlayerInfo {
 struct Player {
     node: Node,
     other_players: Arc<Mutex<HashMap<PlayerName, PlayerInfo>>>,
-    rng: Arc<Mutex<SmallRng>>,
     potato_count: Arc<AtomicUsize>,
 }
 
 impl Player {
-    async fn new(name: PlayerName, rng: Arc<Mutex<SmallRng>>) -> Self {
+    async fn new(name: PlayerName) -> Self {
         let config = NodeConfig {
             name: Some(name),
             ..Default::default()
@@ -53,7 +55,6 @@ impl Player {
         Self {
             node,
             other_players: Default::default(),
-            rng,
             potato_count: Default::default(),
         }
     }
@@ -69,7 +70,7 @@ impl Player {
             .lock()
             .iter()
             .map(|(name, player)| (name.clone(), player.addr))
-            .choose(&mut *self.rng.lock())
+            .choose(&mut *RNG.lock())
             .unwrap();
 
         info!(parent: self.node().span(), "throwing the potato to {}!", new_carrier_name);
@@ -253,11 +254,9 @@ async fn main() {
         NUM_PLAYERS, GAME_TIME_SECS
     );
 
-    let rng = Arc::new(Mutex::new(SmallRng::from_entropy()));
-
     let mut players = Vec::with_capacity(NUM_PLAYERS);
     for i in 0..NUM_PLAYERS {
-        players.push(Player::new(format!("player {}", i), rng.clone()).await);
+        players.push(Player::new(format!("player {}", i)).await);
     }
 
     for player in &players {
@@ -267,7 +266,7 @@ async fn main() {
     }
     connect_nodes(&players, Topology::Mesh).await.unwrap();
 
-    let first_carrier = rng.lock().gen_range(0..NUM_PLAYERS);
+    let first_carrier = RNG.lock().gen_range(0..NUM_PLAYERS);
     players[first_carrier]
         .potato_count
         .fetch_add(1, Ordering::Relaxed);
