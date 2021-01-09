@@ -74,8 +74,7 @@ where
 
                     // return the Connection to the Node, resuming Node::adapt_stream
                     if conn_returner.send(Ok(conn)).is_err() {
-                        // can't recover if this happens
-                        panic!("can't return a Connection to the Node");
+                        unreachable!("could't return a Connection to the Node");
                     }
                 } else {
                     error!("the Writing protocol is down!");
