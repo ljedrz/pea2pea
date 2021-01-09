@@ -45,7 +45,7 @@ fn read_message(buffer: &[u8]) -> io::Result<Option<&[u8]>> {
         }
 
         if buffer[2..].len() >= payload_len {
-            Ok(Some(&buffer[2..2 + payload_len]))
+            Ok(Some(&buffer[2..][..payload_len]))
         } else {
             Ok(None)
         }
@@ -96,18 +96,18 @@ impl Handshaking for SecureNode {
         let handshaking_task = tokio::spawn(async move {
             loop {
                 if let Some((mut conn, result_sender)) = from_node_receiver.recv().await {
-                    let noise_state = match !conn.side {
+                    let builder = snow::Builder::new(HANDSHAKE_PATTERN.parse().unwrap());
+                    let static_key = builder.generate_keypair().unwrap().private;
+                    let noise_builder = builder
+                        .local_private_key(&static_key)
+                        .psk(3, PRE_SHARED_KEY);
+                    let mut buffer: Box<[u8]> = vec![0u8; NOISE_BUF_LEN].into();
+
+                    let state = match !conn.side {
                         ConnectionSide::Initiator => {
                             info!(parent: conn.node.span(), "handshaking with {} as the initiator", conn.addr);
 
-                            let builder = snow::Builder::new(HANDSHAKE_PATTERN.parse().unwrap());
-                            let static_key = builder.generate_keypair().unwrap().private;
-                            let mut noise = builder
-                                .local_private_key(&static_key)
-                                .psk(3, PRE_SHARED_KEY)
-                                .build_initiator()
-                                .unwrap();
-                            let mut buffer: Box<[u8]> = vec![0u8; NOISE_BUF_LEN].into();
+                            let mut noise = noise_builder.build_initiator().unwrap();
 
                             // -> e
                             let len = noise.write_message(&[], &mut buffer).unwrap();
@@ -131,22 +131,12 @@ impl Handshaking for SecureNode {
                                 .unwrap();
                             debug!(parent: conn.node.span(), "sent s, se, psk (XX handshake part 3/3)");
 
-                            NoiseState {
-                                state: noise.into_transport_mode().unwrap(),
-                                buffer,
-                            }
+                            noise.into_transport_mode().unwrap()
                         }
                         ConnectionSide::Responder => {
                             info!(parent: conn.node.span(), "handshaking with {} as the responder", conn.addr);
 
-                            let builder = snow::Builder::new(HANDSHAKE_PATTERN.parse().unwrap());
-                            let static_key = builder.generate_keypair().unwrap().private;
-                            let mut noise = builder
-                                .local_private_key(&static_key)
-                                .psk(3, PRE_SHARED_KEY)
-                                .build_responder()
-                                .unwrap();
-                            let mut buffer: Box<[u8]> = vec![0u8; NOISE_BUF_LEN].into();
+                            let mut noise = noise_builder.build_responder().unwrap();
 
                             // <- e
                             let queued_bytes = conn.reader().read_queued_bytes().await.unwrap();
@@ -168,14 +158,13 @@ impl Handshaking for SecureNode {
                             noise.read_message(message, &mut buffer).unwrap();
                             debug!(parent: conn.node.span(), "received s, se, psk (XX handshake part 3/3)");
 
-                            NoiseState {
-                                state: noise.into_transport_mode().unwrap(),
-                                buffer,
-                            }
+                            noise.into_transport_mode().unwrap()
                         }
                     };
 
                     debug!(parent: conn.node.span(), "XX handshake complete");
+
+                    let noise_state = NoiseState { state, buffer };
 
                     self_clone
                         .noise_states

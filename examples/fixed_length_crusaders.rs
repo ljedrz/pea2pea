@@ -59,10 +59,20 @@ impl Handshaking for JoJoNode {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 enum BattleCry {
     Ora,
     Muda,
+}
+
+impl From<u8> for BattleCry {
+    fn from(byte: u8) -> Self {
+        match byte {
+            0 => BattleCry::Ora,
+            1 => BattleCry::Muda,
+            _ => unreachable!(),
+        }
+    }
 }
 
 #[async_trait::async_trait]
@@ -74,11 +84,7 @@ impl Reading for JoJoNode {
         _source: SocketAddr,
         buffer: &[u8],
     ) -> io::Result<Option<(Self::Message, usize)>> {
-        let battle_cry = match buffer[0] as u8 {
-            0 => BattleCry::Ora,
-            1 => BattleCry::Muda,
-            _ => unreachable!(),
-        };
+        let battle_cry = BattleCry::from(buffer[0]);
 
         Ok(Some((battle_cry, 1)))
     }
@@ -102,15 +108,12 @@ impl Reading for JoJoNode {
 impl Writing for JoJoNode {
     fn write_message(&self, _: SocketAddr, payload: &[u8], buffer: &mut [u8]) -> io::Result<usize> {
         buffer[0] = payload[0];
+        let battle_cry = BattleCry::from(buffer[0]);
 
-        match buffer[0] {
-            0 => {
-                info!(parent: self.node().span(), "{:?}!", BattleCry::Ora);
-            }
-            1 => {
-                warn!(parent: self.node().span(), "{:?}!", BattleCry::Muda);
-            }
-            _ => unreachable!(),
+        if battle_cry == BattleCry::Ora {
+            info!(parent: self.node().span(), "{:?}!", battle_cry);
+        } else {
+            warn!(parent: self.node().span(), "{:?}!", battle_cry);
         };
 
         Ok(1)

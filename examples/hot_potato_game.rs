@@ -50,10 +50,9 @@ impl Player {
             name: Some(name),
             ..Default::default()
         };
-        let node = Node::new(Some(config)).await.unwrap();
 
         Self {
-            node,
+            node: Node::new(Some(config)).await.unwrap(),
             other_players: Default::default(),
             potato_count: Default::default(),
         }
@@ -182,7 +181,7 @@ impl Reading for Player {
             }
 
             if buffer[2..].len() >= payload_len {
-                let message = bincode::deserialize(&buffer[2..2 + payload_len]).unwrap();
+                let message = bincode::deserialize(&buffer[2..][..payload_len]).unwrap();
 
                 Ok(Some((message, 2 + payload_len)))
             } else {
