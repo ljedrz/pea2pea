@@ -139,8 +139,7 @@ impl Node {
             loop {
                 match listener.accept().await {
                     Ok((stream, addr)) => {
-                        let num_connections =
-                            node_clone.num_connected() + node_clone.connecting.lock().len();
+                        let num_connections = node_clone.num_all_connections();
                         if num_connections >= node_clone.config.max_connections as usize {
                             error!(
                                 parent: node_clone.span(),
@@ -245,7 +244,7 @@ impl Node {
             return Err(ErrorKind::Other.into());
         }
 
-        let num_connections = self.num_connected() + self.connecting.lock().len();
+        let num_connections = self.num_all_connections();
         if num_connections >= self.config.max_connections as usize {
             error!(
                 parent: self.span(), "maximum number of connections reached: {}/{}; refusing to connect to {}",
@@ -333,6 +332,11 @@ impl Node {
     /// Returns the number of active connections.
     pub fn num_connected(&self) -> usize {
         self.connections.num_connected()
+    }
+
+    /// Returns the number of *all* connections, including the ones barely established.
+    fn num_all_connections(&self) -> usize {
+        self.num_connected() + self.connecting.lock().len()
     }
 
     /// Returns a reference to the handshake handler, if the `Handshaking` protocol is enabled.
