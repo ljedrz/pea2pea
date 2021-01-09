@@ -83,7 +83,7 @@ pub struct InnerNode {
 }
 
 impl Node {
-    /// Returns a `Node`.
+    /// Creates a new `Node` optionally using a given `NodeConfig`.
     pub async fn new(config: Option<NodeConfig>) -> io::Result<Self> {
         let local_ip = IpAddr::V4(Ipv4Addr::LOCALHOST);
         let mut config = config.unwrap_or_default();

@@ -17,7 +17,7 @@ pub struct NodeConfig {
     pub conn_inbound_queue_depth: usize,
     /// The depth of per-connection queues used to send outbound messages.
     pub conn_outbound_queue_depth: usize,
-    /// The delay on the next read from a node whose stream can't be read.
+    /// The delay on the next read from a connection that can't be read from.
     pub invalid_read_delay_secs: u64,
     /// The maximum number of active connections the node can maintain.
     pub max_connections: u16,

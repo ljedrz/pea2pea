@@ -21,13 +21,13 @@ impl NodeStats {
         self.connections.fetch_add(1, Ordering::Relaxed);
     }
 
-    /// Registers a sent message.
+    /// Registers a sent message of the provided `size` in bytes.
     pub fn register_sent_message(&self, size: usize) {
         self.msgs_sent.fetch_add(1, Ordering::Relaxed);
         self.bytes_sent.fetch_add(size as u64, Ordering::Relaxed);
     }
 
-    /// Registers a received message.
+    /// Registers a received message of the provided `size` in bytes.
     pub fn register_received_message(&self, size: usize) {
         self.msgs_received.fetch_add(1, Ordering::Relaxed);
         self.bytes_received
