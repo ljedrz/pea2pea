@@ -341,12 +341,12 @@ impl Node {
     }
 
     /// Returns a reference to the reading handler, if the `Reading` protocol is enabled.
-    pub fn reading_handler(&self) -> Option<&ProtocolHandler> {
+    fn reading_handler(&self) -> Option<&ProtocolHandler> {
         self.protocols.reading_handler.get()
     }
 
     /// Returns a reference to the writing handler, if the `Writing` protocol is enabled.
-    pub fn writing_handler(&self) -> Option<&ProtocolHandler> {
+    fn writing_handler(&self) -> Option<&ProtocolHandler> {
         self.protocols.writing_handler.get()
     }
 

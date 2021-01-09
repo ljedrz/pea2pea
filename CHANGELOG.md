@@ -6,6 +6,7 @@
 - `NodeConfig.{reading_handler_queue_depth, writing_handler_queue_depth}` were merged into `.protocol_handler_queue_depth`
 - instead of `Node`, keep a copy of its `Span` in `ConnectionReader` & `ConnectionWriter`
 - renamed `NodeConfig.invalid_message_penalty_secs` to `.invalid_read_delay_secs`
+- `Node::{reading_handler, writing_handler}` methods are now private
 
 ### Fixed
 
