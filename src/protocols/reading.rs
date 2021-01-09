@@ -61,9 +61,9 @@ where
                                     }
                                     io::ErrorKind::Other => {
                                         // an unsuccessful read from the stream is not fatal; instead of disconnecting,
-                                        // impose a timeout before attempting another read
+                                        // impose a delay before attempting another read
                                         sleep(Duration::from_secs(
-                                            node.config().invalid_message_penalty_secs,
+                                            node.config().invalid_read_delay_secs,
                                         ))
                                         .await;
                                     }

@@ -17,8 +17,8 @@ pub struct NodeConfig {
     pub conn_inbound_queue_depth: usize,
     /// The depth of per-connection queues used to send outbound messages.
     pub conn_outbound_queue_depth: usize,
-    /// The delay on the next read from a node that provided an invalid message.
-    pub invalid_message_penalty_secs: u64,
+    /// The delay on the next read from a node whose stream can't be read.
+    pub invalid_read_delay_secs: u64,
     /// The maximum number of active connections the node can maintain.
     pub max_connections: u16,
 }
@@ -34,7 +34,7 @@ impl Default for NodeConfig {
             conn_write_buffer_size: 64 * 1024,
             conn_inbound_queue_depth: 256,
             conn_outbound_queue_depth: 16,
-            invalid_message_penalty_secs: 10,
+            invalid_read_delay_secs: 10,
             max_connections: 100,
         }
     }

@@ -5,11 +5,13 @@
 - `ReadingHandler` and `WritingHandler` are now a common `ProtocolHandler` applicable also to `Handshaking`
 - `NodeConfig.{reading_handler_queue_depth, writing_handler_queue_depth}` were merged into `.protocol_handler_queue_depth`
 - instead of `Node`, keep a copy of its `Span` in `ConnectionReader` & `ConnectionWriter`
+- renamed `NodeConfig.invalid_message_penalty_secs` to `.invalid_read_delay_secs`
 
 ### Fixed
 
 - `Node::shutdown` now also shuts down the handshaking task if `Handshaking` is enabled
 - the `Node` no longer panics on attempts to send to dying connections
+- corrected the doc on `NodeConfig.invalid_message_penalty_secs` (now `.invalid_read_delay_secs`)
 
 # 0.13.1
 
