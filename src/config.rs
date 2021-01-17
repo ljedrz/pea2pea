@@ -1,8 +1,12 @@
+use std::net::{IpAddr, Ipv4Addr};
+
 /// The node's configuration.
 #[derive(Debug, Clone)]
 pub struct NodeConfig {
     /// The name/identifier of the node.
     pub name: Option<String>,
+    /// The IP address the node's connection listener should bind to.
+    pub listener_ip: IpAddr,
     /// The desired listening port of the node.
     pub desired_listening_port: Option<u16>,
     /// Allow listening on a different port if `desired_listening_port` is unavailable.
@@ -27,6 +31,7 @@ impl Default for NodeConfig {
     fn default() -> Self {
         Self {
             name: None,
+            listener_ip: IpAddr::V4(Ipv4Addr::UNSPECIFIED),
             desired_listening_port: None,
             allow_random_port: true,
             protocol_handler_queue_depth: 16,

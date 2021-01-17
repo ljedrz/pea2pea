@@ -15,7 +15,7 @@ use tracing::*;
 
 use std::{
     io::{self, ErrorKind},
-    net::{IpAddr, Ipv4Addr, SocketAddr},
+    net::SocketAddr,
     ops::Deref,
     sync::{
         atomic::{AtomicUsize, Ordering::*},
@@ -85,7 +85,6 @@ pub struct InnerNode {
 impl Node {
     /// Creates a new `Node` optionally using a given `NodeConfig`.
     pub async fn new(config: Option<NodeConfig>) -> io::Result<Self> {
-        let local_ip = IpAddr::V4(Ipv4Addr::LOCALHOST);
         let mut config = config.unwrap_or_default();
 
         // if there is no pre-configured name, assign a sequential numeric identifier
@@ -97,14 +96,15 @@ impl Node {
         let span = create_span(config.name.as_deref().unwrap());
 
         // procure a listening address
+        let listener_ip = config.listener_ip;
         let listener = if let Some(port) = config.desired_listening_port {
-            let desired_listening_addr = SocketAddr::new(local_ip, port);
+            let desired_listening_addr = SocketAddr::new(listener_ip, port);
             match TcpListener::bind(desired_listening_addr).await {
                 Ok(listener) => listener,
                 Err(e) => {
                     if config.allow_random_port {
                         warn!(parent: span.clone(), "trying any port, the desired one is unavailable: {}", e);
-                        let random_available_addr = SocketAddr::new(local_ip, 0);
+                        let random_available_addr = SocketAddr::new(listener_ip, 0);
                         TcpListener::bind(random_available_addr).await?
                     } else {
                         error!(parent: span.clone(), "the desired port is unavailable: {}", e);
@@ -113,7 +113,7 @@ impl Node {
                 }
             }
         } else if config.allow_random_port {
-            let random_available_addr = SocketAddr::new(local_ip, 0);
+            let random_available_addr = SocketAddr::new(listener_ip, 0);
             TcpListener::bind(random_available_addr).await?
         } else {
             panic!("you must either provide a desired port or allow a random port to be chosen");

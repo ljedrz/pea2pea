@@ -1,3 +1,13 @@
+# 0.15.0
+
+### Added
+
+- `NodeConfig.listener_ip`
+
+### Changed
+
+- the default IP the node listens at is now `Ipv4Addr::UNSPECIFIED` instead of `Ipv4Addr::LOCALHOST`
+
 # 0.14.0
 
 ### Changed
