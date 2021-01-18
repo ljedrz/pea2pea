@@ -94,7 +94,8 @@ where
             .set_writing_handler((conn_sender, writing_task).into());
     }
 
-    /// Writes the given message to `ConnectionWriter`'s stream; returns the number of bytes written.
+    /// Writes the given message to the provided writer, using the provided intermediate buffer; returns the number of
+    /// bytes written to the writer.
     async fn write_to_stream<W: AsyncWrite + Unpin + Send>(
         &self,
         message: &[u8],
@@ -108,7 +109,7 @@ where
         Ok(len)
     }
 
-    /// Writes the provided payload to `ConnectionWriter`'s buffer; the payload can get prepended with a header
+    /// Writes the provided payload to the given intermediate buffer; the payload can get prepended with a header
     /// indicating its length, be suffixed with a character indicating that it's complete, etc. Returns the number
     /// of bytes written to the buffer.
     fn write_message(

@@ -129,9 +129,10 @@ where
             .set_reading_handler((conn_sender, reading_task).into());
     }
 
-    /// Performs a read from the stream. The default implementation is buffered; it sacrifices a bit of simplicity for
-    /// better performance. Read messages are sent to a message processing task, in order to allow faster reads from
-    /// the stream. Returns the number of pending bytes left in the buffer in case of an incomplete read.
+    /// Performs a read from the given reader. The default implementation is buffered; it sacrifices a bit of
+    /// simplicity for better performance. Read messages are sent to a message processing task in order to enable
+    /// faster reads. Returns the number of pending bytes left in the buffer in case of an incomplete read; they
+    /// should be provided to the medthod on the next call as `carry`.
     async fn read_from_stream<R: AsyncRead + Unpin + Send>(
         &self,
         addr: SocketAddr,
@@ -218,7 +219,7 @@ where
         }
     }
 
-    /// Reads a single message from `ConnectionReader`'s buffer; `Ok(None)` indicates that the message is
+    /// Reads a single message from the given buffer; `Ok(None)` indicates that the message is
     /// incomplete, i.e. further reads from the stream must be performed in order to produce the whole message.
     /// Alongside the message it returns the number of bytes the read message occupied in the buffer. An `Err`
     /// returned here will result in the associated connection being dropped.
