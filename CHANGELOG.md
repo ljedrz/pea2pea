@@ -1,17 +1,25 @@
+# 0.16.0
+
+### Changed
+- `Reading::read_from_stream` and `Writing::write_to_stream` are now generic over `AsyncRead` and `AsyncWrite` respectively and their arguments were extended
+- `Reading::read_from_stream` now returns `io::Result<usize>` instead of `io::Result<()>`
+- `Connection.reader` now contains `Option<OwnedReadHalf>`
+- `Connection.writer` now contains `Option<OwnedWriteHalf>`
+
+### Removed
+- `connections::{ConnectionReader, ConnectionWriter}`
+
 # 0.15.0
 
 ### Added
-
 - `NodeConfig.listener_ip`
 
 ### Changed
-
 - the default IP the node listens at is now `Ipv4Addr::UNSPECIFIED` instead of `Ipv4Addr::LOCALHOST`
 
 # 0.14.0
 
 ### Changed
-
 - `ReadingHandler` and `WritingHandler` are now a common `ProtocolHandler` applicable also to `Handshaking`
 - `NodeConfig.{reading_handler_queue_depth, writing_handler_queue_depth}` were merged into `.protocol_handler_queue_depth`
 - instead of `Node`, keep a copy of its `Span` in `ConnectionReader` & `ConnectionWriter`
@@ -19,7 +27,6 @@
 - `Node::{reading_handler, writing_handler}` methods are now private
 
 ### Fixed
-
 - `Node::shutdown` now also shuts down the handshaking task if `Handshaking` is enabled
 - the `Node` no longer panics on attempts to send to dying connections
 - corrected the doc on `NodeConfig.invalid_message_penalty_secs` (now `.invalid_read_delay_secs`)
