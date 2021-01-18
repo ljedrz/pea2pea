@@ -1,7 +1,11 @@
-use crate::{connections::ConnectionReader, protocols::ReturnableConnection, Pea2Pea};
+use crate::{protocols::ReturnableConnection, Pea2Pea};
 
 use async_trait::async_trait;
-use tokio::{io::AsyncReadExt, sync::mpsc, time::sleep};
+use tokio::{
+    io::{AsyncRead, AsyncReadExt},
+    sync::mpsc,
+    time::sleep,
+};
 use tracing::*;
 
 use std::{io, net::SocketAddr, time::Duration};
@@ -36,7 +40,7 @@ where
                 // these objects are sent from `Node::adapt_stream`
                 if let Some((mut conn, conn_returner)) = conn_receiver.recv().await {
                     let addr = conn.addr;
-                    let mut conn_reader = conn.reader.take().unwrap(); // safe; it is available at this point
+                    let mut cr = conn.reader.take().unwrap(); // safe; it is available at this point
 
                     let (inbound_message_sender, mut inbound_message_receiver) =
                         mpsc::channel(self_clone.node().config().conn_inbound_queue_depth);
@@ -50,7 +54,13 @@ where
                         let mut carry = 0;
                         loop {
                             match reader_clone
-                                .read_from_stream(&mut conn_reader, carry, &inbound_message_sender)
+                                .read_from_stream(
+                                    cr.addr,
+                                    &mut cr.buffer,
+                                    &mut cr.reader,
+                                    carry,
+                                    &inbound_message_sender,
+                                )
                                 .await
                             {
                                 Ok(leftover) => {
@@ -122,19 +132,14 @@ where
     /// Performs a read from the stream. The default implementation is buffered; it sacrifices a bit of simplicity for
     /// better performance. Read messages are sent to a message processing task, in order to allow faster reads from
     /// the stream. Returns the number of pending bytes left in the buffer in case of an incomplete read.
-    async fn read_from_stream(
+    async fn read_from_stream<R: AsyncRead + Unpin + Send>(
         &self,
-        conn_reader: &mut ConnectionReader,
+        addr: SocketAddr,
+        buffer: &mut [u8],
+        reader: &mut R,
         carry: usize,
         message_sender: &mpsc::Sender<Self::Message>,
     ) -> io::Result<usize> {
-        let ConnectionReader {
-            span: _,
-            addr,
-            reader,
-            buffer,
-        } = conn_reader;
-
         // perform a read from the stream, being careful not to overwrite any bytes carried over from the previous read
         match reader.read(&mut buffer[carry..]).await {
             Ok(0) => return Ok(carry),
@@ -146,7 +151,7 @@ where
                 // several messages could have been read at once; process the contents of the buffer
                 loop {
                     // try to read a single message from the buffer
-                    match self.read_message(*addr, &buffer[processed..processed + left]) {
+                    match self.read_message(addr, &buffer[processed..processed + left]) {
                         // a full message was read successfully
                         Ok(Some((msg, len))) => {
                             // advance the counters
@@ -162,7 +167,7 @@ where
                             );
                             self.node()
                                 .known_peers()
-                                .register_received_message(*addr, len);
+                                .register_received_message(addr, len);
                             self.node().stats().register_received_message(len);
 
                             // send the message for further processing
