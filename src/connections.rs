@@ -88,8 +88,6 @@ pub struct ConnectionReader {
     pub addr: SocketAddr,
     /// A buffer dedicated to reading from the stream.
     pub buffer: Box<[u8]>,
-    /// The number of bytes from an incomplete read carried over in the buffer.
-    pub carry: usize,
     /// The read half of the stream.
     pub reader: OwnedReadHalf,
 }
@@ -128,8 +126,6 @@ pub struct ConnectionWriter {
     pub addr: SocketAddr,
     /// A buffer dedicated to buffering writes to the stream.
     pub buffer: Box<[u8]>,
-    /// The number of bytes from an incomplete write carried over in the buffer.
-    pub carry: usize,
     /// The write half of the stream.
     pub writer: OwnedWriteHalf,
 }
@@ -177,7 +173,6 @@ impl Connection {
             span: node.span().clone(),
             addr,
             buffer: vec![0; node.config().conn_read_buffer_size].into(),
-            carry: 0,
             reader,
         };
 
@@ -185,7 +180,6 @@ impl Connection {
             span: node.span().clone(),
             addr,
             buffer: vec![0; node.config().conn_write_buffer_size].into(),
-            carry: 0,
             writer,
         };
 

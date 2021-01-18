@@ -47,27 +47,33 @@ where
                         let node = reader_clone.node();
                         trace!(parent: node.span(), "spawned a task for reading messages from {}", addr);
 
+                        let mut carry = 0;
                         loop {
-                            if let Err(e) = reader_clone
-                                .read_from_stream(&mut conn_reader, &inbound_message_sender)
+                            match reader_clone
+                                .read_from_stream(&mut conn_reader, carry, &inbound_message_sender)
                                 .await
                             {
-                                node.known_peers().register_failure(addr);
-                                match e.kind() {
-                                    io::ErrorKind::InvalidData | io::ErrorKind::BrokenPipe => {
-                                        // can't recover; drop the connection
-                                        node.disconnect(addr);
-                                        break;
+                                Ok(leftover) => {
+                                    carry = leftover;
+                                }
+                                Err(e) => {
+                                    node.known_peers().register_failure(addr);
+                                    match e.kind() {
+                                        io::ErrorKind::InvalidData | io::ErrorKind::BrokenPipe => {
+                                            // can't recover; drop the connection
+                                            node.disconnect(addr);
+                                            break;
+                                        }
+                                        io::ErrorKind::Other => {
+                                            // an unsuccessful read from the stream is not fatal; instead of disconnecting,
+                                            // impose a delay before attempting another read
+                                            sleep(Duration::from_secs(
+                                                node.config().invalid_read_delay_secs,
+                                            ))
+                                            .await;
+                                        }
+                                        _ => unreachable!(),
                                     }
-                                    io::ErrorKind::Other => {
-                                        // an unsuccessful read from the stream is not fatal; instead of disconnecting,
-                                        // impose a delay before attempting another read
-                                        sleep(Duration::from_secs(
-                                            node.config().invalid_read_delay_secs,
-                                        ))
-                                        .await;
-                                    }
-                                    _ => unreachable!(),
                                 }
                             }
                         }
@@ -115,27 +121,27 @@ where
 
     /// Performs a read from the stream. The default implementation is buffered; it sacrifices a bit of simplicity for
     /// better performance. Read messages are sent to a message processing task, in order to allow faster reads from
-    /// the stream.
+    /// the stream. Returns the number of pending bytes left in the buffer in case of an incomplete read.
     async fn read_from_stream(
         &self,
         conn_reader: &mut ConnectionReader,
+        carry: usize,
         message_sender: &mpsc::Sender<Self::Message>,
-    ) -> io::Result<()> {
+    ) -> io::Result<usize> {
         let ConnectionReader {
             span: _,
             addr,
             reader,
             buffer,
-            carry,
         } = conn_reader;
 
         // perform a read from the stream, being careful not to overwrite any bytes carried over from the previous read
-        match reader.read(&mut buffer[*carry..]).await {
-            Ok(0) => return Ok(()),
+        match reader.read(&mut buffer[carry..]).await {
+            Ok(0) => return Ok(carry),
             Ok(n) => {
                 trace!(parent: self.node().span(), "read {}B from {}", n, addr);
                 let mut processed = 0;
-                let mut left = *carry + n;
+                let mut left = carry + n;
 
                 // several messages could have been read at once; process the contents of the buffer
                 loop {
@@ -167,8 +173,7 @@ where
 
                             // if the read is exhausted, reset the carry and return
                             if left == 0 {
-                                *carry = 0;
-                                return Ok(());
+                                return Ok(0);
                             }
                         }
                         // the message in the buffer is incomplete
@@ -185,13 +190,12 @@ where
                                 addr,
                                 left
                             );
-                            *carry = left;
 
                             // move the leftover bytes to the beginning of the buffer; the next read will append bytes
                             // starting from where the leftover ones end, allowing the message to be completed
                             buffer.copy_within(processed..processed + left, 0);
 
-                            return Ok(());
+                            return Ok(left);
                         }
                         // an erroneous message (e.g. an unexpected zero-length payload)
                         Err(_) => {
