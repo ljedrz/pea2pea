@@ -6,7 +6,6 @@ use bytes::Bytes;
 use fxhash::FxHashMap;
 use parking_lot::RwLock;
 use tokio::{
-    io::AsyncReadExt,
     net::{
         tcp::{OwnedReadHalf, OwnedWriteHalf},
         TcpStream,
@@ -79,44 +78,6 @@ impl Not for ConnectionSide {
     }
 }
 
-/// An object dedicated to performing reads from a connection's stream;
-/// it is available only if the `Reading` protocol is enabled.
-pub struct ConnectionReader {
-    /// The tracing span of the owning `Node`.
-    pub span: Span,
-    /// The address of the connection.
-    pub addr: SocketAddr,
-    /// A buffer dedicated to reading from the stream.
-    pub buffer: Box<[u8]>,
-    /// The read half of the stream.
-    pub reader: OwnedReadHalf,
-}
-
-impl ConnectionReader {
-    /// Reads as many bytes as there are queued to be read from the stream.
-    pub async fn read_queued_bytes(&mut self) -> io::Result<&[u8]> {
-        let len = self.reader.read(&mut self.buffer).await?;
-        trace!(parent: &self.span, "read {}B from {}", len, self.addr);
-
-        Ok(&self.buffer[..len])
-    }
-
-    /// Reads the specified number of bytes from the stream.
-    pub async fn read_exact(&mut self, num: usize) -> io::Result<&[u8]> {
-        let buffer = &mut self.buffer;
-
-        if num > buffer.len() {
-            error!(parent: &self.span, "can' read {}B from the stream; the buffer is too small ({}B)", num, buffer.len());
-            return Err(ErrorKind::Other.into());
-        }
-
-        self.reader.read_exact(&mut buffer[..num]).await?;
-        trace!(parent: &self.span, "read {}B from {}", num, self.addr);
-
-        Ok(&buffer[..num])
-    }
-}
-
 /// Keeps track of tasks that have been spawned for the purposes of a connection; it
 /// also contains a sender that communicates with the `Writing` protocol handler.
 pub struct Connection {
@@ -125,7 +86,7 @@ pub struct Connection {
     /// The address of the connection.
     pub addr: SocketAddr,
     /// Kept only until the protocols are enabled (`Reading` should `take()` it).
-    pub reader: Option<ConnectionReader>,
+    pub reader: Option<OwnedReadHalf>,
     /// Kept only until the protocols are enabled (`Writing` should `take()` it).
     pub writer: Option<OwnedWriteHalf>,
     /// Handles to tasks spawned by the connection.
@@ -146,13 +107,6 @@ impl Connection {
     ) -> Self {
         let (reader, writer) = stream.into_split();
 
-        let reader = ConnectionReader {
-            span: node.span().clone(),
-            addr,
-            buffer: vec![0; node.config().conn_read_buffer_size].into(),
-            reader,
-        };
-
         Self {
             node: node.clone(),
             addr,
@@ -164,11 +118,11 @@ impl Connection {
         }
     }
 
-    /// Provides mutable access to the underlying `ConnectionReader`; it should only be used in protocol definitions.
-    pub fn reader(&mut self) -> &mut ConnectionReader {
+    /// Provides mutable access to the underlying reader; it should only be used in protocol definitions.
+    pub fn reader(&mut self) -> &mut OwnedReadHalf {
         self.reader
             .as_mut()
-            .expect("ConnectionReader is not available!")
+            .expect("Connection's reader is not available!")
     }
 
     /// Provides mutable access to the underlying writer; it should only be used in protocol definitions.

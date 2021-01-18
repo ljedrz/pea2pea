@@ -20,9 +20,6 @@ where
     /// The final (deserialized) type of incoming messages.
     type Message: Send;
 
-    // TODO: add an associated type defaulting to ConnectionReader once
-    // https://github.com/rust-lang/rust/issues/29661 is resolved.
-
     /// Prepares the node to receive messages; failures to read from a connection's stream are penalized by a timeout
     /// defined in `NodeConfig`, while broken/unreadable messages result in an immediate disconnect (in order to avoid
     /// accidentally reading "borked" messages).
@@ -40,7 +37,9 @@ where
                 // these objects are sent from `Node::adapt_stream`
                 if let Some((mut conn, conn_returner)) = conn_receiver.recv().await {
                     let addr = conn.addr;
-                    let mut cr = conn.reader.take().unwrap(); // safe; it is available at this point
+                    let mut reader = conn.reader.take().unwrap(); // safe; it is available at this point
+                    let mut buffer = vec![0; self_clone.node().config().conn_read_buffer_size]
+                        .into_boxed_slice();
 
                     let (inbound_message_sender, mut inbound_message_receiver) =
                         mpsc::channel(self_clone.node().config().conn_inbound_queue_depth);
@@ -55,9 +54,9 @@ where
                         loop {
                             match reader_clone
                                 .read_from_stream(
-                                    cr.addr,
-                                    &mut cr.buffer,
-                                    &mut cr.reader,
+                                    addr,
+                                    &mut buffer,
+                                    &mut reader,
                                     carry,
                                     &inbound_message_sender,
                                 )

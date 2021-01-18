@@ -1,5 +1,8 @@
 use bytes::Bytes;
-use tokio::{io::AsyncWriteExt, sync::mpsc};
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    sync::mpsc,
+};
 use tracing::*;
 
 mod common;
@@ -68,9 +71,11 @@ impl Pea2Pea for SecureishNode {
 }
 
 macro_rules! read_handshake_message {
-    ($expected: path, $conn: expr) => {
-        if let Ok(bytes) = $conn.reader().read_exact(9).await {
-            let msg: io::Result<HandshakeMsg> = if let Ok(msg) = HandshakeMsg::deserialize(bytes) {
+    ($expected: path, $conn: expr) => {{
+        let mut buf = [0u8; 9];
+
+        if let Ok(_) = $conn.reader().read_exact(&mut buf).await {
+            let msg: io::Result<HandshakeMsg> = if let Ok(msg) = HandshakeMsg::deserialize(&buf) {
                 Ok(msg)
             } else {
                 error!(parent: $conn.node.span(), "unrecognized handshake message (neither A nor B)");
@@ -88,7 +93,7 @@ macro_rules! read_handshake_message {
             error!(parent: $conn.node.span(), "couldn't read handshake message B");
             Err(ErrorKind::Other.into())
         }
-    }
+    }}
 }
 
 macro_rules! send_handshake_message {

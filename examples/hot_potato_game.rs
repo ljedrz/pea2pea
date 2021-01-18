@@ -3,7 +3,11 @@ use once_cell::sync::Lazy;
 use parking_lot::Mutex;
 use rand::{rngs::SmallRng, seq::IteratorRandom, Rng, SeedableRng};
 use serde::{Deserialize, Serialize};
-use tokio::{io::AsyncWriteExt, sync::mpsc, time::sleep};
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    sync::mpsc,
+    time::sleep,
+};
 use tracing::*;
 use tracing_subscriber::filter::{EnvFilter, LevelFilter};
 
@@ -107,6 +111,8 @@ impl Handshaking for Player {
         let handshaking_task = tokio::spawn(async move {
             loop {
                 if let Some((mut conn, result_sender)) = from_node_receiver.recv().await {
+                    let mut buffer = [0u8; 16];
+
                     let peer_name = match !conn.side {
                         ConnectionSide::Initiator => {
                             debug!(parent: conn.node.span(), "handshaking with {} as the initiator", conn.addr);
@@ -117,16 +123,16 @@ impl Handshaking for Player {
                             conn.writer().write_all(&message).await.unwrap();
 
                             // receive the peer's PlayerName
-                            let message = conn.reader().read_queued_bytes().await.unwrap();
+                            let len = conn.reader().read(&mut buffer).await.unwrap();
 
-                            String::from_utf8(message[2..].to_vec()).unwrap()
+                            String::from_utf8(buffer[..len].to_vec()).unwrap()
                         }
                         ConnectionSide::Responder => {
                             debug!(parent: conn.node.span(), "handshaking with {} as the responder", conn.addr);
 
                             // receive the peer's PlayerName
-                            let message = conn.reader().read_queued_bytes().await.unwrap();
-                            let peer_name = String::from_utf8(message[2..].to_vec()).unwrap();
+                            let len = conn.reader().read(&mut buffer).await.unwrap();
+                            let peer_name = String::from_utf8(buffer[..len].to_vec()).unwrap();
 
                             // send own PlayerName
                             let own_name = conn.node.name();
