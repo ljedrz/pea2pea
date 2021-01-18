@@ -17,9 +17,6 @@ pub trait Writing: Pea2Pea
 where
     Self: Clone + Send + Sync + 'static,
 {
-    // TODO: add an associated type defaulting to ConnectionWriter once
-    // https://github.com/rust-lang/rust/issues/29661 is resolved.
-
     /// Prepares the node to send messages.
     fn enable_writing(&self) {
         let (conn_sender, mut conn_receiver) = mpsc::channel::<ReturnableConnection>(
@@ -35,7 +32,9 @@ where
                 // these objects are sent from `Node::adapt_stream`
                 if let Some((mut conn, conn_returner)) = conn_receiver.recv().await {
                     let addr = conn.addr;
-                    let mut cw = conn.writer.take().unwrap(); // safe; it is available at this point
+                    let mut writer = conn.writer.take().unwrap(); // safe; it is available at this point
+                    let mut buffer = vec![0; self_clone.node().config().conn_write_buffer_size]
+                        .into_boxed_slice();
 
                     let (outbound_message_sender, mut outbound_message_receiver) =
                         mpsc::channel::<Bytes>(
@@ -53,7 +52,7 @@ where
                             // use try_recv() in order to write to the stream less often
                             if let Some(msg) = outbound_message_receiver.recv().await {
                                 match writer_clone
-                                    .write_to_stream(&msg, cw.addr, &mut cw.buffer, &mut cw.writer)
+                                    .write_to_stream(&msg, addr, &mut buffer, &mut writer)
                                     .await
                                 {
                                     Ok(len) => {

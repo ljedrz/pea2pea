@@ -3,7 +3,7 @@ use once_cell::sync::Lazy;
 use parking_lot::Mutex;
 use rand::{rngs::SmallRng, seq::IteratorRandom, Rng, SeedableRng};
 use serde::{Deserialize, Serialize};
-use tokio::{sync::mpsc, time::sleep};
+use tokio::{io::AsyncWriteExt, sync::mpsc, time::sleep};
 use tracing::*;
 use tracing_subscriber::filter::{EnvFilter, LevelFilter};
 

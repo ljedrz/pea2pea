@@ -6,7 +6,7 @@ use bytes::Bytes;
 use fxhash::FxHashMap;
 use parking_lot::RwLock;
 use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
+    io::AsyncReadExt,
     net::{
         tcp::{OwnedReadHalf, OwnedWriteHalf},
         TcpStream,
@@ -117,29 +117,6 @@ impl ConnectionReader {
     }
 }
 
-/// An object dedicated to performing writes to a connection's stream;
-/// it is available only if the `Writing` protocol is enabled.
-pub struct ConnectionWriter {
-    /// The tracing span of the owning `Node`.
-    pub span: Span,
-    /// The address of the connection.
-    pub addr: SocketAddr,
-    /// A buffer dedicated to buffering writes to the stream.
-    pub buffer: Box<[u8]>,
-    /// The write half of the stream.
-    pub writer: OwnedWriteHalf,
-}
-
-impl ConnectionWriter {
-    /// Writes the given buffer to the stream.
-    pub async fn write_all(&mut self, buffer: &[u8]) -> io::Result<()> {
-        self.writer.write_all(buffer).await?;
-        trace!(parent: &self.span, "wrote {}B to {}", buffer.len(), self.addr);
-
-        Ok(())
-    }
-}
-
 /// Keeps track of tasks that have been spawned for the purposes of a connection; it
 /// also contains a sender that communicates with the `Writing` protocol handler.
 pub struct Connection {
@@ -150,7 +127,7 @@ pub struct Connection {
     /// Kept only until the protocols are enabled (`Reading` should `take()` it).
     pub reader: Option<ConnectionReader>,
     /// Kept only until the protocols are enabled (`Writing` should `take()` it).
-    pub writer: Option<ConnectionWriter>,
+    pub writer: Option<OwnedWriteHalf>,
     /// Handles to tasks spawned by the connection.
     pub tasks: Vec<JoinHandle<()>>,
     /// Used to queue writes to the stream.
@@ -176,13 +153,6 @@ impl Connection {
             reader,
         };
 
-        let writer = ConnectionWriter {
-            span: node.span().clone(),
-            addr,
-            buffer: vec![0; node.config().conn_write_buffer_size].into(),
-            writer,
-        };
-
         Self {
             node: node.clone(),
             addr,
@@ -201,11 +171,11 @@ impl Connection {
             .expect("ConnectionReader is not available!")
     }
 
-    /// Provides mutable access to the underlying `ConnectionWriter`; it should only be used in protocol definitions.
-    pub fn writer(&mut self) -> &mut ConnectionWriter {
+    /// Provides mutable access to the underlying writer; it should only be used in protocol definitions.
+    pub fn writer(&mut self) -> &mut OwnedWriteHalf {
         self.writer
             .as_mut()
-            .expect("ConnectionWriter is not available!")
+            .expect("Connection's writer is not available!")
     }
 
     /// Returns a `Sender` for outbound messages, as long as `Writing` is enabled.
