@@ -1,8 +1,11 @@
-use crate::{connections::ConnectionWriter, protocols::ReturnableConnection, Pea2Pea};
+use crate::{protocols::ReturnableConnection, Pea2Pea};
 
 use async_trait::async_trait;
 use bytes::Bytes;
-use tokio::{io::AsyncWriteExt, sync::mpsc};
+use tokio::{
+    io::{AsyncWrite, AsyncWriteExt},
+    sync::mpsc,
+};
 use tracing::*;
 
 use std::{io, net::SocketAddr};
@@ -32,7 +35,7 @@ where
                 // these objects are sent from `Node::adapt_stream`
                 if let Some((mut conn, conn_returner)) = conn_receiver.recv().await {
                     let addr = conn.addr;
-                    let mut conn_writer = conn.writer.take().unwrap(); // safe; it is available at this point
+                    let mut cw = conn.writer.take().unwrap(); // safe; it is available at this point
 
                     let (outbound_message_sender, mut outbound_message_receiver) =
                         mpsc::channel::<Bytes>(
@@ -49,7 +52,10 @@ where
                             // TODO: when try_recv is available in tokio again (https://github.com/tokio-rs/tokio/issues/3350),
                             // use try_recv() in order to write to the stream less often
                             if let Some(msg) = outbound_message_receiver.recv().await {
-                                match writer_clone.write_to_stream(&msg, &mut conn_writer).await {
+                                match writer_clone
+                                    .write_to_stream(&msg, cw.addr, &mut cw.buffer, &mut cw.writer)
+                                    .await
+                                {
                                     Ok(len) => {
                                         node.known_peers().register_sent_message(addr, len);
                                         node.stats().register_sent_message(len);
@@ -89,20 +95,14 @@ where
     }
 
     /// Writes the given message to `ConnectionWriter`'s stream; returns the number of bytes written.
-    async fn write_to_stream(
+    async fn write_to_stream<W: AsyncWrite + Unpin + Send>(
         &self,
         message: &[u8],
-        conn_writer: &mut ConnectionWriter,
+        addr: SocketAddr,
+        buffer: &mut [u8],
+        writer: &mut W,
     ) -> io::Result<usize> {
-        let ConnectionWriter {
-            span: _,
-            addr,
-            writer,
-            buffer,
-            carry: _,
-        } = conn_writer;
-
-        let len = self.write_message(*addr, message, buffer)?;
+        let len = self.write_message(addr, message, buffer)?;
         writer.write_all(&buffer[..len]).await?;
 
         Ok(len)
