@@ -241,7 +241,9 @@ impl Node {
 
     /// Connects to the provided `SocketAddr`.
     pub async fn connect(&self, addr: SocketAddr) -> io::Result<()> {
-        if addr == self.listening_addr() {
+        if addr == self.listening_addr()
+            || addr.ip().is_loopback() && addr.port() == self.listening_addr().port()
+        {
             error!(parent: self.span(), "can't connect to node's own listening address ({})", addr);
             return Err(ErrorKind::Other.into());
         }
