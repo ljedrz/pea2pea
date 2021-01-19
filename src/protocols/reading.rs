@@ -44,6 +44,25 @@ where
                     let (inbound_message_sender, mut inbound_message_receiver) =
                         mpsc::channel(self_clone.node().config().conn_inbound_queue_depth);
 
+                    // the task for processing parsed messages
+                    let processing_clone = self_clone.clone();
+                    let inbound_processing_task = tokio::spawn(async move {
+                        let node = processing_clone.node();
+                        trace!(parent: node.span(), "spawned a task for processing messages from {}", addr);
+
+                        loop {
+                            if let Some(msg) = inbound_message_receiver.recv().await {
+                                if let Err(e) = processing_clone.process_message(addr, msg).await {
+                                    error!(parent: node.span(), "can't process an inbound message: {}", e);
+                                    node.known_peers().register_failure(addr);
+                                }
+                            } else {
+                                node.disconnect(addr);
+                                break;
+                            }
+                        }
+                    });
+
                     // the task for reading messages from a stream
                     let reader_clone = self_clone.clone();
                     let reader_task = tokio::spawn(async move {
@@ -84,25 +103,6 @@ where
                                         _ => unreachable!(),
                                     }
                                 }
-                            }
-                        }
-                    });
-
-                    // the task for processing parsed messages
-                    let processing_clone = self_clone.clone();
-                    let inbound_processing_task = tokio::spawn(async move {
-                        let node = processing_clone.node();
-                        trace!(parent: node.span(), "spawned a task for processing messages from {}", addr);
-
-                        loop {
-                            if let Some(msg) = inbound_message_receiver.recv().await {
-                                if let Err(e) = processing_clone.process_message(addr, msg).await {
-                                    error!(parent: node.span(), "can't process an inbound message: {}", e);
-                                    node.known_peers().register_failure(addr);
-                                }
-                            } else {
-                                node.disconnect(addr);
-                                break;
                             }
                         }
                     });
