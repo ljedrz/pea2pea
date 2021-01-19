@@ -172,7 +172,7 @@ where
 
                             // send the message for further processing
                             if message_sender.send(msg).await.is_err() {
-                                error!("the inbound message channel is closed");
+                                error!(parent: self.node().span(), "the inbound message channel is closed");
                                 return Err(io::ErrorKind::BrokenPipe.into());
                             }
 

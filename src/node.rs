@@ -139,6 +139,8 @@ impl Node {
             loop {
                 match listener.accept().await {
                     Ok((stream, addr)) => {
+                        debug!(parent: node_clone.span(), "tentatively accepted a connection from {}", addr);
+
                         let num_connections = node_clone.num_all_connections();
                         if num_connections >= node_clone.config.max_connections as usize {
                             error!(
