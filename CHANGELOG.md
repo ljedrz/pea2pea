@@ -1,3 +1,8 @@
+# 0.16.2
+
+### Fixed
+- the reading loop in the default `Reading::enable_reading` impl is now delayed until the connection is fully established
+
 # 0.16.1
 
 ### Changed

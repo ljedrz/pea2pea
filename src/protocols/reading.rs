@@ -69,6 +69,12 @@ where
                         let node = reader_clone.node();
                         trace!(parent: node.span(), "spawned a task for reading messages from {}", addr);
 
+                        // postpone reads until the connection is fully established; if the process fails,
+                        // this task gets aborted, so there is no need for a dedicated timeout
+                        while !node.connected_addrs().contains(&addr) {
+                            sleep(Duration::from_millis(5)).await;
+                        }
+
                         let mut carry = 0;
                         loop {
                             match reader_clone
