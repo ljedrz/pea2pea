@@ -10,6 +10,7 @@ use tokio::{
     net::{TcpListener, TcpStream},
     sync::oneshot,
     task::JoinHandle,
+    time::timeout,
 };
 use tracing::*;
 
@@ -21,6 +22,7 @@ use std::{
         atomic::{AtomicUsize, Ordering::*},
         Arc,
     },
+    time::Duration,
 };
 
 macro_rules! enable_protocol {
@@ -199,6 +201,14 @@ impl Node {
         self.listening_addr
     }
 
+    async fn enable_protocols(&self, conn: Connection) -> io::Result<Connection> {
+        let conn = enable_protocol!("HandshakeProtocol", handshake_handler, self, conn);
+        let conn = enable_protocol!("ReadingProtocol", reading_handler, self, conn);
+        let conn = enable_protocol!("WritingProtocol", writing_handler, self, conn);
+
+        Ok(conn)
+    }
+
     /// Prepares the freshly acquired connection to handle the protocols the Node implements.
     async fn adapt_stream(
         &self,
@@ -224,9 +234,11 @@ impl Node {
         let connection = Connection::new(peer_addr, stream, !own_side, self);
 
         // enact the enabled protocols
-        let connection = enable_protocol!("HandshakeProtocol", handshake_handler, self, connection);
-        let connection = enable_protocol!("ReadingProtocol", reading_handler, self, connection);
-        let mut connection = enable_protocol!("WritingProtocol", writing_handler, self, connection);
+        let mut connection = timeout(
+            Duration::from_millis(self.config.max_protocol_setup_time_ms),
+            self.enable_protocols(connection),
+        )
+        .await??;
 
         // the protocols are responsible for doing reads and writes; ensure that the Connection object
         // is not capable of performing them if the protocols haven't been enabled.

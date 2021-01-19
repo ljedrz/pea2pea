@@ -25,6 +25,8 @@ pub struct NodeConfig {
     pub invalid_read_delay_secs: u64,
     /// The maximum number of active connections the node can maintain.
     pub max_connections: u16,
+    /// The maximum time allowed for connections to enable all protocols.
+    pub max_protocol_setup_time_ms: u64,
 }
 
 impl Default for NodeConfig {
@@ -41,6 +43,7 @@ impl Default for NodeConfig {
             conn_outbound_queue_depth: 16,
             invalid_read_delay_secs: 10,
             max_connections: 100,
+            max_protocol_setup_time_ms: 3000,
         }
     }
 }

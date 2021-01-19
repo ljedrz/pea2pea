@@ -1,5 +1,8 @@
 # 0.16.2
 
+### Added
+- `NodeConfig.max_protocol_setup_time_ms`, which restricts the amount of time that a connection can take to enact all its protocols; set to 3s by default
+
 ### Fixed
 - the reading loop in the default `Reading::enable_reading` impl is now delayed until the connection is fully established
 
