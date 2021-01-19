@@ -1,3 +1,11 @@
+# 0.16.1
+
+### Changed
+- in the default `Reading::enable_reading` impl, the message processing task is now spawned before the message reading task
+
+### Fixed
+- there is now an additional anti-self-connect safeguard in `Node::connect`
+
 # 0.16.0
 
 ### Changed
