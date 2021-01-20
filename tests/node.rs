@@ -217,9 +217,17 @@ async fn node_stats_received() {
     let mut writer = TcpStream::connect(reader.node().listening_addr())
         .await
         .unwrap();
+    let writer_addr = writer.local_addr().unwrap();
     writer.write_all(&[0; 10]).await.unwrap();
 
     wait_until!(1, reader.node().stats().received() == (5, 10));
+    wait_until!(1, {
+        if let Some(peer) = reader.node().known_peers().read().get(&writer_addr) {
+            peer.msgs_received == 5 && peer.bytes_received == 10
+        } else {
+            false
+        }
+    });
 }
 
 #[tokio::test]
@@ -274,4 +282,11 @@ async fn node_stats_sent() {
     reader.read_exact(&mut reader_buf).await.unwrap();
 
     wait_until!(1, writer.node().stats().sent() == (2, 8));
+    wait_until!(1, {
+        if let Some(peer) = writer.node().known_peers().read().get(&reader_addr) {
+            peer.msgs_sent == 2 && peer.bytes_sent == 8
+        } else {
+            false
+        }
+    });
 }
