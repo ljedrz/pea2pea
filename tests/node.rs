@@ -7,7 +7,7 @@ use tokio::{
 mod common;
 use pea2pea::{
     connect_nodes,
-    protocols::{Handshaking, Reading, ReturnableConnection},
+    protocols::{Handshaking, Reading, ReturnableConnection, Writing},
     Node, NodeConfig, Pea2Pea, Topology,
 };
 
@@ -220,4 +220,58 @@ async fn node_stats_received() {
     writer.write_all(&[0; 10]).await.unwrap();
 
     wait_until!(1, reader.node().stats().received() == (5, 10));
+}
+
+#[tokio::test]
+async fn node_stats_sent() {
+    #[derive(Clone)]
+    struct Wrap(Node);
+
+    impl Pea2Pea for Wrap {
+        fn node(&self) -> &Node {
+            &self.0
+        }
+    }
+
+    // a trivial writing protocol
+    impl Writing for Wrap {
+        fn write_message(
+            &self,
+            _: SocketAddr,
+            payload: &[u8],
+            buffer: &mut [u8],
+        ) -> io::Result<usize> {
+            buffer[..payload.len()].copy_from_slice(&payload);
+            Ok(payload.len())
+        }
+    }
+
+    let writer = Wrap(Node::new(None).await.unwrap());
+    writer.enable_writing();
+
+    // no need to set up a reader node
+    let listener = TcpListener::bind("0.0.0.0:0".parse::<SocketAddr>().unwrap())
+        .await
+        .unwrap();
+    let reader_addr = listener.local_addr().unwrap();
+    let listener_task = tokio::spawn(async move { listener.accept().await.unwrap() });
+
+    writer.node().connect(reader_addr).await.unwrap();
+    let (mut reader, _) = listener_task.await.unwrap();
+    let mut reader_buf = [0u8; 4];
+
+    writer
+        .node()
+        .send_direct_message(reader_addr, b"herp"[..].into())
+        .await
+        .unwrap();
+    reader.read_exact(&mut reader_buf).await.unwrap();
+    writer
+        .node()
+        .send_direct_message(reader_addr, b"derp"[..].into())
+        .await
+        .unwrap();
+    reader.read_exact(&mut reader_buf).await.unwrap();
+
+    wait_until!(1, writer.node().stats().sent() == (2, 8));
 }
