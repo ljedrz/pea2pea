@@ -1,15 +1,23 @@
-use tokio::{io::AsyncReadExt, net::TcpListener, sync::mpsc};
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    net::{TcpListener, TcpStream},
+    sync::mpsc,
+};
 
 mod common;
 use pea2pea::{
     connect_nodes,
-    protocols::{Handshaking, ReturnableConnection},
+    protocols::{Handshaking, Reading, ReturnableConnection},
     Node, NodeConfig, Pea2Pea, Topology,
 };
 
-use std::sync::{
-    atomic::{AtomicUsize, Ordering},
-    Arc,
+use std::{
+    io,
+    net::SocketAddr,
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
 };
 
 #[tokio::test]
@@ -172,4 +180,44 @@ async fn node_hung_handshake_fails() {
         .is_err());
     // ...but make sure that the connectee has acknowledged that connection attempt
     assert!(!connectee.node().known_peers().read().is_empty());
+}
+
+#[tokio::test]
+async fn node_stats_received() {
+    #[derive(Clone)]
+    struct Wrap(Node);
+
+    impl Pea2Pea for Wrap {
+        fn node(&self) -> &Node {
+            &self.0
+        }
+    }
+
+    // a trivial protocol with fixed-length 2B messages
+    impl Reading for Wrap {
+        type Message = ();
+
+        fn read_message(
+            &self,
+            _source: SocketAddr,
+            buffer: &[u8],
+        ) -> io::Result<Option<(Self::Message, usize)>> {
+            if buffer.len() >= 2 {
+                Ok(Some(((), 2)))
+            } else {
+                Ok(None)
+            }
+        }
+    }
+
+    let reader = Wrap(Node::new(None).await.unwrap());
+    reader.enable_reading();
+
+    // no need to set up a writer node
+    let mut writer = TcpStream::connect(reader.node().listening_addr())
+        .await
+        .unwrap();
+    writer.write_all(&[0; 10]).await.unwrap();
+
+    wait_until!(1, reader.node().stats().received() == (5, 10));
 }
