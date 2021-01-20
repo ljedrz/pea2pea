@@ -1,7 +1,11 @@
-use tokio::net::TcpListener;
+use tokio::{io::AsyncReadExt, net::TcpListener, sync::mpsc};
 
 mod common;
-use pea2pea::{connect_nodes, Node, NodeConfig, Topology};
+use pea2pea::{
+    connect_nodes,
+    protocols::{Handshaking, ReturnableConnection},
+    Node, NodeConfig, Pea2Pea, Topology,
+};
 
 use std::sync::{
     atomic::{AtomicUsize, Ordering},
@@ -113,4 +117,59 @@ async fn node_shutdown_closes_the_listener() {
     assert!(TcpListener::bind(addr).await.is_err());
     node.shut_down();
     assert!(TcpListener::bind(addr).await.is_ok());
+}
+
+#[tokio::test]
+async fn node_hung_handshake_fails() {
+    #[derive(Clone)]
+    struct Wrap(Node);
+
+    impl Pea2Pea for Wrap {
+        fn node(&self) -> &Node {
+            &self.0
+        }
+    }
+
+    // a badly implemented handshake protocol; it expects to receive 1B, but doesn't provide it
+    impl Handshaking for Wrap {
+        fn enable_handshaking(&self) {
+            let (from_node_sender, mut from_node_receiver) =
+                mpsc::channel::<ReturnableConnection>(1);
+
+            let handshaking_task = tokio::spawn(async move {
+                loop {
+                    if let Some((mut conn, _)) = from_node_receiver.recv().await {
+                        match conn.reader().read_exact(&mut [0u8; 1]).await {
+                            Ok(_) => {}
+                            Err(_) => unreachable!(),
+                        }
+
+                        unreachable!();
+                    }
+                }
+            });
+
+            self.node()
+                .set_handshake_handler((from_node_sender, handshaking_task).into());
+        }
+    }
+
+    let config = NodeConfig {
+        max_protocol_setup_time_ms: 10,
+        ..Default::default()
+    };
+    let connector = Wrap(Node::new(None).await.unwrap());
+    let connectee = Wrap(Node::new(Some(config)).await.unwrap());
+
+    connector.enable_handshaking();
+    connectee.enable_handshaking();
+
+    // the connection attempt should time out...
+    assert!(connector
+        .node()
+        .connect(connectee.node().listening_addr())
+        .await
+        .is_err());
+    // ...but make sure that the connectee has acknowledged that connection attempt
+    assert!(!connectee.node().known_peers().read().is_empty());
 }
