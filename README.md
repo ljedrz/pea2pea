@@ -8,15 +8,11 @@
 - benchmarking and stress-testing P2P nodes (or other network entities)
 - substituting other, "heavier" nodes in local network tests
 
-The benchmarks demonstrate pretty good performance (over 1GB/s in favorable scenarios), and the resource use is quite
-low; if you start a LOT of nodes, the only limit you'll encounter is most likely going to be the file descriptor one
-(due to every node opening a TCP socket to listen for connection requests).
-
 ## goals
-- small, simple codebase
-- ease of use
-- interoperability
-- good performance
+- small, simple codebase: the core is under 1K LOC; most of the library are tests and examples
+- ease of use: few objects and traits, no "turboeels" or generics/references forcing all parent objects to adapt
+- interoperability: strives to be as versatile as possible without sacrificing simplicity and ease of use
+- good performance: over 1GB/s in favorable scenarios, small memory footprint
 
 ## non-goals
 - `no_std`
