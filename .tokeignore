@@ -1,0 +1,4 @@
+# only count the code of the actual library
+examples
+tests
+Cargo.toml
