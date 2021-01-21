@@ -1,14 +1,15 @@
 use bytes::Bytes;
+use tokio::time::sleep;
 use tracing::*;
+use tracing_subscriber::filter::{EnvFilter, LevelFilter};
 
-mod common;
 use pea2pea::{
     connect_nodes,
     protocols::{Reading, Writing},
     Node, Pea2Pea, Topology,
 };
 
-use std::{io, net::SocketAddr};
+use std::{convert::TryInto, io, net::SocketAddr, time::Duration};
 
 #[derive(Clone)]
 struct Player(Node);
@@ -23,14 +24,22 @@ impl Pea2Pea for Player {
 impl Reading for Player {
     type Message = String;
 
-    fn read_message(
-        &self,
-        _source: SocketAddr,
-        buffer: &[u8],
-    ) -> io::Result<Option<(String, usize)>> {
-        let bytes = common::read_len_prefixed_message(2, buffer)?;
+    fn read_message(&self, _src: SocketAddr, buffer: &[u8]) -> io::Result<Option<(String, usize)>> {
+        if buffer.len() >= 2 {
+            let payload_len = u16::from_le_bytes(buffer[..2].try_into().unwrap()) as usize;
+            if payload_len == 0 { return Err(io::ErrorKind::InvalidData.into()); }
 
-        Ok(bytes.map(|bytes| (String::from_utf8(bytes[2..].to_vec()).unwrap(), bytes.len())))
+            if buffer[2..].len() >= payload_len {
+                let message = String::from_utf8(buffer[2..][..payload_len].to_vec())
+                    .map_err(|_| io::ErrorKind::InvalidData)?;
+
+                Ok(Some((message, 2 + payload_len)))
+            } else {
+                Ok(None)
+            }
+        } else {
+            Ok(None)
+        }
     }
 
     async fn process_message(&self, source: SocketAddr, message: String) -> io::Result<()> {
@@ -65,15 +74,25 @@ impl Writing for Player {
     }
 }
 
-#[tokio::test]
-async fn telephone_game() {
-    tracing_subscriber::fmt::init();
+#[tokio::main]
+async fn main() {
+    let filter = match EnvFilter::try_from_default_env() {
+        Ok(filter) => filter.add_directive("mio=off".parse().unwrap()),
+        _ => EnvFilter::default()
+            .add_directive(LevelFilter::INFO.into())
+            .add_directive("mio=off".parse().unwrap()),
+    };
+    tracing_subscriber::fmt()
+        .with_env_filter(filter)
+        .without_time()
+        .with_target(false)
+        .init();
 
-    let players = common::start_nodes(100, None)
-        .await
-        .into_iter()
-        .map(Player)
-        .collect::<Vec<_>>();
+    let mut players = Vec::with_capacity(100);
+    for _ in 0..100 {
+        let player = Player(Node::new(None).await.unwrap());
+        players.push(player);
+    }
 
     for player in &players {
         player.enable_reading();
@@ -89,5 +108,7 @@ async fn telephone_game() {
         .await
         .unwrap();
 
-    wait_until!(1, players.last().unwrap().node().stats().received().0 == 1);
+    while players.last().unwrap().node().stats().received().0 != 1 {
+        sleep(Duration::from_millis(10)).await;
+    }
 }
