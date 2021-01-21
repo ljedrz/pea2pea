@@ -15,9 +15,8 @@ use tracing_subscriber::filter::LevelFilter;
 
 use pea2pea::{
     connect_nodes,
-    connections::ConnectionSide,
     protocols::{Handshaking, Reading, ReturnableConnection, Writing},
-    Node, NodeConfig, Pea2Pea, Topology,
+    ConnectionSide, Node, NodeConfig, Pea2Pea, Topology,
 };
 
 use std::{

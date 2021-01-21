@@ -1,6 +1,8 @@
+use crate::config::NodeConfig;
 use crate::connections::{Connection, ConnectionSide, Connections};
+use crate::known_peers::KnownPeers;
+use crate::node_stats::NodeStats;
 use crate::protocols::{ProtocolHandler, Protocols};
-use crate::*;
 
 use bytes::Bytes;
 use fxhash::FxHashSet;

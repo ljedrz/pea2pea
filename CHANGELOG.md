@@ -1,3 +1,8 @@
+# 0.16.3
+
+### Added
+- `connections::ConnectionSide` is now re-exported, i.e. it can be imported with `use pea2pea::ConnectionSide`
+
 # 0.16.2
 
 ### Added

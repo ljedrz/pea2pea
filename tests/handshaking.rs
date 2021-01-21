@@ -7,9 +7,8 @@ use tracing::*;
 
 mod common;
 use pea2pea::{
-    connections::ConnectionSide,
     protocols::{Handshaking, Reading, ReturnableConnection, Writing},
-    Node, NodeConfig, Pea2Pea,
+    ConnectionSide, Node, NodeConfig, Pea2Pea,
 };
 
 use parking_lot::RwLock;

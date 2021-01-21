@@ -6,9 +6,8 @@ use tracing::*;
 use tracing_subscriber::filter::LevelFilter;
 
 use pea2pea::{
-    connections::ConnectionSide,
     protocols::{Handshaking, Reading, ReturnableConnection, Writing},
-    Node, NodeConfig, Pea2Pea,
+    ConnectionSide, Node, NodeConfig, Pea2Pea,
 };
 
 use std::{io, net::SocketAddr, time::Duration};

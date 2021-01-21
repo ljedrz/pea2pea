@@ -16,6 +16,7 @@ pub mod connections;
 pub mod protocols;
 
 pub use config::NodeConfig;
+pub use connections::ConnectionSide;
 pub use known_peers::{KnownPeers, PeerStats};
 pub use node::Node;
 pub use node_stats::NodeStats;
