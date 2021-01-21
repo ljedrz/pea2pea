@@ -1,6 +1,7 @@
 # pea2pea
 [![license](https://img.shields.io/badge/license-CC0-blue)](https://creativecommons.org/publicdomain/zero/1.0/)
 [![current version](https://img.shields.io/crates/v/pea2pea)](https://crates.io/crates/pea2pea)
+[![files](https://tokei.rs/b1/github/ljedrz/pea2pea?category=files)](https://github.com/ljedrz/pea2pea/tree/master/src)
 [![build status](https://img.shields.io/travis/com/ljedrz/pea2pea)](https://travis-ci.com/ljedrz/pea2pea)
 
 **pea2pea** is a P2P library designed with the following use cases in mind:
@@ -10,7 +11,7 @@
 - substituting other, "heavier" nodes in local network tests
 
 ## goals
-- small, simple codebase: the core is under 1K LOC; most of the library are tests and examples
+- small, simple codebase: the core is under 1k LOC; most of the library are tests and examples
 - ease of use: few objects and traits, no "turboeels" or generics/references forcing all parent objects to adapt
 - interoperability: strives to be as versatile as possible without sacrificing simplicity and ease of use
 - good performance: over 1GB/s in favorable scenarios, small memory footprint
@@ -34,4 +35,4 @@ That's it!
 
 - the [tests](https://github.com/ljedrz/pea2pea/tree/master/tests) directory contains some examples of simple use
 - [examples](https://github.com/ljedrz/pea2pea/tree/master/examples) contain more advanced setups, e.g. using [noise](https://noiseprotocol.org/noise.html) encryption
-- try `cargo run --example <example_name>` with different `RUST_LOG` verbosity levels to see what's going on under the hood
+- try running `cargo run --example <example_name>` with different `RUST_LOG` verbosity levels to check out what's going on under the hood
