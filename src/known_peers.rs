@@ -21,28 +21,31 @@ impl KnownPeers {
     /// Registers a connection to the given address.
     pub fn register_connection(&self, addr: SocketAddr) {
         if let Some(ref mut stats) = self.write().get_mut(&addr) {
-            stats.new_connection();
+            stats.last_connected = Some(Instant::now());
+            stats.times_connected += 1;
         }
     }
 
     /// Registers a submission of a message to the given address.
     pub fn register_sent_message(&self, to: SocketAddr, len: usize) {
         if let Some(ref mut stats) = self.write().get_mut(&to) {
-            stats.sent_message(len);
+            stats.msgs_sent += 1;
+            stats.bytes_sent += len as u64;
         }
     }
 
     /// Registers a receipt of a message to the given address.
     pub fn register_received_message(&self, from: SocketAddr, len: usize) {
         if let Some(ref mut stats) = self.write().get_mut(&from) {
-            stats.received_message(len);
+            stats.msgs_received += 1;
+            stats.bytes_received += len as u64;
         }
     }
 
     /// Registers a failure associated with the given address.
     pub fn register_failure(&self, addr: SocketAddr) {
         if let Some(ref mut stats) = self.write().get_mut(&addr) {
-            stats.register_failure();
+            stats.failures += 1;
         }
     }
 
@@ -90,26 +93,5 @@ impl Default for PeerStats {
             bytes_received: 0,
             failures: 0,
         }
-    }
-}
-
-impl PeerStats {
-    pub(crate) fn new_connection(&mut self) {
-        self.last_connected = Some(Instant::now());
-        self.times_connected += 1;
-    }
-
-    pub(crate) fn sent_message(&mut self, msg_len: usize) {
-        self.msgs_sent += 1;
-        self.bytes_sent += msg_len as u64;
-    }
-
-    pub(crate) fn received_message(&mut self, msg_len: usize) {
-        self.msgs_received += 1;
-        self.bytes_received += msg_len as u64;
-    }
-
-    pub(crate) fn register_failure(&mut self) {
-        self.failures += 1;
     }
 }
