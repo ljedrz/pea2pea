@@ -418,25 +418,25 @@ impl Node {
 // FIXME: this can probably be done more elegantly
 /// Creates the node's tracing span based on its name.
 fn create_span(node_name: &str) -> Span {
-    let span = trace_span!("node", name = node_name);
-    let span = if span.is_disabled() {
-        debug_span!("node", name = node_name)
+    let mut span = trace_span!("node", name = node_name);
+    if !span.is_disabled() {
+        return span;
     } else {
-        span
-    };
-    let span = if span.is_disabled() {
-        info_span!("node", name = node_name)
+        span = debug_span!("node", name = node_name);
+    }
+    if !span.is_disabled() {
+        return span;
     } else {
-        span
-    };
-    let span = if span.is_disabled() {
-        warn_span!("node", name = node_name)
+        span = info_span!("node", name = node_name);
+    }
+    if !span.is_disabled() {
+        return span;
     } else {
+        span = warn_span!("node", name = node_name);
+    }
+    if !span.is_disabled() {
         span
-    };
-    if span.is_disabled() {
+    } else {
         error_span!("node", name = node_name)
-    } else {
-        span
     }
 }
