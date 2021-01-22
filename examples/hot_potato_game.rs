@@ -50,9 +50,8 @@ struct Player {
 }
 
 impl Player {
-    async fn new(name: PlayerName) -> Self {
+    async fn new() -> Self {
         let config = NodeConfig {
-            name: Some(name),
             listener_ip: "127.0.0.1".parse().unwrap(),
             ..Default::default()
         };
@@ -78,7 +77,7 @@ impl Player {
             .choose(&mut *RNG.lock())
             .unwrap();
 
-        info!(parent: self.node().span(), "throwing the potato to {}!", new_carrier_name);
+        info!(parent: self.node().span(), "throwing the potato to player {}!", new_carrier_name);
 
         let message = bincode::serialize(&Message::HotPotato).unwrap();
         self.node()
@@ -252,8 +251,8 @@ async fn main() {
     );
 
     let mut players = Vec::with_capacity(NUM_PLAYERS);
-    for i in 0..NUM_PLAYERS {
-        players.push(Player::new(format!("player {}", i)).await);
+    for _ in 0..NUM_PLAYERS {
+        players.push(Player::new().await);
     }
 
     for player in &players {
@@ -274,7 +273,7 @@ async fn main() {
     println!("\n---------- scoreboard ----------");
     for player in &players {
         println!(
-            "{} got the potato {} times",
+            "player {} got the potato {} times",
             player.node().name(),
             player.potato_count.load(Ordering::Relaxed)
         );
