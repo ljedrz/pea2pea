@@ -62,6 +62,7 @@ where
                             }
                         }
                     });
+                    conn.tasks.push(inbound_processing_task);
 
                     // the task for reading messages from a stream
                     let reader_clone = self_clone.clone();
@@ -112,11 +113,7 @@ where
                             }
                         }
                     });
-
-                    // the Connection object registers the handles of the
-                    // newly created tasks before being returned to the Node
                     conn.tasks.push(reader_task);
-                    conn.tasks.push(inbound_processing_task);
 
                     // return the Connection to the Node, resuming Node::adapt_stream
                     if conn_returner.send(Ok(conn)).is_err() {

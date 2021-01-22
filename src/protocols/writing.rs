@@ -1,7 +1,6 @@
 use crate::{protocols::ReturnableConnection, Pea2Pea};
 
 use async_trait::async_trait;
-use bytes::Bytes;
 use tokio::{
     io::{AsyncWrite, AsyncWriteExt},
     sync::mpsc,
@@ -37,9 +36,8 @@ where
                         .into_boxed_slice();
 
                     let (outbound_message_sender, mut outbound_message_receiver) =
-                        mpsc::channel::<Bytes>(
-                            self_clone.node().config().conn_outbound_queue_depth,
-                        );
+                        mpsc::channel(self_clone.node().config().conn_outbound_queue_depth);
+                    conn.outbound_message_sender = Some(outbound_message_sender);
 
                     // the task for writing outbound messages
                     let writer_clone = self_clone.clone();
@@ -71,11 +69,7 @@ where
                             }
                         }
                     });
-
-                    // the Connection object registers the handle of the newly created task and
-                    // the Sender that will allow the Node to transmit messages to it
                     conn.tasks.push(writer_task);
-                    conn.outbound_message_sender = Some(outbound_message_sender);
 
                     // return the Connection to the Node, resuming Node::adapt_stream
                     if conn_returner.send(Ok(conn)).is_err() {
