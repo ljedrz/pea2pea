@@ -20,26 +20,21 @@ pub enum Topology {
 
 /// Connects the provided list of nodes in order to form the given `Topology`.
 pub async fn connect_nodes<T: Pea2Pea>(nodes: &[T], topology: Topology) -> io::Result<()> {
-    if nodes.len() < 2 {
+    let count = nodes.len();
+    if count < 2 {
         // there must be more than one node in order to have any connections
         return Err(ErrorKind::Other.into());
     }
 
-    let count = nodes.len();
-
     match topology {
         Topology::Line | Topology::Ring => {
             for i in 0..(count - 1) {
-                nodes[i]
-                    .node()
-                    .connect(nodes[i + 1].node().listening_addr())
-                    .await?;
+                let addr = nodes[i + 1].node().listening_addr();
+                nodes[i].node().connect(addr).await?;
             }
             if topology == Topology::Ring {
-                nodes[count - 1]
-                    .node()
-                    .connect(nodes[0].node().listening_addr())
-                    .await?;
+                let addr = nodes[0].node().listening_addr();
+                nodes[count - 1].node().connect(addr).await?;
             }
         }
         Topology::Mesh => {
@@ -47,10 +42,8 @@ pub async fn connect_nodes<T: Pea2Pea>(nodes: &[T], topology: Topology) -> io::R
             for i in 0..count {
                 for (j, peer) in nodes.iter().enumerate() {
                     if i != j && connected_pairs.insert((i, j)) && connected_pairs.insert((j, i)) {
-                        nodes[i]
-                            .node()
-                            .connect(peer.node().listening_addr())
-                            .await?;
+                        let addr = peer.node().listening_addr();
+                        nodes[i].node().connect(addr).await?;
                     }
                 }
             }
