@@ -74,6 +74,7 @@ impl SecureNode {
     async fn new(name: &str) -> io::Result<Self> {
         let config = NodeConfig {
             name: Some(name.into()),
+            listener_ip: "127.0.0.1".parse().unwrap(),
             conn_read_buffer_size: NOISE_BUF_LEN + 2, // 2 for the encrypted message length,
             ..Default::default()
         };

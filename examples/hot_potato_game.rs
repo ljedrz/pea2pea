@@ -53,6 +53,7 @@ impl Player {
     async fn new(name: PlayerName) -> Self {
         let config = NodeConfig {
             name: Some(name),
+            listener_ip: "127.0.0.1".parse().unwrap(),
             ..Default::default()
         };
 

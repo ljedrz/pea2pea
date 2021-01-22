@@ -127,12 +127,14 @@ async fn main() {
 
     let config = NodeConfig {
         name: Some("Jotaro".into()),
+        listener_ip: "127.0.0.1".parse().unwrap(),
         ..Default::default()
     };
     let jotaro = JoJoNode(Node::new(Some(config)).await.unwrap());
 
     let config = NodeConfig {
         name: Some("Dio".into()),
+        listener_ip: "127.0.0.1".parse().unwrap(),
         ..Default::default()
     };
     let dio = JoJoNode(Node::new(Some(config)).await.unwrap());
