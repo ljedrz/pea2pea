@@ -4,6 +4,8 @@ use std::net::{IpAddr, Ipv4Addr};
 #[derive(Debug, Clone)]
 pub struct NodeConfig {
     /// The name/identifier of the node.
+    ///
+    /// note: if set to `None`, the `Node` will automatically be assigned a sequential, zero-based numeric identifier.
     pub name: Option<String>,
     /// The IP address the node's connection listener should bind to.
     pub listener_ip: IpAddr,
@@ -24,6 +26,9 @@ pub struct NodeConfig {
     /// The delay on the next read from a connection that can't be read from.
     pub invalid_read_delay_secs: u64,
     /// The maximum number of active connections the node can maintain.
+    ///
+    /// note: this number can very briefly be breached by 1 in case of inbound connection attempts. It can never be
+    /// breached by outbound connection attempts, though.
     pub max_connections: u16,
     /// The maximum time allowed for connections to enable all protocols.
     ///
