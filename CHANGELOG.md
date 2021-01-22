@@ -1,3 +1,8 @@
+# 0.16.4
+
+### Fixed
+- the `fixed_length_crusaders` example needed a bump to the default `max_protocol_setup_time_ms` introduced in `0.16.2`
+
 # 0.16.3
 
 ### Added
