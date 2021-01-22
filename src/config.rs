@@ -26,6 +26,13 @@ pub struct NodeConfig {
     /// The maximum number of active connections the node can maintain.
     pub max_connections: u16,
     /// The maximum time allowed for connections to enable all protocols.
+    ///
+    /// note: it should not be treated as a handshake timeout; the handshake is primarily intended to be an operation
+    /// synchronous towards the `Connection` object: if a `Connection` is sent to the `Handshaking` protocol handler
+    /// and the associated task hangs, it will not automatically get dropped and the task will not resume - it is the
+    /// user's responsibility to handle it. The same warning applies to `Reading` and `Writing`, but they are intended
+    /// to immediately spawn their own tasks (as in the default implementations), so they are less susceptible to this
+    /// issue.
     pub max_protocol_setup_time_ms: u64,
 }
 
