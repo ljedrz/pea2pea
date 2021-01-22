@@ -2,6 +2,7 @@
 [![license](https://img.shields.io/badge/license-CC0-blue)](https://creativecommons.org/publicdomain/zero/1.0/)
 [![current version](https://img.shields.io/crates/v/pea2pea)](https://crates.io/crates/pea2pea)
 [![files](https://tokei.rs/b1/github/ljedrz/pea2pea?category=files)](https://github.com/ljedrz/pea2pea/tree/master/src)
+[![LOC](https://tokei.rs/b1/github/ljedrz/pea2pea?category=code)](https://github.com/ljedrz/pea2pea/tree/master/src)
 [![build status](https://img.shields.io/travis/com/ljedrz/pea2pea)](https://travis-ci.com/ljedrz/pea2pea)
 
 **pea2pea** is a P2P library designed with the following use cases in mind:
