@@ -1,9 +1,7 @@
 use crate::Pea2Pea;
 
-use std::{
-    collections::HashSet,
-    io::{self, ErrorKind},
-};
+use fxhash::FxHashSet;
+use std::io::{self, ErrorKind};
 
 /// The way in which nodes are connected to each other; used in `connect_nodes`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -38,7 +36,8 @@ pub async fn connect_nodes<T: Pea2Pea>(nodes: &[T], topology: Topology) -> io::R
             }
         }
         Topology::Mesh => {
-            let mut connected_pairs = HashSet::with_capacity((count - 1) * 2);
+            let mut connected_pairs =
+                FxHashSet::with_capacity_and_hasher((count - 1) * 2, Default::default());
             for i in 0..count {
                 for (j, peer) in nodes.iter().enumerate() {
                     if i != j && connected_pairs.insert((i, j)) && connected_pairs.insert((j, i)) {
