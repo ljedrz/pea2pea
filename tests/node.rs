@@ -138,7 +138,8 @@ async fn node_hung_handshake_fails() {
         }
     }
 
-    // a badly implemented handshake protocol; it expects to receive 1B, but doesn't provide it
+    // a badly implemented handshake protocol; 1B is expected by both the initiator and the responder (no distinction
+    // is even made), but it is never provided by either of them
     impl Handshaking for Wrap {
         fn enable_handshaking(&self) {
             let (from_node_sender, mut from_node_receiver) =
@@ -146,13 +147,16 @@ async fn node_hung_handshake_fails() {
 
             let handshaking_task = tokio::spawn(async move {
                 loop {
-                    if let Some((mut conn, _)) = from_node_receiver.recv().await {
+                    if let Some((mut conn, result_sender)) = from_node_receiver.recv().await {
                         match conn.reader().read_exact(&mut [0u8; 1]).await {
                             Ok(_) => {}
                             Err(_) => unreachable!(),
                         }
 
-                        unreachable!();
+                        // this code is never reached
+                        if result_sender.send(Ok(conn)).is_err() {
+                            unreachable!();
+                        }
                     }
                 }
             });
@@ -166,7 +170,7 @@ async fn node_hung_handshake_fails() {
         max_protocol_setup_time_ms: 10,
         ..Default::default()
     };
-    let connector = Wrap(Node::new(None).await.unwrap());
+    let connector = Wrap(Node::new(Some(config.clone())).await.unwrap());
     let connectee = Wrap(Node::new(Some(config)).await.unwrap());
 
     connector.enable_handshaking();
