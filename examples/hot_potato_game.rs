@@ -178,7 +178,7 @@ impl Reading for Player {
         _source: SocketAddr,
         buffer: &[u8],
     ) -> io::Result<Option<(Self::Message, usize)>> {
-        // expecting incoming messages to be prefixed with their length encoded as a LE u16
+        // expecting inbound messages to be prefixed with their length encoded as a LE u16
         if buffer.len() >= 2 {
             let payload_len = u16::from_le_bytes(buffer[..2].try_into().unwrap()) as usize;
 

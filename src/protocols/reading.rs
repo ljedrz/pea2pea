@@ -17,7 +17,7 @@ pub trait Reading: Pea2Pea
 where
     Self: Clone + Send + Sync + 'static,
 {
-    /// The final (deserialized) type of incoming messages.
+    /// The final (deserialized) type of inbound messages.
     type Message: Send;
 
     /// Prepares the node to receive messages; failures to read from a connection's stream are penalized by a timeout
