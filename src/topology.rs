@@ -1,7 +1,7 @@
 use crate::Pea2Pea;
 
 use fxhash::FxHashSet;
-use std::io::{self, ErrorKind};
+use std::io;
 
 /// The way in which nodes are connected to each other; used in `connect_nodes`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -21,7 +21,7 @@ pub async fn connect_nodes<T: Pea2Pea>(nodes: &[T], topology: Topology) -> io::R
     let count = nodes.len();
     if count < 2 {
         // there must be more than one node in order to have any connections
-        return Err(ErrorKind::Other.into());
+        return Err(io::ErrorKind::Other.into());
     }
 
     match topology {

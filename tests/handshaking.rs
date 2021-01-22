@@ -12,13 +12,7 @@ use pea2pea::{
 };
 
 use parking_lot::RwLock;
-use std::{
-    collections::HashMap,
-    convert::TryInto,
-    io::{self, ErrorKind},
-    net::SocketAddr,
-    sync::Arc,
-};
+use std::{collections::HashMap, convert::TryInto, io, net::SocketAddr, sync::Arc};
 
 enum HandshakeMsg {
     A(u64),
@@ -32,7 +26,7 @@ impl HandshakeMsg {
         match bytes[0] {
             0 => Ok(HandshakeMsg::A(value)),
             1 => Ok(HandshakeMsg::B(value)),
-            _ => Err(ErrorKind::Other.into()),
+            _ => Err(io::ErrorKind::Other.into()),
         }
     }
 
@@ -78,7 +72,7 @@ macro_rules! read_handshake_message {
                 Ok(msg)
             } else {
                 error!(parent: $conn.node.span(), "unrecognized handshake message (neither A nor B)");
-                Err(ErrorKind::Other.into())
+                Err(io::ErrorKind::Other.into())
             };
 
             if let Ok($expected(nonce)) = msg {
@@ -86,11 +80,11 @@ macro_rules! read_handshake_message {
                 Ok(nonce)
             } else {
                 error!(parent: $conn.node.span(), "received an invalid handshake message from {} (expected B)", $conn.addr);
-                Err(ErrorKind::Other.into())
+                Err(io::ErrorKind::Other.into())
             }
         } else {
             error!(parent: $conn.node.span(), "couldn't read handshake message B");
-            Err(ErrorKind::Other.into())
+            Err(io::ErrorKind::Other.into())
         }
     }}
 }

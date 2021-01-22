@@ -15,11 +15,7 @@ use tokio::{
 };
 use tracing::*;
 
-use std::{
-    io::{self, ErrorKind},
-    net::SocketAddr,
-    ops::Not,
-};
+use std::{io, net::SocketAddr, ops::Not};
 
 #[derive(Default)]
 pub(crate) struct Connections(RwLock<FxHashMap<SocketAddr, Connection>>);
@@ -29,7 +25,7 @@ impl Connections {
         if let Some(conn) = self.0.read().get(&addr) {
             conn.sender()
         } else {
-            Err(ErrorKind::NotConnected.into())
+            Err(io::ErrorKind::NotConnected.into())
         }
     }
 
@@ -138,7 +134,7 @@ impl Connection {
             Ok(sender.clone())
         } else {
             error!(parent: self.node.span(), "can't send messages: the Writing protocol is disabled");
-            Err(ErrorKind::Other.into())
+            Err(io::ErrorKind::Other.into())
         }
     }
 }

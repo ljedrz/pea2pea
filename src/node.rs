@@ -17,7 +17,7 @@ use tokio::{
 use tracing::*;
 
 use std::{
-    io::{self, ErrorKind},
+    io,
     net::SocketAddr,
     ops::Deref,
     sync::{
@@ -38,7 +38,7 @@ macro_rules! enable_protocol {
                 Ok(Ok(conn)) => conn,
                 _ => {
                     return Err(io::Error::new(
-                        ErrorKind::Other,
+                        io::ErrorKind::Other,
                         format!("{} failed", $protocol_name),
                     ));
                 }
@@ -259,7 +259,7 @@ impl Node {
             || addr.ip().is_loopback() && addr.port() == self.listening_addr().port()
         {
             error!(parent: self.span(), "can't connect to node's own listening address ({})", addr);
-            return Err(ErrorKind::Other.into());
+            return Err(io::ErrorKind::Other.into());
         }
 
         let num_connections = self.num_all_connections();
@@ -268,17 +268,17 @@ impl Node {
                 parent: self.span(), "maximum number of connections reached: {}/{}; refusing to connect to {}",
                 num_connections, self.config.max_connections, addr
             );
-            return Err(ErrorKind::Other.into());
+            return Err(io::ErrorKind::Other.into());
         }
 
         if self.connections.is_connected(addr) {
             warn!(parent: self.span(), "already connected to {}", addr);
-            return Err(ErrorKind::Other.into());
+            return Err(io::ErrorKind::Other.into());
         }
 
         if !self.connecting.lock().insert(addr) {
             warn!(parent: self.span(), "already connecting to {}", addr);
-            return Err(ErrorKind::Other.into());
+            return Err(io::ErrorKind::Other.into());
         }
 
         let stream = TcpStream::connect(addr).await.map_err(|e| {
@@ -319,7 +319,7 @@ impl Node {
             .sender(addr)?
             .send(message)
             .await
-            .map_err(|_| ErrorKind::NotConnected.into()) // an error here means the connection was shut down
+            .map_err(|_| io::ErrorKind::NotConnected.into()) // an error here means the connection was shut down
     }
 
     /// Broadcasts the provided message to all peers, as long as the `Writing` protocol is enabled.
