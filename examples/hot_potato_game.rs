@@ -64,7 +64,6 @@ impl Player {
     }
 
     async fn throw_potato(&self) {
-        info!(parent: self.node().span(), "I have the potato!");
         let message = Message::IHaveThePotato(self.node().name().into());
         let message = bincode::serialize(&message).unwrap();
         self.node().send_broadcast(message.into()).await.unwrap();
@@ -202,25 +201,29 @@ impl Reading for Player {
     async fn process_message(&self, _source: SocketAddr, message: Self::Message) -> io::Result<()> {
         match message {
             Message::HotPotato => {
-                if let Some(ref mut old_carrier) = self
-                    .other_players
-                    .lock()
-                    .values_mut()
-                    .find(|p| p.is_carrier)
+                info!(parent: self.node().span(), "I have the potato!");
                 {
-                    old_carrier.is_carrier = false;
+                    let mut other_players = self.other_players.lock();
+                    if let Some(ref mut old_carrier) =
+                        other_players.values_mut().find(|p| p.is_carrier)
+                    {
+                        old_carrier.is_carrier = false;
+                    }
+                    assert!(other_players.values().all(|p| !p.is_carrier));
                 }
 
                 self.potato_count.fetch_add(1, Ordering::Relaxed);
                 self.throw_potato().await;
             }
             Message::IHaveThePotato(carrier) => {
-                let mut players = self.other_players.lock();
+                let mut other_players = self.other_players.lock();
 
-                if let Some(ref mut old_carrier) = players.values_mut().find(|p| p.is_carrier) {
+                if let Some(ref mut old_carrier) = other_players.values_mut().find(|p| p.is_carrier)
+                {
                     old_carrier.is_carrier = false;
                 }
-                if let Some(ref mut new_carrier) = players.get_mut(&carrier) {
+                assert!(other_players.values().all(|p| !p.is_carrier));
+                if let Some(ref mut new_carrier) = other_players.get_mut(&carrier) {
                     new_carrier.is_carrier = true;
                 }
             }
