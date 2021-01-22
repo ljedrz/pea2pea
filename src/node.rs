@@ -145,13 +145,8 @@ impl Node {
                     Ok((stream, addr)) => {
                         debug!(parent: node_clone.span(), "tentatively accepted a connection from {}", addr);
 
-                        let num_connections = node_clone.num_all_connections();
-                        if num_connections >= node_clone.config.max_connections as usize {
-                            error!(
-                                parent: node_clone.span(),
-                                "maximum number of connections reached: {}/{}; rejecting {}",
-                                num_connections, node_clone.config.max_connections, addr
-                            );
+                        if !node_clone.can_add_connection() {
+                            debug!(parent: node_clone.span(), "rejecting the connection from {}", addr);
                             continue;
                         }
 
@@ -262,12 +257,8 @@ impl Node {
             return Err(io::ErrorKind::Other.into());
         }
 
-        let num_connections = self.num_all_connections();
-        if num_connections >= self.config.max_connections as usize {
-            error!(
-                parent: self.span(), "maximum number of connections reached: {}/{}; refusing to connect to {}",
-                num_connections, self.config.max_connections, addr
-            );
+        if !self.can_add_connection() {
+            error!(parent: self.span(), "refusing to connect to {}", addr);
             return Err(io::ErrorKind::Other.into());
         }
 
@@ -352,9 +343,16 @@ impl Node {
         self.connections.num_connected()
     }
 
-    /// Returns the number of *all* connections, including the ones barely established.
-    fn num_all_connections(&self) -> usize {
-        self.num_connected() + self.connecting.lock().len()
+    /// Checks whether the `Node` can handle an additional connection.
+    fn can_add_connection(&self) -> bool {
+        let num_connected = self.num_connected();
+        let limit = self.config.max_connections as usize;
+        if num_connected >= limit || num_connected + self.connecting.lock().len() >= limit {
+            warn!(parent: self.span(), "maximum number of connections ({}) reached", limit);
+            false
+        } else {
+            true
+        }
     }
 
     /// Returns a reference to the handshake handler, if the `Handshaking` protocol is enabled.
