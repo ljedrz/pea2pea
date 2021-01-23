@@ -4,15 +4,14 @@ use bytes::Bytes;
 use parking_lot::{Mutex, RwLock};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
-    sync::mpsc,
     time::sleep,
 };
 use tracing::*;
 use tracing_subscriber::filter::LevelFilter;
 
 use pea2pea::{
-    protocols::{Handshaking, Reading, ReturnableConnection, Writing},
-    ConnectionSide, Node, NodeConfig, Pea2Pea,
+    protocols::{Handshaking, Reading, Writing},
+    Connection, ConnectionSide, Node, NodeConfig, Pea2Pea,
 };
 
 use std::{
@@ -87,107 +86,85 @@ impl SecureNode {
     }
 }
 
+#[async_trait::async_trait]
 impl Handshaking for SecureNode {
-    fn enable_handshaking(&self) {
-        let (from_node_sender, mut from_node_receiver) = mpsc::channel::<ReturnableConnection>(
-            self.node().config().protocol_handler_queue_depth,
-        );
-
+    async fn perform_handshake(&self, mut conn: Connection) -> io::Result<Connection> {
         // the noise handshake settings used by snow
         const HANDSHAKE_PATTERN: &str = "Noise_XXpsk3_25519_ChaChaPoly_BLAKE2s";
         const PRE_SHARED_KEY: &[u8] = b"I dont care for codes of conduct"; // the PSK must be 32B
 
-        // spawn a background task dedicated to handling the handshakes
-        let self_clone = self.clone();
-        let handshaking_task = tokio::spawn(async move {
-            loop {
-                if let Some((mut conn, result_sender)) = from_node_receiver.recv().await {
-                    let builder = snow::Builder::new(HANDSHAKE_PATTERN.parse().unwrap());
-                    let static_key = builder.generate_keypair().unwrap().private;
-                    let noise_builder = builder
-                        .local_private_key(&static_key)
-                        .psk(3, PRE_SHARED_KEY);
-                    let mut buffer: Box<[u8]> = vec![0u8; NOISE_BUF_LEN].into();
-                    let mut buf = [0u8; NOISE_BUF_LEN]; // a temporary intermediate buffer to decrypt from
+        let builder = snow::Builder::new(HANDSHAKE_PATTERN.parse().unwrap());
+        let static_key = builder.generate_keypair().unwrap().private;
+        let noise_builder = builder
+            .local_private_key(&static_key)
+            .psk(3, PRE_SHARED_KEY);
+        let mut buffer: Box<[u8]> = vec![0u8; NOISE_BUF_LEN].into();
+        let mut buf = [0u8; NOISE_BUF_LEN]; // a temporary intermediate buffer to decrypt from
 
-                    let state = match !conn.side {
-                        ConnectionSide::Initiator => {
-                            info!(parent: conn.node.span(), "handshaking with {} as the initiator", conn.addr);
+        let state = match !conn.side {
+            ConnectionSide::Initiator => {
+                let mut noise = noise_builder.build_initiator().unwrap();
 
-                            let mut noise = noise_builder.build_initiator().unwrap();
+                // -> e
+                let len = noise.write_message(&[], &mut buffer).unwrap();
+                conn.writer()
+                    .write_all(&packet_message(&buffer[..len]))
+                    .await
+                    .unwrap();
+                debug!(parent: conn.node.span(), "sent e (XX handshake part 1/3)");
 
-                            // -> e
-                            let len = noise.write_message(&[], &mut buffer).unwrap();
-                            conn.writer()
-                                .write_all(&packet_message(&buffer[..len]))
-                                .await
-                                .unwrap();
-                            debug!(parent: conn.node.span(), "sent e (XX handshake part 1/3)");
+                // <- e, ee, s, es
+                let len = conn.reader().read(&mut buf).await.unwrap();
+                let message = read_message(&buf[..len]).unwrap().unwrap();
+                noise.read_message(message, &mut buffer).unwrap();
+                debug!(parent: conn.node.span(), "received e, ee, s, es (XX handshake part 2/3)");
 
-                            // <- e, ee, s, es
-                            let len = conn.reader().read(&mut buf).await.unwrap();
-                            let message = read_message(&buf[..len]).unwrap().unwrap();
-                            noise.read_message(message, &mut buffer).unwrap();
-                            debug!(parent: conn.node.span(), "received e, ee, s, es (XX handshake part 2/3)");
+                // -> s, se, psk
+                let len = noise.write_message(&[], &mut buffer).unwrap();
+                conn.writer()
+                    .write_all(&packet_message(&buffer[..len]))
+                    .await
+                    .unwrap();
+                debug!(parent: conn.node.span(), "sent s, se, psk (XX handshake part 3/3)");
 
-                            // -> s, se, psk
-                            let len = noise.write_message(&[], &mut buffer).unwrap();
-                            conn.writer()
-                                .write_all(&packet_message(&buffer[..len]))
-                                .await
-                                .unwrap();
-                            debug!(parent: conn.node.span(), "sent s, se, psk (XX handshake part 3/3)");
-
-                            noise.into_transport_mode().unwrap()
-                        }
-                        ConnectionSide::Responder => {
-                            info!(parent: conn.node.span(), "handshaking with {} as the responder", conn.addr);
-
-                            let mut noise = noise_builder.build_responder().unwrap();
-
-                            // <- e
-                            let len = conn.reader().read(&mut buf).await.unwrap();
-                            let message = read_message(&buf[..len]).unwrap().unwrap();
-                            noise.read_message(message, &mut buffer).unwrap();
-                            debug!(parent: conn.node.span(), "received e (XX handshake part 1/3)");
-
-                            // -> e, ee, s, es
-                            let len = noise.write_message(&[], &mut buffer).unwrap();
-                            conn.writer()
-                                .write_all(&packet_message(&buffer[..len]))
-                                .await
-                                .unwrap();
-                            debug!(parent: conn.node.span(), "sent e, ee, s, es (XX handshake part 2/3)");
-
-                            // <- s, se, psk
-                            let len = conn.reader().read(&mut buf).await.unwrap();
-                            let message = read_message(&buf[..len]).unwrap().unwrap();
-                            noise.read_message(message, &mut buffer).unwrap();
-                            debug!(parent: conn.node.span(), "received s, se, psk (XX handshake part 3/3)");
-
-                            noise.into_transport_mode().unwrap()
-                        }
-                    };
-
-                    debug!(parent: conn.node.span(), "XX handshake complete");
-
-                    let noise_state = NoiseState { state, buffer };
-
-                    self_clone
-                        .noise_states
-                        .write()
-                        .insert(conn.addr, Arc::new(Mutex::new(noise_state)));
-
-                    // return the Connection to the node
-                    if result_sender.send(Ok(conn)).is_err() {
-                        unreachable!(); // can't recover if this happens
-                    }
-                }
+                noise.into_transport_mode().unwrap()
             }
-        });
+            ConnectionSide::Responder => {
+                let mut noise = noise_builder.build_responder().unwrap();
 
-        self.node()
-            .set_handshake_handler((from_node_sender, handshaking_task).into());
+                // <- e
+                let len = conn.reader().read(&mut buf).await.unwrap();
+                let message = read_message(&buf[..len]).unwrap().unwrap();
+                noise.read_message(message, &mut buffer).unwrap();
+                debug!(parent: conn.node.span(), "received e (XX handshake part 1/3)");
+
+                // -> e, ee, s, es
+                let len = noise.write_message(&[], &mut buffer).unwrap();
+                conn.writer()
+                    .write_all(&packet_message(&buffer[..len]))
+                    .await
+                    .unwrap();
+                debug!(parent: conn.node.span(), "sent e, ee, s, es (XX handshake part 2/3)");
+
+                // <- s, se, psk
+                let len = conn.reader().read(&mut buf).await.unwrap();
+                let message = read_message(&buf[..len]).unwrap().unwrap();
+                noise.read_message(message, &mut buffer).unwrap();
+                debug!(parent: conn.node.span(), "received s, se, psk (XX handshake part 3/3)");
+
+                noise.into_transport_mode().unwrap()
+            }
+        };
+
+        debug!(parent: conn.node.span(), "XX handshake complete");
+
+        let noise_state = NoiseState { state, buffer };
+
+        self.noise_states
+            .write()
+            .insert(conn.addr, Arc::new(Mutex::new(noise_state)));
+
+        Ok(conn)
     }
 }
 

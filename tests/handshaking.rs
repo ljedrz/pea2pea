@@ -1,14 +1,11 @@
 use bytes::Bytes;
-use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
-    sync::mpsc,
-};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tracing::*;
 
 mod common;
 use pea2pea::{
-    protocols::{Handshaking, Reading, ReturnableConnection, Writing},
-    ConnectionSide, Node, NodeConfig, Pea2Pea,
+    protocols::{Handshaking, Reading, Writing},
+    Connection, ConnectionSide, Node, NodeConfig, Pea2Pea,
 };
 
 use parking_lot::RwLock;
@@ -67,24 +64,15 @@ macro_rules! read_handshake_message {
     ($expected: path, $conn: expr) => {{
         let mut buf = [0u8; 9];
 
-        if let Ok(_) = $conn.reader().read_exact(&mut buf).await {
-            let msg: io::Result<HandshakeMsg> = if let Ok(msg) = HandshakeMsg::deserialize(&buf) {
-                Ok(msg)
-            } else {
-                error!(parent: $conn.node.span(), "unrecognized handshake message (neither A nor B)");
-                Err(io::ErrorKind::Other.into())
-            };
+        $conn.reader().read_exact(&mut buf).await?;
+        let msg = HandshakeMsg::deserialize(&buf)?;
 
-            if let Ok($expected(nonce)) = msg {
-                debug!(parent: $conn.node.span(), "received handshake message B from {}", $conn.addr);
-                Ok(nonce)
-            } else {
-                error!(parent: $conn.node.span(), "received an invalid handshake message from {} (expected B)", $conn.addr);
-                Err(io::ErrorKind::Other.into())
-            }
+        if let $expected(nonce) = msg {
+            debug!(parent: $conn.node.span(), "received handshake message B from {}", $conn.addr);
+            nonce
         } else {
-            error!(parent: $conn.node.span(), "couldn't read handshake message B");
-            Err(io::ErrorKind::Other.into())
+            error!(parent: $conn.node.span(), "received an invalid handshake message from {} (expected B)", $conn.addr);
+            return Err(io::ErrorKind::Other.into());
         }
     }}
 }
@@ -93,8 +81,7 @@ macro_rules! send_handshake_message {
     ($msg: expr, $conn: expr) => {
         $conn.writer()
             .write_all(&$msg.serialize())
-            .await
-            .unwrap();
+            .await?;
 
         debug!(parent: $conn.node.span(), "sent handshake message A to {}", $conn.addr);
     }
@@ -102,67 +89,36 @@ macro_rules! send_handshake_message {
 
 impl_messaging!(SecureishNode);
 
+#[async_trait::async_trait]
 impl Handshaking for SecureishNode {
-    fn enable_handshaking(&self) {
-        let (from_node_sender, mut from_node_receiver) = mpsc::channel::<ReturnableConnection>(
-            self.node().config().protocol_handler_queue_depth,
-        );
+    async fn perform_handshake(&self, mut conn: Connection) -> io::Result<Connection> {
+        let nonce_pair = match !conn.side {
+            ConnectionSide::Initiator => {
+                // send A
+                let own_nonce = 0;
+                send_handshake_message!(HandshakeMsg::A(own_nonce), conn);
 
-        // spawn a background task dedicated to handling the handshakes
-        let self_clone = self.clone();
-        let handshaking_task = tokio::spawn(async move {
-            loop {
-                if let Some((mut conn, result_sender)) = from_node_receiver.recv().await {
-                    let nonce_pair = match !conn.side {
-                        ConnectionSide::Initiator => {
-                            debug!(parent: conn.node.span(), "handshaking with {} as the initiator", conn.addr);
+                // read B
+                let peer_nonce = read_handshake_message!(HandshakeMsg::B, conn);
 
-                            // send A
-                            let own_nonce = 0;
-                            send_handshake_message!(HandshakeMsg::A(own_nonce), conn);
-
-                            // read B
-                            let peer_nonce = read_handshake_message!(HandshakeMsg::B, conn);
-
-                            peer_nonce.map(|peer_nonce| NoncePair(own_nonce, peer_nonce))
-                        }
-                        ConnectionSide::Responder => {
-                            debug!(parent: conn.node.span(), "handshaking with {} as the responder", conn.addr);
-
-                            // read A
-                            let peer_nonce = read_handshake_message!(HandshakeMsg::A, conn);
-
-                            // send B
-                            let own_nonce = 1;
-                            send_handshake_message!(HandshakeMsg::B(own_nonce), conn);
-
-                            peer_nonce.map(|peer_nonce| NoncePair(own_nonce, peer_nonce))
-                        }
-                    };
-
-                    let nonce_pair = match nonce_pair {
-                        Ok(pair) => pair,
-                        Err(e) => {
-                            if result_sender.send(Err(e)).is_err() {
-                                unreachable!(); // can't recover if this happens
-                            }
-                            return;
-                        }
-                    };
-
-                    // register the handshake nonce
-                    self_clone.handshakes.write().insert(conn.addr, nonce_pair);
-
-                    // return the Connection to the node
-                    if result_sender.send(Ok(conn)).is_err() {
-                        unreachable!(); // can't recover if this happens
-                    }
-                }
+                NoncePair(own_nonce, peer_nonce)
             }
-        });
+            ConnectionSide::Responder => {
+                // read A
+                let peer_nonce = read_handshake_message!(HandshakeMsg::A, conn);
 
-        self.node()
-            .set_handshake_handler((from_node_sender, handshaking_task).into());
+                // send B
+                let own_nonce = 1;
+                send_handshake_message!(HandshakeMsg::B(own_nonce), conn);
+
+                NoncePair(own_nonce, peer_nonce)
+            }
+        };
+
+        // register the handshake nonce
+        self.handshakes.write().insert(conn.addr, nonce_pair);
+
+        Ok(conn)
     }
 }
 

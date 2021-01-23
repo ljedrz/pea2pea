@@ -1,13 +1,13 @@
 mod common;
 
 use bytes::Bytes;
-use tokio::{sync::mpsc, time::sleep};
+use tokio::time::sleep;
 use tracing::*;
 use tracing_subscriber::filter::LevelFilter;
 
 use pea2pea::{
-    protocols::{Handshaking, Reading, ReturnableConnection, Writing},
-    ConnectionSide, Node, NodeConfig, Pea2Pea,
+    protocols::{Handshaking, Reading, Writing},
+    Connection, ConnectionSide, Node, NodeConfig, Pea2Pea,
 };
 
 use std::{io, net::SocketAddr, time::Duration};
@@ -21,42 +21,26 @@ impl Pea2Pea for JoJoNode {
     }
 }
 
+#[async_trait::async_trait]
 impl Handshaking for JoJoNode {
-    fn enable_handshaking(&self) {
-        let (from_node_sender, mut from_node_receiver) = mpsc::channel::<ReturnableConnection>(
-            self.node().config().protocol_handler_queue_depth,
-        );
-
-        // spawn a background task dedicated to handling the handshakes
-        let handshaking_task = tokio::spawn(async move {
-            loop {
-                if let Some((conn, result_sender)) = from_node_receiver.recv().await {
-                    // some handshakes are useful, others are menacing ゴゴゴゴ
-                    match !conn.side {
-                        ConnectionSide::Initiator => {
-                            info!(parent: conn.node.span(), "Dio!");
-                            sleep(Duration::from_secs(4)).await;
-                            info!(parent: conn.node.span(), "I can't beat the shit out of you without getting closer.");
-                            sleep(Duration::from_secs(3)).await;
-                        }
-                        ConnectionSide::Responder => {
-                            sleep(Duration::from_secs(1)).await;
-                            warn!(parent: conn.node.span(), "Oh, you're approaching me? Instead of running away, you're coming right to me?");
-                            sleep(Duration::from_secs(6)).await;
-                            warn!(parent: conn.node.span(), "Oh ho! Then come as close as you like.");
-                        }
-                    };
-
-                    // return the Connection to the node
-                    if result_sender.send(Ok(conn)).is_err() {
-                        unreachable!(); // can't recover if this happens
-                    }
-                }
+    async fn perform_handshake(&self, conn: Connection) -> io::Result<Connection> {
+        // some handshakes are useful, others are menacing ゴゴゴゴ
+        match !conn.side {
+            ConnectionSide::Initiator => {
+                info!(parent: conn.node.span(), "Dio!");
+                sleep(Duration::from_secs(4)).await;
+                info!(parent: conn.node.span(), "I can't beat the shit out of you without getting closer.");
+                sleep(Duration::from_secs(3)).await;
             }
-        });
+            ConnectionSide::Responder => {
+                sleep(Duration::from_secs(1)).await;
+                warn!(parent: conn.node.span(), "Oh, you're approaching me? Instead of running away, you're coming right to me?");
+                sleep(Duration::from_secs(6)).await;
+                warn!(parent: conn.node.span(), "Oh ho! Then come as close as you like.");
+            }
+        }
 
-        self.node()
-            .set_handshake_handler((from_node_sender, handshaking_task).into());
+        Ok(conn)
     }
 }
 

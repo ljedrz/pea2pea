@@ -7,7 +7,6 @@ use rand::{rngs::SmallRng, seq::IteratorRandom, Rng, SeedableRng};
 use serde::{Deserialize, Serialize};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
-    sync::mpsc,
     time::sleep,
 };
 use tracing::*;
@@ -15,8 +14,8 @@ use tracing_subscriber::filter::LevelFilter;
 
 use pea2pea::{
     connect_nodes,
-    protocols::{Handshaking, Reading, ReturnableConnection, Writing},
-    ConnectionSide, Node, NodeConfig, Pea2Pea, Topology,
+    protocols::{Handshaking, Reading, Writing},
+    Connection, ConnectionSide, Node, NodeConfig, Pea2Pea, Topology,
 };
 
 use std::{
@@ -100,66 +99,45 @@ fn prefix_message(message: &[u8]) -> Bytes {
     bytes.into()
 }
 
+#[async_trait::async_trait]
 impl Handshaking for Player {
-    fn enable_handshaking(&self) {
-        let (from_node_sender, mut from_node_receiver) = mpsc::channel::<ReturnableConnection>(
-            self.node().config().protocol_handler_queue_depth,
-        );
+    async fn perform_handshake(&self, mut conn: Connection) -> io::Result<Connection> {
+        let mut buffer = [0u8; 16];
 
-        // spawn a background task dedicated to handling the handshakes
-        let self_clone = self.clone();
-        let handshaking_task = tokio::spawn(async move {
-            loop {
-                if let Some((mut conn, result_sender)) = from_node_receiver.recv().await {
-                    let mut buffer = [0u8; 16];
+        let peer_name = match !conn.side {
+            ConnectionSide::Initiator => {
+                // send own PlayerName
+                let own_name = conn.node.name();
+                let message = prefix_message(own_name.as_bytes());
+                conn.writer().write_all(&message).await.unwrap();
 
-                    let peer_name = match !conn.side {
-                        ConnectionSide::Initiator => {
-                            debug!(parent: conn.node.span(), "handshaking with {} as the initiator", conn.addr);
+                // receive the peer's PlayerName
+                let len = conn.reader().read(&mut buffer).await.unwrap();
 
-                            // send own PlayerName
-                            let own_name = conn.node.name();
-                            let message = prefix_message(own_name.as_bytes());
-                            conn.writer().write_all(&message).await.unwrap();
-
-                            // receive the peer's PlayerName
-                            let len = conn.reader().read(&mut buffer).await.unwrap();
-
-                            String::from_utf8(buffer[..len].to_vec()).unwrap()
-                        }
-                        ConnectionSide::Responder => {
-                            debug!(parent: conn.node.span(), "handshaking with {} as the responder", conn.addr);
-
-                            // receive the peer's PlayerName
-                            let len = conn.reader().read(&mut buffer).await.unwrap();
-                            let peer_name = String::from_utf8(buffer[..len].to_vec()).unwrap();
-
-                            // send own PlayerName
-                            let own_name = conn.node.name();
-                            let message = prefix_message(own_name.as_bytes());
-                            conn.writer().write_all(&message).await.unwrap();
-
-                            peer_name
-                        }
-                    };
-
-                    let player = PlayerInfo {
-                        name: peer_name.clone(),
-                        addr: conn.addr,
-                        is_carrier: false,
-                    };
-                    self_clone.other_players.lock().insert(peer_name, player);
-
-                    // return the Connection to the node
-                    if result_sender.send(Ok(conn)).is_err() {
-                        unreachable!(); // can't recover if this happens
-                    }
-                }
+                String::from_utf8(buffer[..len].to_vec()).unwrap()
             }
-        });
+            ConnectionSide::Responder => {
+                // receive the peer's PlayerName
+                let len = conn.reader().read(&mut buffer).await.unwrap();
+                let peer_name = String::from_utf8(buffer[..len].to_vec()).unwrap();
 
-        self.node()
-            .set_handshake_handler((from_node_sender, handshaking_task).into());
+                // send own PlayerName
+                let own_name = conn.node.name();
+                let message = prefix_message(own_name.as_bytes());
+                conn.writer().write_all(&message).await.unwrap();
+
+                peer_name
+            }
+        };
+
+        let player = PlayerInfo {
+            name: peer_name.clone(),
+            addr: conn.addr,
+            is_carrier: false,
+        };
+        self.other_players.lock().insert(peer_name, player);
+
+        Ok(conn)
     }
 }
 

@@ -1,11 +1,10 @@
 use bytes::Bytes;
-use tokio::sync::mpsc;
 use tracing::*;
 
 mod common;
 use pea2pea::{
-    protocols::{Handshaking, Reading, ReturnableConnection, Writing},
-    Node, NodeConfig, Pea2Pea,
+    protocols::{Handshaking, Reading, Writing},
+    Connection, Node, NodeConfig, Pea2Pea,
 };
 
 use std::{io, net::SocketAddr};
@@ -19,27 +18,11 @@ impl Pea2Pea for TestNode {
     }
 }
 
+#[async_trait::async_trait]
 impl Handshaking for TestNode {
-    fn enable_handshaking(&self) {
-        let (from_node_sender, mut from_node_receiver) = mpsc::channel::<ReturnableConnection>(
-            self.node().config().protocol_handler_queue_depth,
-        );
-
-        // spawn a background task dedicated to handling the handshakes
-        let handshaking_task = tokio::spawn(async move {
-            loop {
-                if let Some((conn, result_sender)) = from_node_receiver.recv().await {
-                    // nothing of interest going on here
-
-                    if result_sender.send(Ok(conn)).is_err() {
-                        unreachable!(); // can't recover if this happens
-                    }
-                }
-            }
-        });
-
-        self.node()
-            .set_handshake_handler((from_node_sender, handshaking_task).into());
+    async fn perform_handshake(&self, conn: Connection) -> io::Result<Connection> {
+        // nothing of interest going on here
+        Ok(conn)
     }
 }
 

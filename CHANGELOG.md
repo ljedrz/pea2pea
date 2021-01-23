@@ -1,3 +1,14 @@
+# 0.17.0
+
+### Added
+
+- `Handshaking::perform_handshake` that has no default implementation
+- `connections::Connection` is now re-exported
+
+### Changed
+- `Handshaking` now requires `Self: Clone + Send + Sync + 'static`
+- `Handshaking::enable_handshaking` now has a default implementation
+
 # 0.16.4
 
 ### Fixed

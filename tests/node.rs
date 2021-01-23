@@ -1,14 +1,13 @@
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::{TcpListener, TcpStream},
-    sync::mpsc,
 };
 
 mod common;
 use pea2pea::{
     connect_nodes,
-    protocols::{Handshaking, Reading, ReturnableConnection, Writing},
-    Node, NodeConfig, Pea2Pea, Topology,
+    protocols::{Handshaking, Reading, Writing},
+    Connection, Node, NodeConfig, Pea2Pea, Topology,
 };
 
 use std::{
@@ -140,29 +139,11 @@ async fn node_hung_handshake_fails() {
 
     // a badly implemented handshake protocol; 1B is expected by both the initiator and the responder (no distinction
     // is even made), but it is never provided by either of them
+    #[async_trait::async_trait]
     impl Handshaking for Wrap {
-        fn enable_handshaking(&self) {
-            let (from_node_sender, mut from_node_receiver) =
-                mpsc::channel::<ReturnableConnection>(1);
-
-            let handshaking_task = tokio::spawn(async move {
-                loop {
-                    if let Some((mut conn, result_sender)) = from_node_receiver.recv().await {
-                        match conn.reader().read_exact(&mut [0u8; 1]).await {
-                            Ok(_) => {}
-                            Err(_) => unreachable!(),
-                        }
-
-                        // this code is never reached
-                        if result_sender.send(Ok(conn)).is_err() {
-                            unreachable!();
-                        }
-                    }
-                }
-            });
-
-            self.node()
-                .set_handshake_handler((from_node_sender, handshaking_task).into());
+        async fn perform_handshake(&self, mut conn: Connection) -> io::Result<Connection> {
+            let _ = conn.reader().read_exact(&mut [0u8; 1]).await;
+            unreachable!();
         }
     }
 
