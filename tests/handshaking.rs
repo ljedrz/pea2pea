@@ -11,6 +11,7 @@ use pea2pea::{
 use parking_lot::RwLock;
 use std::{collections::HashMap, convert::TryInto, io, net::SocketAddr, sync::Arc};
 
+#[derive(Debug)]
 enum HandshakeMsg {
     A(u64),
     B(u64),
@@ -68,10 +69,14 @@ macro_rules! read_handshake_message {
         let msg = HandshakeMsg::deserialize(&buf)?;
 
         if let $expected(nonce) = msg {
-            debug!(parent: $conn.node.span(), "received handshake message B from {}", $conn.addr);
+            debug!(parent: $conn.node.span(), "received {:?} from {}", msg, $conn.addr);
             nonce
         } else {
-            error!(parent: $conn.node.span(), "received an invalid handshake message from {} (expected B)", $conn.addr);
+            error!(
+                parent: $conn.node.span(),
+                "received an invalid handshake message from {} (expected {}, got {:?})",
+                $conn.addr, stringify!($expected), msg,
+            );
             return Err(io::ErrorKind::Other.into());
         }
     }}
@@ -83,7 +88,7 @@ macro_rules! send_handshake_message {
             .write_all(&$msg.serialize())
             .await?;
 
-        debug!(parent: $conn.node.span(), "sent handshake message A to {}", $conn.addr);
+        debug!(parent: $conn.node.span(), "sent {:?} to {}", $msg, $conn.addr);
     }
 }
 
