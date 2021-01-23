@@ -12,7 +12,6 @@ use tokio::{
     net::{TcpListener, TcpStream},
     sync::oneshot,
     task::JoinHandle,
-    time::timeout,
 };
 use tracing::*;
 
@@ -24,7 +23,6 @@ use std::{
         atomic::{AtomicUsize, Ordering::*},
         Arc,
     },
-    time::Duration,
 };
 
 macro_rules! enable_protocol {
@@ -231,11 +229,7 @@ impl Node {
         let connection = Connection::new(peer_addr, stream, !own_side, self);
 
         // enact the enabled protocols
-        let mut connection = timeout(
-            Duration::from_millis(self.config.max_protocol_setup_time_ms),
-            self.enable_protocols(connection),
-        )
-        .await??;
+        let mut connection = self.enable_protocols(connection).await?;
 
         // the protocols are responsible for doing reads and writes; ensure that the Connection object
         // is not capable of performing them if the protocols haven't been enabled.

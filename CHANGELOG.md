@@ -8,6 +8,7 @@
 ### Changed
 - `Handshaking` now requires `Self: Clone + Send + Sync + 'static`
 - `Handshaking::enable_handshaking` now has a default implementation
+- `NodeConfig.max_protocol_setup_time_ms` is now `NodeConfig.max_handshake_time_ms` and only applies to `Handshaking`
 
 # 0.16.4
 

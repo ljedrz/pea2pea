@@ -112,7 +112,7 @@ async fn main() {
     let config = NodeConfig {
         name: Some("Jotaro".into()),
         listener_ip: "127.0.0.1".parse().unwrap(),
-        max_protocol_setup_time_ms: 10_000,
+        max_handshake_time_ms: 10_000,
         ..Default::default()
     };
     let jotaro = JoJoNode(Node::new(Some(config)).await.unwrap());
@@ -120,7 +120,7 @@ async fn main() {
     let config = NodeConfig {
         name: Some("Dio".into()),
         listener_ip: "127.0.0.1".parse().unwrap(),
-        max_protocol_setup_time_ms: 10_000,
+        max_handshake_time_ms: 10_000,
         ..Default::default()
     };
     let dio = JoJoNode(Node::new(Some(config)).await.unwrap());

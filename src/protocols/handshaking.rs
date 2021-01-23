@@ -1,9 +1,9 @@
 use crate::{connections::Connection, protocols::ReturnableConnection, Pea2Pea};
 
-use tokio::sync::mpsc;
+use tokio::{sync::mpsc, time::timeout};
 use tracing::*;
 
-use std::io;
+use std::{io, time::Duration};
 
 /// Can be used to specify and enable network handshakes. Upon establishing a connection, both sides will
 /// need to adhere to the specified handshake rules in order to finalize the connection and be able to send
@@ -27,19 +27,29 @@ where
                     let addr = conn.addr;
 
                     debug!(parent: conn.node.span(), "handshaking with {} as the {:?}", addr, !conn.side);
-                    let result = self_clone.perform_handshake(conn).await;
+                    let result = timeout(
+                        Duration::from_millis(conn.node.config().max_handshake_time_ms),
+                        self_clone.perform_handshake(conn),
+                    )
+                    .await;
 
-                    match result {
-                        Ok(_) => {
+                    let ret = match result {
+                        Ok(Ok(res)) => {
                             debug!(parent: self_clone.node().span(), "succeessfully handshaken with {}", addr);
+                            Ok(res)
                         }
-                        Err(ref e) => {
+                        Ok(Err(e)) => {
                             error!(parent: self_clone.node().span(), "handshake with {} failed: {}", addr, e);
+                            Err(e)
                         }
-                    }
+                        Err(_) => {
+                            error!(parent: self_clone.node().span(), "handshake with {} timed out", addr);
+                            Err(io::ErrorKind::TimedOut.into())
+                        }
+                    };
 
                     // return the Connection to the Node, resuming Node::adapt_stream
-                    if result_sender.send(result).is_err() {
+                    if result_sender.send(ret).is_err() {
                         unreachable!(); // can't recover if this happens
                     }
                 }

@@ -143,28 +143,29 @@ async fn node_hung_handshake_fails() {
     impl Handshaking for Wrap {
         async fn perform_handshake(&self, mut conn: Connection) -> io::Result<Connection> {
             let _ = conn.reader().read_exact(&mut [0u8; 1]).await;
+
             unreachable!();
         }
     }
 
     let config = NodeConfig {
-        max_protocol_setup_time_ms: 10,
+        max_handshake_time_ms: 10,
         ..Default::default()
     };
-    let connector = Wrap(Node::new(Some(config.clone())).await.unwrap());
+    let connector = Wrap(Node::new(None).await.unwrap());
     let connectee = Wrap(Node::new(Some(config)).await.unwrap());
 
-    connector.enable_handshaking();
     connectee.enable_handshaking();
 
-    // the connection attempt should time out...
+    // the connection attempt should register just fine for the connector, as it doesn't expect a handshake
     assert!(connector
         .node()
         .connect(connectee.node().listening_addr())
         .await
-        .is_err());
-    // ...but make sure that the connectee has acknowledged that connection attempt
-    assert!(!connectee.node().known_peers().read().is_empty());
+        .is_ok());
+
+    // but the connectee should have rejected it on its side
+    assert!(connectee.node().num_connected() == 0);
 }
 
 #[tokio::test]
