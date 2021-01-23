@@ -3,6 +3,7 @@
 [![current version](https://img.shields.io/crates/v/pea2pea)](https://crates.io/crates/pea2pea)
 [![files](https://tokei.rs/b1/github/ljedrz/pea2pea?category=files)](https://github.com/ljedrz/pea2pea/tree/master/src)
 [![LOC](https://tokei.rs/b1/github/ljedrz/pea2pea?category=code)](https://github.com/ljedrz/pea2pea/tree/master/src)
+[![issues](https://img.shields.io/github/issues-raw/ljedrz/pea2pea)](https://github.com/ljedrz/pea2pea/issues)
 [![build status](https://img.shields.io/travis/com/ljedrz/pea2pea)](https://travis-ci.com/ljedrz/pea2pea)
 
 **pea2pea** is a P2P library designed with the following use cases in mind:
@@ -12,8 +13,9 @@
 - substituting other, "heavier" nodes in local network tests
 
 ## goals
-- small, simple codebase: the core is under 1k LOC; most of the library are tests and examples
+- small, simple codebase: the library - _including_ the optional protocols - is under 1k LOC and there are few dependencies
 - ease of use: few objects and traits, no "turboeels" or generics/references forcing all parent objects to adapt
+- correctness: no `unsafe` code; there's more code in `tests` than in the actual library
 - interoperability: strives to be as versatile as possible without sacrificing simplicity and ease of use
 - good performance: over 1GB/s in favorable scenarios, small memory footprint
 
