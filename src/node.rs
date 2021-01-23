@@ -211,7 +211,6 @@ impl Node {
         peer_addr: SocketAddr,
         own_side: ConnectionSide,
     ) -> io::Result<()> {
-        self.stats.register_connection();
         self.known_peers.add(peer_addr);
 
         // register the port seen by the peer

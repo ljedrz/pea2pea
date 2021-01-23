@@ -3,8 +3,6 @@ use std::sync::atomic::{AtomicU64, Ordering};
 /// Contains statistics related to the node.
 #[derive(Default)]
 pub struct NodeStats {
-    /// The number of connections the node has established during its lifetime.
-    connections: AtomicU64,
     /// The number of all messages sent.
     msgs_sent: AtomicU64,
     /// The number of all messages received.
@@ -16,11 +14,6 @@ pub struct NodeStats {
 }
 
 impl NodeStats {
-    /// Registers an established connection.
-    pub fn register_connection(&self) {
-        self.connections.fetch_add(1, Ordering::Relaxed);
-    }
-
     /// Registers a sent message of the provided `size` in bytes.
     pub fn register_sent_message(&self, size: usize) {
         self.msgs_sent.fetch_add(1, Ordering::Relaxed);

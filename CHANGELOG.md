@@ -10,6 +10,9 @@
 - `Handshaking::enable_handshaking` now has a default implementation
 - `NodeConfig.max_protocol_setup_time_ms` is now `NodeConfig.max_handshake_time_ms` and only applies to `Handshaking`
 
+### Removed
+- `NodeStats.connections` and the related `NodeStats::register_connection` (unused)
+
 # 0.16.4
 
 ### Fixed
