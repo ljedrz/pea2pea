@@ -34,12 +34,8 @@ macro_rules! enable_protocol {
 
             match conn_retriever.await {
                 Ok(Ok(conn)) => conn,
-                _ => {
-                    return Err(io::Error::new(
-                        io::ErrorKind::Other,
-                        format!("{} failed", $protocol_name),
-                    ));
-                }
+                Err(_) => unreachable!(), // protocol's task is down! can't recover
+                Ok(e) => return e,
             }
         } else {
             $conn
