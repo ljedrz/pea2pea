@@ -22,6 +22,8 @@ where
         // spawn a background task dedicated to handling the handshakes
         let self_clone = self.clone();
         let handshaking_task = tokio::spawn(async move {
+            trace!(parent: self_clone.node().span(), "spawned the Handshaking handler task");
+
             loop {
                 if let Some((conn, result_sender)) = from_node_receiver.recv().await {
                     let addr = conn.addr;
