@@ -25,6 +25,7 @@ tracing = { version = "0.1", default-features = false }
 
 [dev-dependencies]
 bincode = "1"
+peak_alloc = "0.1"
 rand = { version = "0.8", features = ["small_rng"] }
 serde = { version = "1", default-features = false, features = ["derive"] }
 snow = "0.7"

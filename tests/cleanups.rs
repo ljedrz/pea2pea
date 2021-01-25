@@ -1,4 +1,5 @@
 use bytes::Bytes;
+use peak_alloc::PeakAlloc;
 use tracing::*;
 
 mod common;
@@ -70,31 +71,39 @@ impl Writing for TestNode {
 }
 
 #[tokio::test]
-#[ignore]
 async fn check_node_cleanups() {
-    tracing_subscriber::fmt::init();
+    // turn on for a silly commentary
+    // tracing_subscriber::fmt::init();
+
+    #[global_allocator]
+    static PEAK_ALLOC: PeakAlloc = PeakAlloc;
 
     let config = NodeConfig {
         name: Some("Drebin".into()),
         ..Default::default()
     };
     let drebin = TestNode(Node::new(Some(config)).await.unwrap());
+    let drebin_addr = drebin.node().listening_addr();
 
     drebin.enable_handshaking();
     drebin.enable_reading();
     drebin.enable_writing();
 
-    loop {
+    let mut peak_heap = PEAK_ALLOC.peak_usage();
+    let mut peak_heap_post_1st_conn = 0;
+
+    for i in 0u8..255 {
         let hapsburgs_thug = TestNode(Node::new(None).await.unwrap());
-        let thug_addr = hapsburgs_thug.node().listening_addr();
 
         hapsburgs_thug.enable_handshaking();
         hapsburgs_thug.enable_reading();
         hapsburgs_thug.enable_writing();
 
-        drebin.node().connect(thug_addr).await.unwrap();
-
-        wait_until!(1, hapsburgs_thug.node().num_connected() == 1);
+        // Habsburg's thugs alert Drebin of their presence; conveniently, it is also the connection
+        // direction that allows the collection of `KnownPeers` to remain empty for Drebin
+        hapsburgs_thug.node().connect(drebin_addr).await.unwrap();
+        wait_until!(1, drebin.node().num_connected() == 1);
+        let thug_addr = drebin.node().connected_addrs()[0];
 
         info!(parent: drebin.node().span(), "Talk!");
         drebin
@@ -113,6 +122,41 @@ async fn check_node_cleanups() {
 
         info!(parent: drebin.node().span(), "All right. Who else is almost dead?");
 
+        // wait until Drebin realizes the thug is dead
         wait_until!(1, drebin.node().num_connected() == 0);
+
+        // check peak heap use, register bumps
+        let curr_peak = PEAK_ALLOC.peak_usage();
+        if curr_peak > peak_heap {
+            if i != 0 {
+                println!(
+                    "heap bump: {}B at i={} (+{}%)",
+                    curr_peak,
+                    i,
+                    (curr_peak as f64 / peak_heap as f64 - 1.0) * 100.0
+                );
+            }
+            peak_heap = curr_peak;
+        }
+
+        // register peak heap use once the first connection was established and dropped
+        if i == 0 {
+            peak_heap_post_1st_conn = curr_peak;
+        }
     }
+
+    // register peak heap use
+    let max_heap_use = PEAK_ALLOC.peak_usage();
+    println!("peak heap use: {:.2}KiB", max_heap_use as f64 / 1024.0);
+
+    // even when 4096 Habsburg's thugs show up and die, maximum memory use shouldn't grow
+    // by more than 5% (some of which is probably caused by tokio), as the heap bumps are:
+    //
+    // heap bump: 351705B at i=1 (+0.4934595888884452%)
+    // heap bump: 353113B at i=2 (+0.40033550845168797%)
+    // heap bump: 363961B at i=32 (+3.0721043971759787%)
+    // heap bump: 364009B at i=1496 (+0.013188226211058307%)
+    // peak heap use: 355.48KiB
+    let alloc_growth = max_heap_use as f64 / peak_heap_post_1st_conn as f64;
+    assert!(alloc_growth < 1.05);
 }
