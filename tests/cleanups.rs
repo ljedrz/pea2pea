@@ -89,8 +89,8 @@ async fn check_node_cleanups() {
     drebin.enable_reading();
     drebin.enable_writing();
 
-    let mut peak_heap = PEAK_ALLOC.peak_usage();
-    let mut peak_heap_post_1st_conn = 0;
+    let mut peak_heap = PEAK_ALLOC.peak_usage_as_kb();
+    let mut peak_heap_post_1st_conn = 0.0;
 
     for i in 0u8..255 {
         let hapsburgs_thug = TestNode(Node::new(None).await.unwrap());
@@ -126,14 +126,14 @@ async fn check_node_cleanups() {
         wait_until!(1, drebin.node().num_connected() == 0);
 
         // check peak heap use, register bumps
-        let curr_peak = PEAK_ALLOC.peak_usage();
+        let curr_peak = PEAK_ALLOC.peak_usage_as_kb();
         if curr_peak > peak_heap {
             if i != 0 {
                 println!(
-                    "heap bump: {}B at i={} (+{}%)",
+                    "heap bump: {:.2}kB at i={} (+{:.2}%)",
                     curr_peak,
                     i,
-                    (curr_peak as f64 / peak_heap as f64 - 1.0) * 100.0
+                    (curr_peak / peak_heap - 1.0) * 100.0
                 );
             }
             peak_heap = curr_peak;
@@ -146,17 +146,17 @@ async fn check_node_cleanups() {
     }
 
     // register peak heap use
-    let max_heap_use = PEAK_ALLOC.peak_usage();
-    println!("peak heap use: {:.2}KiB", max_heap_use as f64 / 1024.0);
+    let max_heap_use = PEAK_ALLOC.peak_usage_as_kb();
+    println!("peak heap use: {:.2}kB", max_heap_use);
 
     // even when 4096 Habsburg's thugs show up and die, maximum memory use shouldn't grow
     // by more than 5% (some of which is probably caused by tokio), as the heap bumps are:
     //
-    // heap bump: 351705B at i=1 (+0.4934595888884452%)
-    // heap bump: 353113B at i=2 (+0.40033550845168797%)
-    // heap bump: 363961B at i=32 (+3.0721043971759787%)
-    // heap bump: 364009B at i=1496 (+0.013188226211058307%)
-    // peak heap use: 355.48KiB
-    let alloc_growth = max_heap_use as f64 / peak_heap_post_1st_conn as f64;
+    // heap bump: 343.46kB at i=1 (+0.49%)
+    // heap bump: 344.84kB at i=2 (+0.40%)
+    // heap bump: 355.43kB at i=32 (+3.07%)
+    // heap bump: 355.48kB at i=2043 (+0.01%)
+    // peak heap use: 355.48kB
+    let alloc_growth = max_heap_use / peak_heap_post_1st_conn;
     assert!(alloc_growth < 1.05);
 }
