@@ -1,3 +1,13 @@
+# 0.17.1
+
+### Added
+
+- (internal) automatically test for potential memleaks
+
+### Changed
+
+- adjusted dependency features
+
 # 0.17.0
 
 ### Added
