@@ -30,4 +30,4 @@ rand = { version = "0.8", features = ["small_rng"] }
 serde = { version = "1", default-features = false, features = ["derive"] }
 snow = "0.7"
 tokio = { version = "1.0", features = ["macros", "rt-multi-thread"] }
-tracing-subscriber = { version = "0.2", default-features = false, features = ["ansi", "chrono", "env-filter", "fmt", "parking_lot", "smallvec"] }
+tracing-subscriber = { version = "0.2", default-features = false, features = ["ansi", "env-filter", "fmt", "parking_lot", "smallvec"] }
