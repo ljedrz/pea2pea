@@ -44,11 +44,11 @@ impl Default for NodeConfig {
             protocol_handler_queue_depth: 16,
             conn_read_buffer_size: 64 * 1024,
             conn_write_buffer_size: 64 * 1024,
-            conn_inbound_queue_depth: 256,
+            conn_inbound_queue_depth: 64,
             conn_outbound_queue_depth: 16,
             invalid_read_delay_secs: 10,
             max_connections: 100,
-            max_handshake_time_ms: 3000,
+            max_handshake_time_ms: 3_000,
         }
     }
 }

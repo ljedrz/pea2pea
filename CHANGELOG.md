@@ -1,3 +1,9 @@
+# 0.17.2
+
+### Changed
+
+- the default value for `NodeConfig.conn_inbound_queue_depth` is now 64 instead of 256
+
 # 0.17.1
 
 ### Added
