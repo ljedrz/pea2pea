@@ -1,10 +1,10 @@
 # pea2pea
-[![license](https://img.shields.io/badge/license-CC0-blue)](https://creativecommons.org/publicdomain/zero/1.0/)
-[![current version](https://img.shields.io/crates/v/pea2pea)](https://crates.io/crates/pea2pea)
+[![crates.io](https://img.shields.io/crates/v/pea2pea)](https://crates.io/crates/pea2pea)
+[![docs.rs](https://docs.rs/pea2pea/badge.svg)](https://docs.rs/pea2pea)
 [![files](https://tokei.rs/b1/github/ljedrz/pea2pea?category=files)](https://github.com/ljedrz/pea2pea/tree/master/src)
 [![LOC](https://tokei.rs/b1/github/ljedrz/pea2pea?category=code)](https://github.com/ljedrz/pea2pea/tree/master/src)
+[![dependencies](https://deps.rs/repo/github/ljedrz/pea2pea/status.svg)](https://github.com/ljedrz/pea2pea/blob/master/Cargo.toml)
 [![issues](https://img.shields.io/github/issues-raw/ljedrz/pea2pea)](https://github.com/ljedrz/pea2pea/issues)
-[![build status](https://img.shields.io/travis/com/ljedrz/pea2pea)](https://travis-ci.com/ljedrz/pea2pea)
 
 **pea2pea** is a P2P library designed with the following use cases in mind:
 - simple and quick creation of custom P2P networks
