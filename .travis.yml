@@ -3,6 +3,11 @@ rust:
   - stable
   - beta
   - nightly
+cache:
+  directories:
+    - /home/travis/.cargo
+before_cache:
+  - rm -rf /home/travis/.cargo/registry
 before_script:
   - rustup component add rustfmt
   - rustup component add clippy
