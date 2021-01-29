@@ -1,4 +1,6 @@
 use bytes::Bytes;
+use once_cell::sync::Lazy;
+use rand::{distributions::Standard, rngs::SmallRng, Rng, SeedableRng};
 
 mod common;
 use pea2pea::{
@@ -7,6 +9,15 @@ use pea2pea::{
 };
 
 use std::{io, net::SocketAddr, time::Instant};
+
+static RANDOM_BYTES: Lazy<Bytes> = Lazy::new(|| {
+    Bytes::from(
+        (&mut SmallRng::from_entropy())
+            .sample_iter(Standard)
+            .take(64 * 1024 - 4)
+            .collect::<Vec<_>>(),
+    )
+});
 
 #[derive(Clone)]
 struct Spammer(Node);
@@ -48,19 +59,19 @@ impl Reading for Sink {
     }
 }
 
-fn display_throughput(bytes: f64) {
+fn display_throughput(bytes: f64) -> String {
     const GB: f64 = 1_000_000_000.0;
     const MB: f64 = 1_000_000.0;
     const KB: f64 = 1_000.0;
 
     if bytes >= GB {
-        println!("\tthroughput: {:.2} GB/s", bytes / GB);
+        format!("{:.2} GB/s", bytes / GB)
     } else if bytes >= MB {
-        println!("\tthroughput: {:.2} MB/s", bytes / MB);
+        format!("{:.2} MB/s", bytes / MB)
     } else if bytes >= KB {
-        println!("\tthroughput: {:.2} KB/s", bytes / KB);
+        format!("{:.2} KB/s", bytes / KB)
     } else {
-        println!("\tthroughput: {:.2} B/s", bytes);
+        format!("{:.2} B/s", bytes)
     }
 }
 
@@ -68,38 +79,18 @@ fn display_throughput(bytes: f64) {
 struct BenchParams {
     spammer_count: usize,
     msg_count: usize,
-    msg_size: usize,
-    conn_read_buffer_size: usize,
-    conn_inbound_queue_depth: usize,
+    max_msg_size: usize,
 }
 
-impl From<[usize; 5]> for BenchParams {
-    fn from(params: [usize; 5]) -> Self {
-        Self {
-            spammer_count: params[0],
-            msg_count: params[1],
-            msg_size: params[2],
-            conn_read_buffer_size: params[3],
-            conn_inbound_queue_depth: params[4],
-        }
-    }
-}
-
-async fn run_bench_scenario(params: BenchParams) -> f64 {
-    let BenchParams {
-        spammer_count,
-        msg_count,
-        msg_size,
-        conn_read_buffer_size,
-        conn_inbound_queue_depth,
-    } = params;
+async fn run_bench_scenario(sender_count: usize) -> f64 {
+    const NUM_MESSAGES: usize = 10_000;
+    const MSG_SIZE: usize = 64 * 1024;
 
     let config = NodeConfig {
-        conn_outbound_queue_depth: msg_count,
-        conn_write_buffer_size: msg_size,
+        conn_write_buffer_size: MSG_SIZE,
         ..Default::default()
     };
-    let spammers = common::start_nodes(spammer_count, Some(config)).await;
+    let spammers = common::start_nodes(sender_count, Some(config)).await;
     let spammers = spammers.into_iter().map(Spammer).collect::<Vec<_>>();
 
     for spammer in &spammers {
@@ -107,8 +98,7 @@ async fn run_bench_scenario(params: BenchParams) -> f64 {
     }
 
     let config = NodeConfig {
-        conn_inbound_queue_depth,
-        conn_read_buffer_size,
+        conn_read_buffer_size: MSG_SIZE * 3,
         ..Default::default()
     };
     let sink = Sink(Node::new(Some(config)).await.unwrap());
@@ -123,19 +113,17 @@ async fn run_bench_scenario(params: BenchParams) -> f64 {
             .unwrap();
     }
 
-    wait_until!(1, sink.node().num_connected() == spammer_count);
+    wait_until!(1, sink.node().num_connected() == sender_count);
 
     let sink_addr = sink.node().listening_addr();
-    let msg = Bytes::from(vec![0u8; msg_size - 4]); // account for the length prefix
 
     let start = Instant::now();
     for spammer in spammers {
-        let msg = msg.clone();
         tokio::spawn(async move {
-            for _ in 0..msg_count {
+            for _ in 0..NUM_MESSAGES {
                 spammer
                     .node()
-                    .send_direct_message(sink_addr, msg.clone())
+                    .send_direct_message(sink_addr, RANDOM_BYTES.clone())
                     .await
                     .unwrap();
             }
@@ -144,68 +132,30 @@ async fn run_bench_scenario(params: BenchParams) -> f64 {
 
     wait_until!(
         10,
-        sink.node().stats().received().0 as usize == spammer_count * msg_count
+        sink.node().stats().received().0 as usize == sender_count * NUM_MESSAGES
     );
 
     let time_elapsed = start.elapsed().as_millis();
     let bytes_received = sink.node().stats().received().1;
 
-    let throughput = (bytes_received as f64) / (time_elapsed as f64 / 100.0);
-    display_throughput(throughput);
-    throughput
+    (bytes_received as f64) / (time_elapsed as f64 / 100.0)
 }
 
 #[ignore]
 #[allow(clippy::identity_op)]
 #[tokio::test(flavor = "multi_thread")]
 async fn bench_spam_to_one() {
-    const KIB: usize = 1024;
-    const MIB: usize = 1024 * 1024;
-
-    let spammer_counts = [1, 5, 10];
-    let msg_sizes = [256, 1 * KIB, 64 * KIB, 1 * MIB];
-    let conn_read_buffer_sizes = [1 * MIB, 4 * MIB, 8 * MIB];
-    let conn_inbound_queue_depths = [100, 250, 1000];
-
-    let mut scenarios = Vec::new();
-    for spammer_count in spammer_counts.iter().copied() {
-        for conn_inbound_queue_depth in conn_inbound_queue_depths.iter().copied() {
-            for conn_read_buffer_size in conn_read_buffer_sizes.iter().copied() {
-                for msg_size in msg_sizes
-                    .iter()
-                    .filter(|&msg_size| *msg_size <= conn_read_buffer_size)
-                    .copied()
-                {
-                    let msg_count = if msg_size < 64 * KIB {
-                        100_000
-                    } else if msg_size < 1 * MIB {
-                        10_000
-                    } else {
-                        1000
-                    };
-
-                    scenarios.push(BenchParams {
-                        spammer_count,
-                        msg_count,
-                        msg_size,
-                        conn_read_buffer_size,
-                        conn_inbound_queue_depth,
-                    });
-                }
-            }
-        }
+    let mut results = Vec::with_capacity(4);
+    for sender_count in &[1, 5, 10, 25, 50, 100] {
+        let throughput = run_bench_scenario(*sender_count).await;
+        println!(
+            "throughput with {:>3} sender(s), 1 receiver: {}",
+            sender_count,
+            display_throughput(throughput)
+        );
+        results.push(throughput);
     }
 
-    let mut results = Vec::with_capacity(scenarios.len());
-
-    println!("benchmarking {} scenarios", scenarios.len());
-    for params in scenarios.into_iter() {
-        println!("using {:?}", params);
-        let result = run_bench_scenario(params).await;
-        results.push(result);
-    }
-
-    println!("\naverage:");
     let avg_throughput = results.iter().sum::<f64>() / results.len() as f64;
-    display_throughput(avg_throughput);
+    println!("\naverage: {}", display_throughput(avg_throughput));
 }
