@@ -1,4 +1,5 @@
 #![deny(missing_docs)]
+#![deny(unsafe_code)]
 
 //! **pea2pea** is a P2P library designed with the following use cases in mind:
 //! - simple and quick creation of custom P2P networks
