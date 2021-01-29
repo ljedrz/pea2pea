@@ -51,6 +51,7 @@ async fn node_connect_and_disconnect() {
 
     assert!(nodes[0].disconnect(nodes[1].listening_addr()));
     assert!(!nodes[0].is_connected(nodes[1].listening_addr()));
+    assert!(nodes[1].num_connected() == 0);
 }
 
 #[tokio::test]
@@ -155,6 +156,7 @@ async fn node_hung_handshake_fails() {
     let connector = Wrap(Node::new(None).await.unwrap());
     let connectee = Wrap(Node::new(Some(config)).await.unwrap());
 
+    // note: the connector does NOT enable handshaking
     connectee.enable_handshaking();
 
     // the connection attempt should register just fine for the connector, as it doesn't expect a handshake
@@ -183,11 +185,7 @@ async fn node_stats_received() {
     impl Reading for Wrap {
         type Message = ();
 
-        fn read_message(
-            &self,
-            _source: SocketAddr,
-            buffer: &[u8],
-        ) -> io::Result<Option<(Self::Message, usize)>> {
+        fn read_message(&self, _src: SocketAddr, buffer: &[u8]) -> io::Result<Option<((), usize)>> {
             if buffer.len() >= 2 {
                 Ok(Some(((), 2)))
             } else {
@@ -199,7 +197,7 @@ async fn node_stats_received() {
     let reader = Wrap(Node::new(None).await.unwrap());
     reader.enable_reading();
 
-    // no need to set up a writer node
+    // no need to set up a writer node; a raw stream will suffice
     let mut writer = TcpStream::connect(reader.node().listening_addr())
         .await
         .unwrap();
