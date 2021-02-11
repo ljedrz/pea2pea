@@ -1,6 +1,5 @@
 mod common;
 
-use bytes::Bytes;
 use once_cell::sync::Lazy;
 use parking_lot::Mutex;
 use rand::{rngs::SmallRng, seq::IteratorRandom, Rng, SeedableRng};
@@ -91,14 +90,6 @@ impl Pea2Pea for Player {
     }
 }
 
-// prefixes the given message with its length
-fn prefix_message(message: &[u8]) -> Bytes {
-    let mut bytes = Vec::with_capacity(2 + message.len());
-    bytes.extend_from_slice(&(message.len() as u16).to_le_bytes());
-    bytes.extend_from_slice(message);
-    bytes.into()
-}
-
 #[async_trait::async_trait]
 impl Handshaking for Player {
     async fn perform_handshake(&self, mut conn: Connection) -> io::Result<Connection> {
@@ -107,24 +98,22 @@ impl Handshaking for Player {
         let peer_name = match !conn.side {
             ConnectionSide::Initiator => {
                 // send own PlayerName
-                let own_name = conn.node.name();
-                let message = prefix_message(own_name.as_bytes());
-                conn.writer().write_all(&message).await.unwrap();
+                let own_name = conn.node.name().as_bytes().to_vec();
+                conn.writer().write_all(&own_name).await.unwrap();
 
                 // receive the peer's PlayerName
                 let len = conn.reader().read(&mut buffer).await.unwrap();
 
-                String::from_utf8(buffer[..len].to_vec()).unwrap()
+                String::from_utf8_lossy(&buffer[..len]).into_owned()
             }
             ConnectionSide::Responder => {
                 // receive the peer's PlayerName
                 let len = conn.reader().read(&mut buffer).await.unwrap();
-                let peer_name = String::from_utf8(buffer[..len].to_vec()).unwrap();
+                let peer_name = String::from_utf8_lossy(&buffer[..len]).into_owned();
 
                 // send own PlayerName
-                let own_name = conn.node.name();
-                let message = prefix_message(own_name.as_bytes());
-                conn.writer().write_all(&message).await.unwrap();
+                let own_name = conn.node.name().as_bytes().to_vec();
+                conn.writer().write_all(&own_name).await.unwrap();
 
                 peer_name
             }
