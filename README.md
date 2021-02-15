@@ -3,7 +3,7 @@
 [![docs.rs](https://docs.rs/pea2pea/badge.svg)](https://docs.rs/pea2pea)
 [![files](https://tokei.rs/b1/github/ljedrz/pea2pea?category=files)](https://github.com/ljedrz/pea2pea/tree/master/src)
 [![LOC](https://tokei.rs/b1/github/ljedrz/pea2pea?category=code)](https://github.com/ljedrz/pea2pea/tree/master/src)
-[![dependencies](https://deps.rs/repo/github/ljedrz/pea2pea/status.svg)](https://github.com/ljedrz/pea2pea/blob/master/Cargo.toml)
+[![dependencies](https://deps.rs/repo/github/ljedrz/pea2pea/status.svg)](https://deps.rs/repo/github/ljedrz/pea2pea)
 [![issues](https://img.shields.io/github/issues-raw/ljedrz/pea2pea)](https://github.com/ljedrz/pea2pea/issues)
 
 **pea2pea** is a P2P library designed with the following use cases in mind:
