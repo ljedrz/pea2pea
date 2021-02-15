@@ -243,7 +243,7 @@ impl Node {
             || addr.ip().is_loopback() && addr.port() == self.listening_addr().port()
         {
             error!(parent: self.span(), "can't connect to node's own listening address ({})", addr);
-            return Err(io::ErrorKind::Other.into());
+            return Err(io::ErrorKind::AddrInUse.into());
         }
 
         if !self.can_add_connection() {
@@ -253,12 +253,12 @@ impl Node {
 
         if self.connections.is_connected(addr) {
             warn!(parent: self.span(), "already connected to {}", addr);
-            return Err(io::ErrorKind::Other.into());
+            return Err(io::ErrorKind::AlreadyExists.into());
         }
 
         if !self.connecting.lock().insert(addr) {
             warn!(parent: self.span(), "already connecting to {}", addr);
-            return Err(io::ErrorKind::Other.into());
+            return Err(io::ErrorKind::AlreadyExists.into());
         }
 
         let stream = TcpStream::connect(addr).await.map_err(|e| {

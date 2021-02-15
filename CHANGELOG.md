@@ -1,4 +1,4 @@
-# 0.17.3
+# 0.18.0
 
 ### Added
 
@@ -8,6 +8,7 @@
 
 - the list of read errors considered fatal is longer
 - connections are now broken on write errors considered fatal too
+- the `io::ErrorKind`s returned by `Node::connect` are more specific
 
 # 0.17.2
 
