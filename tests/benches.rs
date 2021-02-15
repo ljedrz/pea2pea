@@ -146,7 +146,7 @@ async fn run_bench_scenario(sender_count: usize) -> f64 {
 #[tokio::test(flavor = "multi_thread")]
 async fn bench_spam_to_one() {
     let mut results = Vec::with_capacity(4);
-    for sender_count in &[1, 5, 10, 25, 50, 100] {
+    for sender_count in &[1, 10, 20, 50, 100] {
         let throughput = run_bench_scenario(*sender_count).await;
         println!(
             "throughput with {:>3} sender(s), 1 receiver: {}",
