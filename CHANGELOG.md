@@ -1,3 +1,14 @@
+# 0.17.3
+
+### Added
+
+- `NodeConfig.fatal_io_errors` that specifies which IO errors should break connections
+
+### Changed
+
+- the list of read errors considered fatal is longer
+- connections are now broken on write errors considered fatal too
+
 # 0.17.2
 
 ### Changed

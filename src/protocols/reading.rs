@@ -93,21 +93,14 @@ where
                                 }
                                 Err(e) => {
                                     node.known_peers().register_failure(addr);
-                                    match e.kind() {
-                                        io::ErrorKind::InvalidData | io::ErrorKind::BrokenPipe => {
-                                            // can't recover; drop the connection
-                                            node.disconnect(addr);
-                                            break;
-                                        }
-                                        io::ErrorKind::Other => {
-                                            // an unsuccessful read from the stream is not fatal; instead of disconnecting,
-                                            // impose a delay before attempting another read
-                                            sleep(Duration::from_secs(
-                                                node.config().invalid_read_delay_secs,
-                                            ))
-                                            .await;
-                                        }
-                                        _ => unreachable!(),
+                                    if node.config().fatal_io_errors.contains(&e.kind()) {
+                                        node.disconnect(addr);
+                                        break;
+                                    } else {
+                                        sleep(Duration::from_secs(
+                                            node.config().invalid_read_delay_secs,
+                                        ))
+                                        .await;
                                     }
                                 }
                             }

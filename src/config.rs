@@ -1,4 +1,7 @@
-use std::net::{IpAddr, Ipv4Addr};
+use std::{
+    io::{self, ErrorKind::*},
+    net::{IpAddr, Ipv4Addr},
+};
 
 /// The node's configuration.
 #[derive(Debug, Clone)]
@@ -23,8 +26,10 @@ pub struct NodeConfig {
     pub conn_inbound_queue_depth: usize,
     /// The depth of per-connection queues used to send outbound messages.
     pub conn_outbound_queue_depth: usize,
-    /// The delay on the next read from a connection that can't be read from.
+    /// The delay on the next read attempt from a connection that can't be read from.
     pub invalid_read_delay_secs: u64,
+    /// The list of IO errors considered fatal and causing the connection to be dropped.
+    pub fatal_io_errors: Vec<io::ErrorKind>,
     /// The maximum number of active connections the node can maintain.
     ///
     /// note: this number can very briefly be breached by 1 in case of inbound connection attempts. It can never be
@@ -47,6 +52,13 @@ impl Default for NodeConfig {
             conn_inbound_queue_depth: 64,
             conn_outbound_queue_depth: 16,
             invalid_read_delay_secs: 10,
+            fatal_io_errors: vec![
+                ConnectionReset,
+                ConnectionAborted,
+                BrokenPipe,
+                InvalidData,
+                UnexpectedEof,
+            ],
             max_connections: 100,
             max_handshake_time_ms: 3_000,
         }
