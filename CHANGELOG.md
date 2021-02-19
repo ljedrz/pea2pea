@@ -1,3 +1,9 @@
+# 0.18.1
+
+### Fixed
+
+- the `tokio` dependency has the `rt-multi-thread` feature enabled by default in order to not fail to build in crates that don't use it on their own
+
 # 0.18.0
 
 ### Added
