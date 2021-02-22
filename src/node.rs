@@ -27,7 +27,7 @@ use std::{
 
 macro_rules! enable_protocol {
     ($protocol_name: expr, $handler_type: ident, $node:expr, $conn: expr) => {
-        if let Some(ref handler) = $node.$handler_type() {
+        if let Some(ref handler) = $node.protocols.$handler_type.get() {
             let (conn_returner, conn_retriever) = oneshot::channel();
 
             handler.send(($conn, conn_returner)).await;
@@ -344,21 +344,6 @@ impl Node {
         }
     }
 
-    /// Returns a reference to the handshake handler, if the `Handshaking` protocol is enabled.
-    fn handshake_handler(&self) -> Option<&ProtocolHandler> {
-        self.protocols.handshake_handler.get()
-    }
-
-    /// Returns a reference to the reading handler, if the `Reading` protocol is enabled.
-    fn reading_handler(&self) -> Option<&ProtocolHandler> {
-        self.protocols.reading_handler.get()
-    }
-
-    /// Returns a reference to the writing handler, if the `Writing` protocol is enabled.
-    fn writing_handler(&self) -> Option<&ProtocolHandler> {
-        self.protocols.writing_handler.get()
-    }
-
     /// Sets up the handshake handler, as part of the `Handshaking` protocol.
     pub fn set_handshake_handler(&self, handler: ProtocolHandler) {
         if self.protocols.handshake_handler.set(handler).is_err() {
@@ -392,13 +377,13 @@ impl Node {
             self.disconnect(addr);
         }
 
-        if let Some(handler) = self.handshake_handler() {
+        if let Some(handler) = self.protocols.handshake_handler.get() {
             handler.task.abort();
         }
-        if let Some(handler) = self.reading_handler() {
+        if let Some(handler) = self.protocols.reading_handler.get() {
             handler.task.abort();
         }
-        if let Some(handler) = self.writing_handler() {
+        if let Some(handler) = self.protocols.writing_handler.get() {
             handler.task.abort();
         }
     }
