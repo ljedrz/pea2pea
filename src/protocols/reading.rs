@@ -118,10 +118,10 @@ where
                 }
             }
         });
+        self.node().tasks.lock().push(reading_task);
 
         // register the ReadingHandler with the Node
-        self.node()
-            .set_reading_handler((conn_sender, reading_task).into());
+        self.node().set_reading_handler(conn_sender.into());
     }
 
     /// Performs a read from the given reader. The default implementation is buffered; it sacrifices a bit of

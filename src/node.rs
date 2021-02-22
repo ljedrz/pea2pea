@@ -6,7 +6,6 @@ use crate::{
 
 use bytes::Bytes;
 use fxhash::FxHashSet;
-use once_cell::sync::OnceCell;
 use parking_lot::Mutex;
 use tokio::{
     net::{TcpListener, TcpStream},
@@ -76,8 +75,8 @@ pub struct InnerNode {
     known_peers: KnownPeers,
     /// Collects statistics related to the node itself.
     stats: NodeStats,
-    /// The node's listening task.
-    listening_task: OnceCell<JoinHandle<()>>,
+    /// The node's tasks.
+    pub(crate) tasks: Mutex<Vec<JoinHandle<()>>>,
 }
 
 impl Node {
@@ -128,7 +127,7 @@ impl Node {
             connections: Default::default(),
             known_peers: Default::default(),
             stats: Default::default(),
-            listening_task: Default::default(),
+            tasks: Default::default(),
         }));
 
         let node_clone = node.clone();
@@ -158,8 +157,7 @@ impl Node {
                 }
             }
         });
-
-        node.listening_task.set(listening_task).unwrap();
+        node.tasks.lock().push(listening_task);
 
         debug!(parent: node.span(), "the node is ready; listening on {}", listening_addr);
 
@@ -369,22 +367,17 @@ impl Node {
     pub fn shut_down(&self) {
         debug!(parent: self.span(), "shutting down");
 
-        if let Some(handle) = self.listening_task.get() {
-            handle.abort();
+        let mut tasks = std::mem::take(&mut *self.tasks.lock()).into_iter();
+        if let Some(listening_task) = tasks.next() {
+            listening_task.abort(); // abort the listening task first
         }
 
         for addr in self.connected_addrs() {
             self.disconnect(addr);
         }
 
-        if let Some(handler) = self.protocols.handshake_handler.get() {
-            handler.task.abort();
-        }
-        if let Some(handler) = self.protocols.reading_handler.get() {
-            handler.task.abort();
-        }
-        if let Some(handler) = self.protocols.writing_handler.get() {
-            handler.task.abort();
+        for handle in tasks {
+            handle.abort();
         }
     }
 }

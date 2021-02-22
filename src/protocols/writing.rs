@@ -85,10 +85,10 @@ where
                 }
             }
         });
+        self.node().tasks.lock().push(writing_task);
 
         // register the WritingHandler with the Node
-        self.node()
-            .set_writing_handler((conn_sender, writing_task).into());
+        self.node().set_writing_handler(conn_sender.into());
     }
 
     /// Writes the given message to the provided writer, using the provided intermediate buffer; returns the number of

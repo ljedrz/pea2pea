@@ -57,9 +57,9 @@ where
                 }
             }
         });
+        self.node().tasks.lock().push(handshaking_task);
 
-        self.node()
-            .set_handshake_handler((from_node_sender, handshaking_task).into());
+        self.node().set_handshake_handler(from_node_sender.into());
     }
 
     /// Performs the handshake; temporarily assumes control of the `Connection` and returns it if the handshake is

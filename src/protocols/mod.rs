@@ -5,10 +5,7 @@
 use crate::connections::Connection;
 
 use once_cell::sync::OnceCell;
-use tokio::{
-    sync::{mpsc, oneshot},
-    task::JoinHandle,
-};
+use tokio::sync::{mpsc, oneshot};
 use tracing::*;
 
 use std::io;
@@ -29,10 +26,9 @@ pub(crate) struct Protocols {
 }
 
 /// An object dedicated to managing a protocol; it contains a `Sender` whose other side is
-/// owned by the protocol's task, a handle to which is also held by the `ProtocolHandler`.
+/// owned by the protocol's task.
 pub struct ProtocolHandler {
     sender: mpsc::Sender<ReturnableConnection>,
-    pub(crate) task: JoinHandle<()>,
 }
 
 impl ProtocolHandler {
@@ -44,9 +40,9 @@ impl ProtocolHandler {
     }
 }
 
-impl From<(mpsc::Sender<ReturnableConnection>, JoinHandle<()>)> for ProtocolHandler {
-    fn from((sender, task): (mpsc::Sender<ReturnableConnection>, JoinHandle<()>)) -> Self {
-        Self { sender, task }
+impl From<mpsc::Sender<ReturnableConnection>> for ProtocolHandler {
+    fn from(sender: mpsc::Sender<ReturnableConnection>) -> Self {
+        Self { sender }
     }
 }
 
