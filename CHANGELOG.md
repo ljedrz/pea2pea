@@ -1,3 +1,9 @@
+# 0.18.2
+
+### Changed
+
+- the default `tokio` runtime feature is now just `rt` (which is compatible with `rt-multi-thread`)
+
 # 0.18.1
 
 ### Fixed
