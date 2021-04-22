@@ -57,7 +57,7 @@ impl Deref for Node {
     }
 }
 
-#[doc(hide)]
+#[doc(hidden)]
 pub struct InnerNode {
     /// The tracing span.
     span: Span,

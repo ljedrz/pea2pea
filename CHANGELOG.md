@@ -1,8 +1,9 @@
-# 0.18.2
+# 0.19.0
 
 ### Changed
 
 - the default `tokio` runtime feature is now just `rt` (which is compatible with `rt-multi-thread`)
+- the `ProtocolHandler` is now created from just a `mpsc::Sender<ReturnableConnection>`
 
 # 0.18.1
 
