@@ -26,7 +26,7 @@ use std::{
 
 macro_rules! enable_protocol {
     ($protocol_name: expr, $handler_type: ident, $node:expr, $conn: expr) => {
-        if let Some(ref handler) = $node.protocols.$handler_type.get() {
+        if let Some(handler) = $node.protocols.$handler_type.get() {
             let (conn_returner, conn_retriever) = oneshot::channel();
 
             handler.send(($conn, conn_returner)).await;
