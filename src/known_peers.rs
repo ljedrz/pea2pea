@@ -45,7 +45,7 @@ impl KnownPeers {
     /// Registers a failure associated with the given address.
     pub fn register_failure(&self, addr: SocketAddr) {
         if let Some(ref mut stats) = self.write().get_mut(&addr) {
-            stats.failures += 1;
+            stats.failures = stats.failures.saturating_add(1);
         }
     }
 
@@ -77,7 +77,7 @@ pub struct PeerStats {
     pub bytes_sent: u64,
     /// The number of bytes received from the peer.
     pub bytes_received: u64,
-    /// The number of failures related to the peer.
+    /// The number of failures related to the peer; maxes out at `u8::MAX`.
     pub failures: u8,
 }
 
