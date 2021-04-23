@@ -1,3 +1,9 @@
+# 0.19.1
+
+### Fixed
+
+- `KnownPeers::register_failure` won't overflow anymore, as it is saturating at its maximum
+
 # 0.19.0
 
 ### Changed
