@@ -171,9 +171,7 @@ impl Reading for Player {
                 info!(parent: self.node().span(), "I have the potato!");
                 {
                     let mut other_players = self.other_players.lock();
-                    if let Some(ref mut old_carrier) =
-                        other_players.values_mut().find(|p| p.is_carrier)
-                    {
+                    if let Some(old_carrier) = other_players.values_mut().find(|p| p.is_carrier) {
                         old_carrier.is_carrier = false;
                     }
                     assert!(other_players.values().all(|p| !p.is_carrier));
@@ -185,12 +183,11 @@ impl Reading for Player {
             Message::IHaveThePotato(carrier) => {
                 let mut other_players = self.other_players.lock();
 
-                if let Some(ref mut old_carrier) = other_players.values_mut().find(|p| p.is_carrier)
-                {
+                if let Some(old_carrier) = other_players.values_mut().find(|p| p.is_carrier) {
                     old_carrier.is_carrier = false;
                 }
                 assert!(other_players.values().all(|p| !p.is_carrier));
-                if let Some(ref mut new_carrier) = other_players.get_mut(&carrier) {
+                if let Some(new_carrier) = other_players.get_mut(&carrier) {
                     new_carrier.is_carrier = true;
                 }
             }

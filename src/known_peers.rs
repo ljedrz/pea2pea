@@ -20,7 +20,7 @@ impl KnownPeers {
 
     /// Registers a connection to the given address.
     pub fn register_connection(&self, addr: SocketAddr) {
-        if let Some(ref mut stats) = self.write().get_mut(&addr) {
+        if let Some(stats) = self.write().get_mut(&addr) {
             stats.last_connected = Some(Instant::now());
             stats.times_connected += 1;
         }
@@ -28,7 +28,7 @@ impl KnownPeers {
 
     /// Registers a submission of a message to the given address.
     pub fn register_sent_message(&self, to: SocketAddr, len: usize) {
-        if let Some(ref mut stats) = self.write().get_mut(&to) {
+        if let Some(stats) = self.write().get_mut(&to) {
             stats.msgs_sent += 1;
             stats.bytes_sent += len as u64;
         }
@@ -36,7 +36,7 @@ impl KnownPeers {
 
     /// Registers a receipt of a message to the given address.
     pub fn register_received_message(&self, from: SocketAddr, len: usize) {
-        if let Some(ref mut stats) = self.write().get_mut(&from) {
+        if let Some(stats) = self.write().get_mut(&from) {
             stats.msgs_received += 1;
             stats.bytes_received += len as u64;
         }
@@ -44,7 +44,7 @@ impl KnownPeers {
 
     /// Registers a failure associated with the given address.
     pub fn register_failure(&self, addr: SocketAddr) {
-        if let Some(ref mut stats) = self.write().get_mut(&addr) {
+        if let Some(stats) = self.write().get_mut(&addr) {
             stats.failures = stats.failures.saturating_add(1);
         }
     }
