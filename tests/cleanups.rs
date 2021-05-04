@@ -147,16 +147,17 @@ async fn check_node_cleanups() {
 
     // register peak heap use
     let max_heap_use = PEAK_ALLOC.peak_usage_as_kb();
-    println!("peak heap use: {:.2}kB", max_heap_use);
 
-    // even when 4096 Habsburg's thugs show up and die, maximum memory use shouldn't grow
+    // even when 10k Habsburg's thugs show up and die, maximum memory use shouldn't grow
     // by more than 5% (some of which is probably caused by tokio), as the heap bumps are:
     //
-    // heap bump: 343.46kB at i=1 (+0.49%)
-    // heap bump: 344.84kB at i=2 (+0.40%)
-    // heap bump: 355.43kB at i=32 (+3.07%)
-    // heap bump: 355.48kB at i=2043 (+0.01%)
-    // peak heap use: 355.48kB
+    // heap bump: 354.17kB at i=32 (+3.08%)
+    // peak heap use: 354.17kB; total heap growth: 1.0308341
     let alloc_growth = max_heap_use / peak_heap_post_1st_conn;
+    println!(
+        "peak heap use: {:.2}kB; total heap growth: {}",
+        max_heap_use, alloc_growth
+    );
+
     assert!(alloc_growth < 1.05);
 }
