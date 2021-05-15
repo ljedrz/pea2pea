@@ -23,7 +23,7 @@ use std::{
     io,
     net::SocketAddr,
     sync::{
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicUsize, Ordering::Relaxed},
         Arc,
     },
     time::Duration,
@@ -177,7 +177,7 @@ impl Reading for Player {
                     assert!(other_players.values().all(|p| !p.is_carrier));
                 }
 
-                self.potato_count.fetch_add(1, Ordering::Relaxed);
+                self.potato_count.fetch_add(1, Relaxed);
                 self.throw_potato().await;
             }
             Message::IHaveThePotato(carrier) => {
@@ -230,9 +230,7 @@ async fn main() {
     connect_nodes(&players, Topology::Mesh).await.unwrap();
 
     let first_carrier = RNG.lock().gen_range(0..NUM_PLAYERS);
-    players[first_carrier]
-        .potato_count
-        .fetch_add(1, Ordering::Relaxed);
+    players[first_carrier].potato_count.fetch_add(1, Relaxed);
     players[first_carrier].throw_potato().await;
 
     sleep(Duration::from_secs(GAME_TIME_SECS)).await;
@@ -242,7 +240,7 @@ async fn main() {
         println!(
             "player {} got the potato {} times",
             player.node().name(),
-            player.potato_count.load(Ordering::Relaxed)
+            player.potato_count.load(Relaxed)
         );
     }
 }

@@ -1,4 +1,4 @@
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, Ordering::Relaxed};
 
 /// Contains statistics related to the node.
 #[derive(Default)]
@@ -16,29 +16,28 @@ pub struct NodeStats {
 impl NodeStats {
     /// Registers a sent message of the provided `size` in bytes.
     pub fn register_sent_message(&self, size: usize) {
-        self.msgs_sent.fetch_add(1, Ordering::Relaxed);
-        self.bytes_sent.fetch_add(size as u64, Ordering::Relaxed);
+        self.msgs_sent.fetch_add(1, Relaxed);
+        self.bytes_sent.fetch_add(size as u64, Relaxed);
     }
 
     /// Registers a received message of the provided `size` in bytes.
     pub fn register_received_message(&self, size: usize) {
-        self.msgs_received.fetch_add(1, Ordering::Relaxed);
-        self.bytes_received
-            .fetch_add(size as u64, Ordering::Relaxed);
+        self.msgs_received.fetch_add(1, Relaxed);
+        self.bytes_received.fetch_add(size as u64, Relaxed);
     }
 
     /// Returns the number of sent messages and their collective size in bytes.
     pub fn sent(&self) -> (u64, u64) {
-        let msgs = self.msgs_sent.load(Ordering::Relaxed);
-        let bytes = self.bytes_sent.load(Ordering::Relaxed);
+        let msgs = self.msgs_sent.load(Relaxed);
+        let bytes = self.bytes_sent.load(Relaxed);
 
         (msgs, bytes)
     }
 
     /// Returns the number of received messages and their collective size in bytes.
     pub fn received(&self) -> (u64, u64) {
-        let msgs = self.msgs_received.load(Ordering::Relaxed);
-        let bytes = self.bytes_received.load(Ordering::Relaxed);
+        let msgs = self.msgs_received.load(Relaxed);
+        let bytes = self.bytes_received.load(Relaxed);
 
         (msgs, bytes)
     }
