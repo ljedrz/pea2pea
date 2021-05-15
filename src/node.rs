@@ -143,6 +143,8 @@ impl Node {
                             continue;
                         }
 
+                        node_clone.connecting.lock().insert(addr);
+
                         if let Err(e) = node_clone
                             .adapt_stream(stream, addr, ConnectionSide::Responder)
                             .await
@@ -206,7 +208,6 @@ impl Node {
         peer_addr: SocketAddr,
         own_side: ConnectionSide,
     ) -> io::Result<()> {
-        self.connecting.lock().insert(peer_addr);
         self.known_peers.add(peer_addr);
 
         // register the port seen by the peer
