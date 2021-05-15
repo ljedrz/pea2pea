@@ -69,7 +69,7 @@ pub struct PeerStats {
     pub added: Instant,
     /// The timestamp of the most recent connection with the peer.
     pub last_connected: Option<Instant>,
-    /// The timestamp of the peer's last activity.
+    /// The number of messages sent to the peer.
     pub msgs_sent: usize,
     /// The number of messages received from the peer.
     pub msgs_received: usize,
