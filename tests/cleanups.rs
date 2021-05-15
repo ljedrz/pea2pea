@@ -78,6 +78,8 @@ async fn check_node_cleanups() {
     #[global_allocator]
     static PEAK_ALLOC: PeakAlloc = PeakAlloc;
 
+    const NUM_CONNECTIONS: usize = 1_000;
+
     let config = NodeConfig {
         name: Some("Drebin".into()),
         ..Default::default()
@@ -92,7 +94,7 @@ async fn check_node_cleanups() {
     let mut peak_heap = PEAK_ALLOC.peak_usage_as_kb();
     let mut peak_heap_post_1st_conn = 0.0;
 
-    for i in 0u8..255 {
+    for i in 0..NUM_CONNECTIONS {
         let hapsburgs_thug = TestNode(Node::new(None).await.unwrap());
 
         hapsburgs_thug.enable_handshaking();
@@ -155,8 +157,8 @@ async fn check_node_cleanups() {
     // peak heap use: 354.17kB; total heap growth: 1.0308341
     let alloc_growth = max_heap_use / peak_heap_post_1st_conn;
     println!(
-        "peak heap use: {:.2}kB; total heap growth: {}",
-        max_heap_use, alloc_growth
+        "peak heap use: {:.2}kB; total heap growth after {} connections: {}",
+        max_heap_use, NUM_CONNECTIONS, alloc_growth
     );
 
     assert!(alloc_growth < 1.05);
