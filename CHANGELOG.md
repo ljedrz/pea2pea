@@ -1,3 +1,10 @@
+# 0.20.1
+
+### Fixed
+
+- removed one redundant `connecting` registration when initiating connections
+- the node is now guarded against connection spam by making connection responses concurrent
+
 # 0.20.0
 
 ### Added
