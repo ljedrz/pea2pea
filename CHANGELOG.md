@@ -1,3 +1,9 @@
+# 0.20.0
+
+### Removed
+
+- `PeerStats.{added, last_connected}` - not super-interesting
+
 # 0.19.1
 
 ### Fixed

@@ -1,7 +1,7 @@
 use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use fxhash::FxHashMap;
-use std::{net::SocketAddr, time::Instant};
+use std::net::SocketAddr;
 
 /// Contains statistics related to node's peers, currently connected or not.
 #[derive(Default)]
@@ -21,7 +21,6 @@ impl KnownPeers {
     /// Registers a connection to the given address.
     pub fn register_connection(&self, addr: SocketAddr) {
         if let Some(stats) = self.write().get_mut(&addr) {
-            stats.last_connected = Some(Instant::now());
             stats.times_connected += 1;
         }
     }
@@ -61,14 +60,10 @@ impl KnownPeers {
 }
 
 /// Contains statistics related to a single peer.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct PeerStats {
     /// The number of times a connection with the peer has been established.
     pub times_connected: usize,
-    /// The timestamp of inclusion of the peer in `KnownPeers`.
-    pub added: Instant,
-    /// The timestamp of the most recent connection with the peer.
-    pub last_connected: Option<Instant>,
     /// The number of messages sent to the peer.
     pub msgs_sent: usize,
     /// The number of messages received from the peer.
@@ -79,19 +74,4 @@ pub struct PeerStats {
     pub bytes_received: u64,
     /// The number of failures related to the peer; maxes out at `u8::MAX`.
     pub failures: u8,
-}
-
-impl Default for PeerStats {
-    fn default() -> Self {
-        Self {
-            times_connected: 0,
-            added: Instant::now(),
-            last_connected: None,
-            msgs_sent: 0,
-            msgs_received: 0,
-            bytes_sent: 0,
-            bytes_received: 0,
-            failures: 0,
-        }
-    }
 }
