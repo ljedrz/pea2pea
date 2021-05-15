@@ -188,6 +188,51 @@ async fn node_hung_handshake_fails() {
     assert!(connectee.node().num_connecting() == 0);
 }
 
+#[tokio::test(flavor = "multi_thread")]
+async fn node_common_timeout_when_spammed_with_connections() {
+    const NUM_ATTEMPTS: u16 = 200;
+    const TIMEOUT_SECS: u64 = 1;
+
+    #[derive(Clone)]
+    struct Wrap(Node);
+
+    impl Pea2Pea for Wrap {
+        fn node(&self) -> &Node {
+            &self.0
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl Handshaking for Wrap {
+        async fn perform_handshake(&self, mut conn: Connection) -> io::Result<Connection> {
+            conn.reader().read_exact(&mut [0u8; 1]).await?;
+
+            Ok(conn)
+        }
+    }
+
+    let config = NodeConfig {
+        max_handshake_time_ms: TIMEOUT_SECS * 1_000,
+        max_connections: NUM_ATTEMPTS,
+        ..Default::default()
+    };
+    let victim = Wrap(Node::new(Some(config)).await.unwrap());
+    victim.enable_handshaking();
+    let victim_addr = victim.node().listening_addr();
+
+    let mut sockets = Vec::with_capacity(NUM_ATTEMPTS as usize);
+
+    for _ in 0..NUM_ATTEMPTS {
+        if let Ok(socket) = TcpStream::connect(victim_addr).await {
+            sockets.push(socket);
+        }
+    }
+
+    wait_until!(3, victim.node().num_connecting() == NUM_ATTEMPTS as usize);
+
+    wait_until!(TIMEOUT_SECS + 1, victim.node().num_connecting() == 0);
+}
+
 #[tokio::test]
 async fn node_stats_received() {
     #[derive(Clone)]

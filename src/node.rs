@@ -10,7 +10,7 @@ use parking_lot::Mutex;
 use tokio::{
     net::{TcpListener, TcpStream},
     sync::oneshot,
-    task::JoinHandle,
+    task::{self, JoinHandle},
 };
 use tracing::*;
 
@@ -145,14 +145,17 @@ impl Node {
 
                         node_clone.connecting.lock().insert(addr);
 
-                        if let Err(e) = node_clone
-                            .adapt_stream(stream, addr, ConnectionSide::Responder)
-                            .await
-                        {
-                            node_clone.connecting.lock().remove(&addr);
-                            node_clone.known_peers().register_failure(addr);
-                            error!(parent: node_clone.span(), "couldn't accept a connection: {}", e);
-                        }
+                        let node_clone2 = node_clone.clone();
+                        task::spawn(async move {
+                            if let Err(e) = node_clone2
+                                .adapt_stream(stream, addr, ConnectionSide::Responder)
+                                .await
+                            {
+                                node_clone2.connecting.lock().remove(&addr);
+                                node_clone2.known_peers().register_failure(addr);
+                                error!(parent: node_clone2.span(), "couldn't accept a connection: {}", e);
+                            }
+                        });
                     }
                     Err(e) => {
                         error!(parent: node_clone.span(), "couldn't accept a connection: {}", e);
