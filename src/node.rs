@@ -147,6 +147,7 @@ impl Node {
                             .adapt_stream(stream, addr, ConnectionSide::Responder)
                             .await
                         {
+                            node_clone.connecting.lock().remove(&addr);
                             node_clone.known_peers().register_failure(addr);
                             error!(parent: node_clone.span(), "couldn't accept a connection: {}", e);
                         }
@@ -205,6 +206,7 @@ impl Node {
         peer_addr: SocketAddr,
         own_side: ConnectionSide,
     ) -> io::Result<()> {
+        self.connecting.lock().insert(peer_addr);
         self.known_peers.add(peer_addr);
 
         // register the port seen by the peer
@@ -230,6 +232,7 @@ impl Node {
         connection.writer = None;
 
         self.connections.add(connection);
+        self.connecting.lock().remove(&peer_addr);
         self.known_peers.register_connection(peer_addr);
 
         Ok(())
@@ -269,11 +272,10 @@ impl Node {
             .await;
 
         if let Err(ref e) = ret {
+            self.connecting.lock().remove(&addr);
             self.known_peers().register_failure(addr);
             error!(parent: self.span(), "couldn't initiate a connection with {}: {}", addr, e);
         }
-
-        self.connecting.lock().remove(&addr);
 
         ret
     }
