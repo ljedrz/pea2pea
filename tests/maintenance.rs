@@ -4,7 +4,7 @@ use tracing::*;
 mod common;
 use pea2pea::{Node, NodeConfig, Pea2Pea};
 
-use std::time::Duration;
+use std::{sync::atomic::Ordering::Relaxed, time::Duration};
 
 #[derive(Clone)]
 struct TidyNode(Node);
@@ -28,7 +28,7 @@ impl TidyNode {
                 let mut addrs_to_disconnect = Vec::new();
 
                 for (addr, stats) in node.known_peers().read().iter() {
-                    if stats.failures > 0 {
+                    if stats.failures.load(Relaxed) > 0 {
                         addrs_to_disconnect.push(*addr);
                     }
                 }

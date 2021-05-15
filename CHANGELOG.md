@@ -1,5 +1,9 @@
 # 0.20.0
 
+### Changed
+
+- use atomics in `PeerStats`
+
 ### Removed
 
 - `PeerStats.{added, last_connected}` - not super-interesting

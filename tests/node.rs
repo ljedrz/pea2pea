@@ -14,7 +14,7 @@ use std::{
     io,
     net::SocketAddr,
     sync::{
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicUsize, Ordering::Relaxed},
         Arc,
     },
 };
@@ -109,12 +109,12 @@ async fn node_overlapping_duplicate_connection_attempts_fail() {
         let err_count_clone = err_count.clone();
         tokio::spawn(async move {
             if connector_clone.connect(addr).await.is_err() {
-                err_count_clone.fetch_add(1, Ordering::Relaxed);
+                err_count_clone.fetch_add(1, Relaxed);
             }
         });
     }
 
-    wait_until!(1, err_count.load(Ordering::Relaxed) == NUM_ATTEMPTS - 1);
+    wait_until!(1, err_count.load(Relaxed) == NUM_ATTEMPTS - 1);
 }
 
 #[tokio::test]
@@ -207,7 +207,7 @@ async fn node_stats_received() {
     wait_until!(1, reader.node().stats().received() == (5, 10));
     wait_until!(1, {
         if let Some(peer) = reader.node().known_peers().read().get(&writer_addr) {
-            peer.msgs_received == 5 && peer.bytes_received == 10
+            peer.msgs_received.load(Relaxed) == 5 && peer.bytes_received.load(Relaxed) == 10
         } else {
             false
         }
@@ -268,7 +268,7 @@ async fn node_stats_sent() {
     wait_until!(1, writer.node().stats().sent() == (2, 8));
     wait_until!(1, {
         if let Some(peer) = writer.node().known_peers().read().get(&reader_addr) {
-            peer.msgs_sent == 2 && peer.bytes_sent == 8
+            peer.msgs_sent.load(Relaxed) == 2 && peer.bytes_sent.load(Relaxed) == 8
         } else {
             false
         }
