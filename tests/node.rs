@@ -49,9 +49,21 @@ async fn node_connect_and_disconnect() {
     let nodes = common::start_inert_nodes(2, None).await;
     connect_nodes(&nodes, Topology::Line).await.unwrap();
 
+    wait_until!(
+        1,
+        nodes[0].num_connected() == 1 && nodes[1].num_connected() == 1
+    );
+
+    assert!(nodes[0].num_connecting() == 0);
+    assert!(nodes[1].num_connecting() == 0);
+
     assert!(nodes[0].disconnect(nodes[1].listening_addr()));
-    assert!(!nodes[0].is_connected(nodes[1].listening_addr()));
-    assert!(nodes[1].num_connected() == 0);
+
+    wait_until!(1, nodes[0].num_connected() == 0);
+
+    // node[1] didn't enable reading, so it has no way of knowing
+    // that the connection has been broken by node[0]
+    assert_eq!(nodes[1].num_connected(), 1);
 }
 
 #[tokio::test]
@@ -166,8 +178,14 @@ async fn node_hung_handshake_fails() {
         .await
         .is_ok());
 
-    // but the connectee should have rejected it on its side
+    // the TPC connection itself has been established, and with no reading, the connector doesn't know
+    // that the connectee has already disconnected from it by now
+    assert!(connector.node().num_connected() == 1);
+    assert!(connector.node().num_connecting() == 0);
+
+    // the connectee should have rejected the connection attempt on its side
     assert!(connectee.node().num_connected() == 0);
+    assert!(connectee.node().num_connecting() == 0);
 }
 
 #[tokio::test]
