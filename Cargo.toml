@@ -28,6 +28,6 @@ bincode = "1"
 peak_alloc = "0.1"
 rand = { version = "0.8", default-features = false, features = ["getrandom", "small_rng"] }
 serde = { version = "1", default-features = false, features = ["derive"] }
-snow = "0.7"
+snow = "0.8"
 tokio = { version = "1.0", features = ["macros", "rt-multi-thread"] }
 tracing-subscriber = { version = "0.2", default-features = false, features = ["ansi", "env-filter", "fmt", "parking_lot", "smallvec"] }
