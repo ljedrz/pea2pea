@@ -1,8 +1,16 @@
 # 0.20.0
 
+### Added
+
+- `Node::num_connecting`
+
 ### Changed
 
 - use atomics in `PeerStats`
+
+### Fixed
+
+- improved the accounting of connecting (but not yet connected) peers
 
 ### Removed
 
