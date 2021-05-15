@@ -99,6 +99,7 @@ async fn run_bench_scenario(sender_count: usize) -> f64 {
 
     let config = NodeConfig {
         conn_read_buffer_size: MSG_SIZE * 3,
+        max_connections: sender_count as u16,
         ..Default::default()
     };
     let sink = Sink(Node::new(Some(config)).await.unwrap());
@@ -113,7 +114,7 @@ async fn run_bench_scenario(sender_count: usize) -> f64 {
             .unwrap();
     }
 
-    wait_until!(1, sink.node().num_connected() == sender_count);
+    wait_until!(10, sink.node().num_connected() == sender_count);
 
     let sink_addr = sink.node().listening_addr();
 
