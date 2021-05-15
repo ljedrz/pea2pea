@@ -142,7 +142,6 @@ async fn run_bench_scenario(sender_count: usize) -> f64 {
 }
 
 #[ignore]
-#[allow(clippy::identity_op)]
 #[tokio::test(flavor = "multi_thread")]
 async fn bench_spam_to_one() {
     let mut results = Vec::with_capacity(4);
