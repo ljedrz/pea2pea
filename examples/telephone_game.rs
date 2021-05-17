@@ -66,8 +66,7 @@ impl Reading for Player {
         for addr in connected_addrs.into_iter().filter(|addr| *addr != source) {
             self.node()
                 .send_direct_message(addr, message_bytes.clone())
-                .await
-                .unwrap();
+                .await?;
         }
 
         Ok(())

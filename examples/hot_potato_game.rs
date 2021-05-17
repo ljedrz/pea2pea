@@ -99,21 +99,21 @@ impl Handshaking for Player {
             ConnectionSide::Initiator => {
                 // send own PlayerName
                 let own_name = conn.node.name().as_bytes().to_vec();
-                conn.writer().write_all(&own_name).await.unwrap();
+                conn.writer().write_all(&own_name).await?;
 
                 // receive the peer's PlayerName
-                let len = conn.reader().read(&mut buffer).await.unwrap();
+                let len = conn.reader().read(&mut buffer).await?;
 
                 String::from_utf8_lossy(&buffer[..len]).into_owned()
             }
             ConnectionSide::Responder => {
                 // receive the peer's PlayerName
-                let len = conn.reader().read(&mut buffer).await.unwrap();
+                let len = conn.reader().read(&mut buffer).await?;
                 let peer_name = String::from_utf8_lossy(&buffer[..len]).into_owned();
 
                 // send own PlayerName
                 let own_name = conn.node.name().as_bytes().to_vec();
-                conn.writer().write_all(&own_name).await.unwrap();
+                conn.writer().write_all(&own_name).await?;
 
                 peer_name
             }
