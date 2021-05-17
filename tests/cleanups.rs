@@ -82,6 +82,7 @@ async fn check_node_cleanups() {
 
     let config = NodeConfig {
         name: Some("Drebin".into()),
+        listener_ip: "127.0.0.1".parse().unwrap(),
         ..Default::default()
     };
     let drebin = TestNode(Node::new(Some(config)).await.unwrap());

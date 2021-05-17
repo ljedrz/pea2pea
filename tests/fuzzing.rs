@@ -51,6 +51,7 @@ async fn fuzzing() {
 
     let config = NodeConfig {
         conn_read_buffer_size: MAX_MSG_SIZE,
+        listener_ip: "127.0.0.1".parse().unwrap(),
         ..Default::default()
     };
     let tester = Tester(Node::new(Some(config)).await.unwrap());
@@ -58,6 +59,7 @@ async fn fuzzing() {
 
     let config = NodeConfig {
         conn_write_buffer_size: MAX_MSG_SIZE,
+        listener_ip: "127.0.0.1".parse().unwrap(),
         ..Default::default()
     };
     let sender = Tester(Node::new(Some(config)).await.unwrap());

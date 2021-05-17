@@ -51,6 +51,7 @@ async fn maintenance_example() {
 
     let tidy_config = NodeConfig {
         name: Some("tidy".into()),
+        listener_ip: "127.0.0.1".parse().unwrap(),
         ..Default::default()
     };
     let tidy = Node::new(Some(tidy_config)).await.unwrap();

@@ -133,6 +133,7 @@ async fn handshake_example() {
 
     let initiator_config = NodeConfig {
         name: Some("initiator".into()),
+        listener_ip: "127.0.0.1".parse().unwrap(),
         ..Default::default()
     };
     let initiator = Node::new(Some(initiator_config)).await.unwrap();
@@ -143,6 +144,7 @@ async fn handshake_example() {
 
     let responder_config = NodeConfig {
         name: Some("responder".into()),
+        listener_ip: "127.0.0.1".parse().unwrap(),
         ..Default::default()
     };
     let responder = Node::new(Some(responder_config)).await.unwrap();
@@ -176,6 +178,7 @@ async fn handshake_example() {
 async fn no_handshake_no_messaging() {
     let initiator_config = NodeConfig {
         name: Some("initiator".into()),
+        listener_ip: "127.0.0.1".parse().unwrap(),
         ..Default::default()
     };
     let initiator = Node::new(Some(initiator_config)).await.unwrap();
@@ -186,6 +189,7 @@ async fn no_handshake_no_messaging() {
 
     let responder_config = NodeConfig {
         name: Some("responder".into()),
+        listener_ip: "127.0.0.1".parse().unwrap(),
         ..Default::default()
     };
     let responder = Node::new(Some(responder_config)).await.unwrap();

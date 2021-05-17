@@ -89,6 +89,7 @@ async fn messaging_example() {
 
     let picky_echo_config = NodeConfig {
         name: Some("picky_echo".into()),
+        listener_ip: "127.0.0.1".parse().unwrap(),
         ..Default::default()
     };
     let picky_echo = EchoNode {
@@ -163,6 +164,7 @@ async fn drop_connection_on_oversized_message() {
     let config = NodeConfig {
         name: Some("reader".into()),
         conn_read_buffer_size: MSG_SIZE_LIMIT,
+        listener_ip: "127.0.0.1".parse().unwrap(),
         ..Default::default()
     };
     let reader = common::MessagingNode(Node::new(Some(config)).await.unwrap());

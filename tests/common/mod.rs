@@ -53,6 +53,7 @@ impl MessagingNode {
     pub async fn new<T: AsRef<str>>(name: T) -> Self {
         let config = NodeConfig {
             name: Some(name.as_ref().into()),
+            listener_ip: "127.0.0.1".parse().unwrap(),
             ..Default::default()
         };
         Self(Node::new(Some(config)).await.unwrap())

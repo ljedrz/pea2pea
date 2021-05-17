@@ -88,6 +88,7 @@ async fn run_bench_scenario(sender_count: usize) -> f64 {
 
     let config = NodeConfig {
         conn_write_buffer_size: MSG_SIZE,
+        listener_ip: "127.0.0.1".parse().unwrap(),
         ..Default::default()
     };
     let spammers = common::start_nodes(sender_count, Some(config)).await;
@@ -100,6 +101,7 @@ async fn run_bench_scenario(sender_count: usize) -> f64 {
     let config = NodeConfig {
         conn_read_buffer_size: MSG_SIZE * 3,
         max_connections: sender_count as u16,
+        listener_ip: "127.0.0.1".parse().unwrap(),
         ..Default::default()
     };
     let sink = Sink(Node::new(Some(config)).await.unwrap());

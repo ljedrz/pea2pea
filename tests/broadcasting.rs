@@ -64,6 +64,7 @@ async fn broadcast_example() {
 
     let broadcaster_config = NodeConfig {
         name: Some("chatty".into()),
+        listener_ip: "127.0.0.1".parse().unwrap(),
         ..Default::default()
     };
     let broadcaster = Node::new(Some(broadcaster_config)).await.unwrap();
