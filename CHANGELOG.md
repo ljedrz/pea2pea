@@ -1,3 +1,9 @@
+# 0.20.2
+
+### Fixed
+
+- stream read errors are now properly checked against `NodeConfig::fatal_io_errors`
+
 # 0.20.1
 
 ### Fixed
