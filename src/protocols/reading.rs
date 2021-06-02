@@ -209,7 +209,7 @@ where
             // a stream read error
             Err(e) => {
                 error!(parent: self.node().span(), "can't read from {}: {}", addr, e);
-                Err(io::ErrorKind::Other.into())
+                Err(e)
             }
         }
     }
