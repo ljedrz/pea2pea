@@ -192,3 +192,23 @@ async fn drop_connection_on_oversized_message() {
 
     wait_until!(1, reader.node().num_connected() == 0);
 }
+
+#[tokio::test]
+async fn drop_connection_on_zero_read() {
+    let reader = common::MessagingNode::new("reader").await;
+    reader.enable_reading();
+    let peer = common::MessagingNode::new("peer").await;
+
+    peer.node()
+        .connect(reader.node().listening_addr())
+        .await
+        .unwrap();
+
+    wait_until!(1, reader.node().num_connected() == 1);
+
+    // the peer shuts down, i.e. disconnects
+    peer.node().shut_down();
+
+    // the reader should drop its connection too now
+    wait_until!(1, reader.node().num_connected() == 0);
+}

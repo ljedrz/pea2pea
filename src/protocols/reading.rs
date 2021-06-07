@@ -138,7 +138,7 @@ where
     ) -> io::Result<usize> {
         // perform a read from the stream, being careful not to overwrite any bytes carried over from the previous read
         match reader.read(&mut buffer[carry..]).await {
-            Ok(0) => return Ok(carry),
+            Ok(0) => return Err(io::ErrorKind::UnexpectedEof.into()),
             Ok(n) => {
                 trace!(parent: self.node().span(), "read {}B from {}", n, addr);
                 let mut processed = 0;
