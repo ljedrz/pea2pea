@@ -1,3 +1,9 @@
+# 0.20.3
+
+### Fixed
+
+- the node will now recognize a zero-read as EOF and break the related connection
+
 # 0.20.2
 
 ### Fixed
