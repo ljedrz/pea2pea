@@ -50,7 +50,7 @@ impl Default for NodeConfig {
             conn_read_buffer_size: 64 * 1024,
             conn_write_buffer_size: 64 * 1024,
             conn_inbound_queue_depth: 64,
-            conn_outbound_queue_depth: 16,
+            conn_outbound_queue_depth: 64,
             invalid_read_delay_secs: 10,
             fatal_io_errors: vec![
                 ConnectionReset,
