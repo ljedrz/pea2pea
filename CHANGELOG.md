@@ -1,3 +1,10 @@
+# 0.21.0
+
+### Changed
+
+- `Node::{send_direct_message, send_broadcast}` are now non-async
+- `NodeConfig::conn_outbound_queue_depth` was increased from `16` to `64`
+
 # 0.20.3
 
 ### Fixed
