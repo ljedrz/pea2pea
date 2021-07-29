@@ -81,7 +81,6 @@ async fn fuzzing() {
         sender
             .node()
             .send_direct_message(tester.node().listening_addr(), random_payload.into())
-            .await
             .unwrap();
 
         if tester.node().num_connected() == 0 {

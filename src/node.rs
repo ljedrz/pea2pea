@@ -298,19 +298,23 @@ impl Node {
     }
 
     /// Sends the provided message to the specified `SocketAddr`, as long as the `Writing` protocol is enabled.
-    pub async fn send_direct_message(&self, addr: SocketAddr, message: Bytes) -> io::Result<()> {
+    pub fn send_direct_message(&self, addr: SocketAddr, message: Bytes) -> io::Result<()> {
         self.connections
             .sender(addr)?
-            .send(message)
-            .await
-            .map_err(|_| io::ErrorKind::NotConnected.into()) // an error here means the connection was shut down
+            .try_send(message)
+            .map_err(|_| {
+                error!("The outbound channel of {} is full! Message dropped.", addr);
+                io::ErrorKind::Other.into()
+            })
     }
 
     /// Broadcasts the provided message to all peers, as long as the `Writing` protocol is enabled.
-    pub async fn send_broadcast(&self, message: Bytes) -> io::Result<()> {
-        for message_sender in self.connections.senders()? {
+    pub fn send_broadcast(&self, message: Bytes) -> io::Result<()> {
+        for (message_sender, addr) in self.connections.senders() {
             // an error means the connection is shutting down, which is already reported in logs
-            let _ = message_sender.send(message.clone()).await;
+            let _ = message_sender.try_send(message.clone()).map_err(|_| {
+                error!("The outbound channel of {} is full! Message dropped.", addr);
+            });
         }
 
         Ok(())

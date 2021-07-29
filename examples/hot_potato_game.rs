@@ -64,7 +64,7 @@ impl Player {
     async fn throw_potato(&self) {
         let message = Message::IHaveThePotato(self.node().name().into());
         let message = bincode::serialize(&message).unwrap();
-        self.node().send_broadcast(message.into()).await.unwrap();
+        self.node().send_broadcast(message.into()).unwrap();
 
         let (new_carrier_name, new_carrier_addr) = self
             .other_players
@@ -79,7 +79,6 @@ impl Player {
         let message = bincode::serialize(&Message::HotPotato).unwrap();
         self.node()
             .send_direct_message(new_carrier_addr, message.into())
-            .await
             .unwrap();
     }
 }

@@ -324,13 +324,11 @@ async fn node_stats_sent() {
     writer
         .node()
         .send_direct_message(reader_addr, b"herp"[..].into())
-        .await
         .unwrap();
     reader.read_exact(&mut reader_buf).await.unwrap();
     writer
         .node()
         .send_direct_message(reader_addr, b"derp"[..].into())
-        .await
         .unwrap();
     reader.read_exact(&mut reader_buf).await.unwrap();
 

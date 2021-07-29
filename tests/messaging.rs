@@ -61,7 +61,6 @@ impl Reading for EchoNode {
 
             self.node()
                 .send_direct_message(source, Bytes::copy_from_slice(&[message as u8]))
-                .await
                 .unwrap();
         } else {
             debug!(parent: self.node().span(), "I've already heard {:?}! not echoing", message);
@@ -110,7 +109,6 @@ async fn messaging_example() {
         shouter
             .node()
             .send_direct_message(picky_echo_addr, msg)
-            .await
             .unwrap();
     }
 
@@ -120,7 +118,6 @@ async fn messaging_example() {
     picky_echo
         .node()
         .send_direct_message(shouter_addr, [Herp as u8][..].into())
-        .await
         .unwrap();
 
     // check if the shouter heard the (non-duplicate) echoes and the last, non-reply one
@@ -148,7 +145,6 @@ async fn drop_connection_on_invalid_message() {
     writer
         .node()
         .send_direct_message(reader.node().listening_addr(), bad_message.into())
-        .await
         .unwrap();
 
     wait_until!(1, reader.node().num_connected() == 0);
@@ -187,7 +183,6 @@ async fn drop_connection_on_oversized_message() {
             reader.node().listening_addr(),
             common::prefix_with_len(2, &oversized_payload),
         )
-        .await
         .unwrap();
 
     wait_until!(1, reader.node().num_connected() == 0);

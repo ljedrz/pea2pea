@@ -36,7 +36,7 @@ impl ChattyNode {
             loop {
                 if node.num_connected() != 0 {
                     info!(parent: node.span(), "sending \"{}\" to all my frens", message);
-                    if let Err(e) = node.send_broadcast(bytes.clone()).await {
+                    if let Err(e) = node.send_broadcast(bytes.clone()) {
                         error!(parent: node.span(), "can't send a broadcast: {}", e);
                     }
                 } else {

@@ -215,7 +215,6 @@ async fn no_handshake_no_messaging() {
     initiator
         .node()
         .send_direct_message(responder.node().listening_addr(), message)
-        .await
         .unwrap();
 
     wait_until!(1, responder.node().num_connected() == 0);

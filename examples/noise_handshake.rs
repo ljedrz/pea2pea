@@ -248,7 +248,6 @@ async fn main() {
     initiator
         .node()
         .send_direct_message(responder.node().listening_addr(), msg[..].into())
-        .await
         .unwrap();
 
     // send a message from responder to initiator; determine the latter's address first
@@ -257,7 +256,6 @@ async fn main() {
     responder
         .node()
         .send_direct_message(initiator_addr, msg[..].into())
-        .await
         .unwrap();
 
     sleep(Duration::from_millis(10)).await;

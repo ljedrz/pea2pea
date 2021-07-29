@@ -86,7 +86,6 @@ impl Reading for JoJoNode {
 
         self.node()
             .send_direct_message(source, Bytes::copy_from_slice(&[reply as u8]))
-            .await
     }
 }
 
@@ -145,7 +144,6 @@ async fn main() {
             dio.node().listening_addr(),
             Bytes::copy_from_slice(&[BattleCry::Ora as u8]),
         )
-        .await
         .unwrap();
 
     sleep(Duration::from_secs(3)).await;

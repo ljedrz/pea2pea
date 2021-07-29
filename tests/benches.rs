@@ -89,6 +89,7 @@ async fn run_bench_scenario(sender_count: usize) -> f64 {
     let config = NodeConfig {
         conn_write_buffer_size: MSG_SIZE,
         listener_ip: "127.0.0.1".parse().unwrap(),
+        conn_outbound_queue_depth: NUM_MESSAGES,
         ..Default::default()
     };
     let spammers = common::start_nodes(sender_count, Some(config)).await;
@@ -127,7 +128,6 @@ async fn run_bench_scenario(sender_count: usize) -> f64 {
                 spammer
                     .node()
                     .send_direct_message(sink_addr, RANDOM_BYTES.clone())
-                    .await
                     .unwrap();
             }
         });

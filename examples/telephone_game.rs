@@ -65,8 +65,7 @@ impl Reading for Player {
         // there are just a maximum of 2 connections, so this is sufficient
         for addr in connected_addrs.into_iter().filter(|addr| *addr != source) {
             self.node()
-                .send_direct_message(addr, message_bytes.clone())
-                .await?;
+                .send_direct_message(addr, message_bytes.clone())?;
         }
 
         Ok(())
@@ -111,7 +110,6 @@ async fn main() {
             players[1].node().listening_addr(),
             message.as_bytes().into(),
         )
-        .await
         .unwrap();
 
     while players.last().unwrap().node().stats().received().0 != 1 {

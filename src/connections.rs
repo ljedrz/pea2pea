@@ -33,8 +33,12 @@ impl Connections {
         self.0.write().insert(conn.addr, conn);
     }
 
-    pub(crate) fn senders(&self) -> io::Result<Vec<Sender<Bytes>>> {
-        self.0.read().values().map(|conn| conn.sender()).collect()
+    pub(crate) fn senders(&self) -> Vec<(Sender<Bytes>, SocketAddr)> {
+        self.0
+            .read()
+            .values()
+            .filter_map(|conn| conn.sender().ok().map(|sender| (sender, conn.addr)))
+            .collect()
     }
 
     pub(crate) fn is_connected(&self, addr: SocketAddr) -> bool {

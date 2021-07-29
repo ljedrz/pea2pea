@@ -56,9 +56,7 @@ impl Reading for TestNode {
 
         info!(parent: self.node().span(), "{}", reply);
 
-        self.node()
-            .send_direct_message(source, Bytes::from(reply))
-            .await
+        self.node().send_direct_message(source, Bytes::from(reply))
     }
 }
 
@@ -112,7 +110,6 @@ async fn check_node_cleanups() {
         drebin
             .node()
             .send_direct_message(thug_addr, Bytes::from(&b"Talk!"[..]))
-            .await
             .unwrap();
 
         wait_until!(1, hapsburgs_thug.node().stats().sent().0 == 2);
