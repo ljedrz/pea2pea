@@ -303,7 +303,7 @@ impl Node {
             .sender(addr)?
             .try_send(message)
             .map_err(|_| {
-                error!("The outbound channel of {} is full! Message dropped.", addr);
+                error!(parent: self.span(), "the outbound channel of {} is full; message dropped.", addr);
                 io::ErrorKind::Other.into()
             })
     }
@@ -313,7 +313,7 @@ impl Node {
         for (message_sender, addr) in self.connections.senders() {
             // an error means the connection is shutting down, which is already reported in logs
             let _ = message_sender.try_send(message.clone()).map_err(|_| {
-                error!("The outbound channel of {} is full! Message dropped.", addr);
+                error!(parent: self.span(), "the outbound channel of {} is full; message dropped.", addr);
             });
         }
 
