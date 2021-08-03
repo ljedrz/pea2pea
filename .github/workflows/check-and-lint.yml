@@ -4,7 +4,7 @@ on:
     branches:
       - master
 
-name: basic checks
+name: basics
 
 jobs:
   check:
@@ -52,3 +52,4 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           args: --all-targets
+          name: clippy output
