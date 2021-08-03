@@ -4,7 +4,7 @@ on:
     branches:
       - master
 
-name: check, fmt and clippy
+name: basic checks
 
 jobs:
   check:
@@ -20,6 +20,7 @@ jobs:
       - uses: actions-rs/cargo@v1
         with:
           command: check
+          args: --all-targets
 
   fmt:
     name: fmt
@@ -51,4 +52,3 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           args: --all-targets
-          name: clippy output
