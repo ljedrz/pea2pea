@@ -305,7 +305,7 @@ async fn node_stats_sent() {
             payload: &[u8],
             buffer: &mut [u8],
         ) -> io::Result<usize> {
-            buffer[..payload.len()].copy_from_slice(&payload);
+            buffer[..payload.len()].copy_from_slice(payload);
             Ok(payload.len())
         }
     }

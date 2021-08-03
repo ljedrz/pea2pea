@@ -207,14 +207,14 @@ impl Writing for SecureNode {
         let to_encrypt = str::from_utf8(payload).unwrap();
         info!(parent: self.node.span(), "sending an encrypted message to {}: \"{}\"", target, to_encrypt);
 
-        let noise = Arc::clone(&self.noise_states.read().get(&target).unwrap());
+        let noise = Arc::clone(self.noise_states.read().get(&target).unwrap());
 
         let NoiseState { state, buffer } = &mut *noise.lock();
         let len = state.write_message(payload, buffer).unwrap();
         let encrypted_message = &buffer[..len];
 
         conn_buffer[..2].copy_from_slice(&(len as u16).to_be_bytes());
-        conn_buffer[2..][..len].copy_from_slice(&encrypted_message);
+        conn_buffer[2..][..len].copy_from_slice(encrypted_message);
 
         Ok(2 + len)
     }

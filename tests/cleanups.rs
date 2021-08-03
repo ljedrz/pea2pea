@@ -63,7 +63,7 @@ impl Reading for TestNode {
 impl Writing for TestNode {
     fn write_message(&self, _: SocketAddr, payload: &[u8], buffer: &mut [u8]) -> io::Result<usize> {
         buffer[..2].copy_from_slice(&(payload.len() as u16).to_le_bytes());
-        buffer[2..][..payload.len()].copy_from_slice(&payload);
+        buffer[2..][..payload.len()].copy_from_slice(payload);
         Ok(2 + payload.len())
     }
 }

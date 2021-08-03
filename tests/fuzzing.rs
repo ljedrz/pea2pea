@@ -39,7 +39,7 @@ impl Writing for Tester {
         buffer: &mut [u8],
     ) -> io::Result<usize> {
         buffer[..4].copy_from_slice(&(payload.len() as u32).to_le_bytes());
-        buffer[4..][..payload.len()].copy_from_slice(&payload);
+        buffer[4..][..payload.len()].copy_from_slice(payload);
         Ok(4 + payload.len())
     }
 }
