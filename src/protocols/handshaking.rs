@@ -24,40 +24,38 @@ where
         let handshaking_task = tokio::spawn(async move {
             trace!(parent: self_clone.node().span(), "spawned the Handshaking handler task");
 
-            loop {
-                if let Some((conn, result_sender)) = from_node_receiver.recv().await {
-                    let addr = conn.addr;
+            while let Some((conn, result_sender)) = from_node_receiver.recv().await {
+                let addr = conn.addr;
 
-                    let self_clone2 = self_clone.clone();
-                    task::spawn(async move {
-                        debug!(parent: conn.node.span(), "handshaking with {} as the {:?}", addr, !conn.side);
-                        let result = timeout(
-                            Duration::from_millis(conn.node.config().max_handshake_time_ms),
-                            self_clone2.perform_handshake(conn),
-                        )
-                        .await;
+                let self_clone2 = self_clone.clone();
+                task::spawn(async move {
+                    debug!(parent: conn.node.span(), "handshaking with {} as the {:?}", addr, !conn.side);
+                    let result = timeout(
+                        Duration::from_millis(conn.node.config().max_handshake_time_ms),
+                        self_clone2.perform_handshake(conn),
+                    )
+                    .await;
 
-                        let ret = match result {
-                            Ok(Ok(conn)) => {
-                                debug!(parent: self_clone2.node().span(), "succeessfully handshaken with {}", addr);
-                                Ok(conn)
-                            }
-                            Ok(Err(e)) => {
-                                error!(parent: self_clone2.node().span(), "handshake with {} failed: {}", addr, e);
-                                Err(e)
-                            }
-                            Err(_) => {
-                                error!(parent: self_clone2.node().span(), "handshake with {} timed out", addr);
-                                Err(io::ErrorKind::TimedOut.into())
-                            }
-                        };
-
-                        // return the Connection to the Node, resuming Node::adapt_stream
-                        if result_sender.send(ret).is_err() {
-                            unreachable!("could't return a Connection to the Node");
+                    let ret = match result {
+                        Ok(Ok(conn)) => {
+                            debug!(parent: self_clone2.node().span(), "succeessfully handshaken with {}", addr);
+                            Ok(conn)
                         }
-                    });
-                }
+                        Ok(Err(e)) => {
+                            error!(parent: self_clone2.node().span(), "handshake with {} failed: {}", addr, e);
+                            Err(e)
+                        }
+                        Err(_) => {
+                            error!(parent: self_clone2.node().span(), "handshake with {} timed out", addr);
+                            Err(io::ErrorKind::TimedOut.into())
+                        }
+                    };
+
+                    // return the Connection to the Node, resuming Node::adapt_stream
+                    if result_sender.send(ret).is_err() {
+                        unreachable!("could't return a Connection to the Node");
+                    }
+                });
             }
         });
         self.node().tasks.lock().push(handshaking_task);

@@ -33,88 +33,83 @@ where
         let reading_task = tokio::spawn(async move {
             trace!(parent: self_clone.node().span(), "spawned the Reading handler task");
 
-            loop {
-                // these objects are sent from `Node::adapt_stream`
-                if let Some((mut conn, conn_returner)) = conn_receiver.recv().await {
-                    let addr = conn.addr;
-                    let mut reader = conn.reader.take().unwrap(); // safe; it is available at this point
-                    let mut buffer = vec![0; self_clone.node().config().conn_read_buffer_size]
-                        .into_boxed_slice();
+            // these objects are sent from `Node::adapt_stream`
+            while let Some((mut conn, conn_returner)) = conn_receiver.recv().await {
+                let addr = conn.addr;
+                let mut reader = conn.reader.take().unwrap(); // safe; it is available at this point
+                let mut buffer =
+                    vec![0; self_clone.node().config().conn_read_buffer_size].into_boxed_slice();
 
-                    let (inbound_message_sender, mut inbound_message_receiver) =
-                        mpsc::channel(self_clone.node().config().conn_inbound_queue_depth);
+                let (inbound_message_sender, mut inbound_message_receiver) =
+                    mpsc::channel(self_clone.node().config().conn_inbound_queue_depth);
 
-                    // the task for processing parsed messages
-                    let processing_clone = self_clone.clone();
-                    let inbound_processing_task = tokio::spawn(async move {
-                        let node = processing_clone.node();
-                        trace!(parent: node.span(), "spawned a task for processing messages from {}", addr);
+                // the task for processing parsed messages
+                let processing_clone = self_clone.clone();
+                let inbound_processing_task = tokio::spawn(async move {
+                    let node = processing_clone.node();
+                    trace!(parent: node.span(), "spawned a task for processing messages from {}", addr);
 
-                        loop {
-                            if let Some(msg) = inbound_message_receiver.recv().await {
-                                if let Err(e) = processing_clone.process_message(addr, msg).await {
-                                    error!(parent: node.span(), "can't process an inbound message: {}", e);
-                                    node.known_peers().register_failure(addr);
-                                }
-                            } else {
-                                node.disconnect(addr);
-                                break;
+                    loop {
+                        if let Some(msg) = inbound_message_receiver.recv().await {
+                            if let Err(e) = processing_clone.process_message(addr, msg).await {
+                                error!(parent: node.span(), "can't process an inbound message: {}", e);
+                                node.known_peers().register_failure(addr);
                             }
+                        } else {
+                            node.disconnect(addr);
+                            break;
                         }
-                    });
-                    conn.tasks.push(inbound_processing_task);
-
-                    // the task for reading messages from a stream
-                    let reader_clone = self_clone.clone();
-                    let reader_task = tokio::spawn(async move {
-                        let node = reader_clone.node();
-                        trace!(parent: node.span(), "spawned a task for reading messages from {}", addr);
-
-                        // postpone reads until the connection is fully established; if the process fails,
-                        // this task gets aborted, so there is no need for a dedicated timeout
-                        while !node.connected_addrs().contains(&addr) {
-                            sleep(Duration::from_millis(5)).await;
-                        }
-
-                        let mut carry = 0;
-                        loop {
-                            match reader_clone
-                                .read_from_stream(
-                                    addr,
-                                    &mut buffer,
-                                    &mut reader,
-                                    carry,
-                                    &inbound_message_sender,
-                                )
-                                .await
-                            {
-                                Ok(leftover) => {
-                                    carry = leftover;
-                                }
-                                Err(e) => {
-                                    node.known_peers().register_failure(addr);
-                                    if node.config().fatal_io_errors.contains(&e.kind()) {
-                                        node.disconnect(addr);
-                                        break;
-                                    } else {
-                                        sleep(Duration::from_secs(
-                                            node.config().invalid_read_delay_secs,
-                                        ))
-                                        .await;
-                                    }
-                                }
-                            }
-                        }
-                    });
-                    conn.tasks.push(reader_task);
-
-                    // return the Connection to the Node, resuming Node::adapt_stream
-                    if conn_returner.send(Ok(conn)).is_err() {
-                        unreachable!("could't return a Connection to the Node");
                     }
-                } else {
-                    error!("the Reading protocol is down!");
-                    break;
+                });
+                conn.tasks.push(inbound_processing_task);
+
+                // the task for reading messages from a stream
+                let reader_clone = self_clone.clone();
+                let reader_task = tokio::spawn(async move {
+                    let node = reader_clone.node();
+                    trace!(parent: node.span(), "spawned a task for reading messages from {}", addr);
+
+                    // postpone reads until the connection is fully established; if the process fails,
+                    // this task gets aborted, so there is no need for a dedicated timeout
+                    while !node.connected_addrs().contains(&addr) {
+                        sleep(Duration::from_millis(5)).await;
+                    }
+
+                    let mut carry = 0;
+                    loop {
+                        match reader_clone
+                            .read_from_stream(
+                                addr,
+                                &mut buffer,
+                                &mut reader,
+                                carry,
+                                &inbound_message_sender,
+                            )
+                            .await
+                        {
+                            Ok(leftover) => {
+                                carry = leftover;
+                            }
+                            Err(e) => {
+                                node.known_peers().register_failure(addr);
+                                if node.config().fatal_io_errors.contains(&e.kind()) {
+                                    node.disconnect(addr);
+                                    break;
+                                } else {
+                                    sleep(Duration::from_secs(
+                                        node.config().invalid_read_delay_secs,
+                                    ))
+                                    .await;
+                                }
+                            }
+                        }
+                    }
+                });
+                conn.tasks.push(reader_task);
+
+                // return the Connection to the Node, resuming Node::adapt_stream
+                if conn_returner.send(Ok(conn)).is_err() {
+                    unreachable!("could't return a Connection to the Node");
                 }
             }
         });
