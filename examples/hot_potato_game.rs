@@ -61,7 +61,7 @@ impl Player {
         }
     }
 
-    async fn throw_potato(&self) {
+    fn throw_potato(&self) {
         let message = Message::IHaveThePotato(self.node().name().into());
         let message = bincode::serialize(&message).unwrap();
         self.node().send_broadcast(message.into()).unwrap();
@@ -177,7 +177,7 @@ impl Reading for Player {
                 }
 
                 self.potato_count.fetch_add(1, Relaxed);
-                self.throw_potato().await;
+                self.throw_potato();
             }
             Message::IHaveThePotato(carrier) => {
                 let mut other_players = self.other_players.lock();
@@ -230,7 +230,7 @@ async fn main() {
 
     let first_carrier = RNG.lock().gen_range(0..NUM_PLAYERS);
     players[first_carrier].potato_count.fetch_add(1, Relaxed);
-    players[first_carrier].throw_potato().await;
+    players[first_carrier].throw_potato();
 
     sleep(Duration::from_secs(GAME_TIME_SECS)).await;
 
