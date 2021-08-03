@@ -6,7 +6,6 @@ use crate::connections::Connection;
 
 use once_cell::sync::OnceCell;
 use tokio::sync::{mpsc, oneshot};
-use tracing::*;
 
 use std::io;
 
@@ -35,7 +34,7 @@ impl ProtocolHandler {
     /// Sends a returnable `Connection` to a task spawned by the protocol handler.
     pub async fn send(&self, returnable_conn: ReturnableConnection) {
         if self.sender.send(returnable_conn).await.is_err() {
-            error!("A protocol handler's Receiver is closed");
+            unreachable!(); // protocol's task is down! can't recover
         }
     }
 }
