@@ -1,6 +1,7 @@
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::{TcpListener, TcpStream},
+    time::sleep,
 };
 
 mod common;
@@ -17,6 +18,7 @@ use std::{
         atomic::{AtomicUsize, Ordering::Relaxed},
         Arc,
     },
+    time::Duration,
 };
 
 #[tokio::test]
@@ -140,6 +142,7 @@ async fn node_shutdown_closes_the_listener() {
 
     assert!(TcpListener::bind(addr).await.is_err());
     node.shut_down();
+    sleep(Duration::from_millis(100)).await;
     assert!(TcpListener::bind(addr).await.is_ok());
 }
 
