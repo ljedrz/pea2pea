@@ -155,9 +155,9 @@ async fn check_node_cleanups() {
     // peak heap use: 354.17kB; total heap growth: 1.0308341
     let alloc_growth = max_heap_use / peak_heap_post_1st_conn;
     println!(
-        "peak heap use: {:.2}kB; total heap growth after {} connections: {}",
+        "peak heap use: {:.2}kB; total heap growth after {} connections: {:.2}",
         max_heap_use, NUM_CONNECTIONS, alloc_growth
     );
 
-    assert!(alloc_growth < 1.05);
+    assert!(alloc_growth < 1.1);
 }
