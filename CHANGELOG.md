@@ -1,3 +1,9 @@
+# 0.21.1
+
+### Fixed
+
+- 2 `ERROR` logs now display the missing node id
+
 # 0.21.0
 
 ### Changed
