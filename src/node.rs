@@ -309,14 +309,12 @@ impl Node {
     }
 
     /// Broadcasts the provided message to all peers, as long as the `Writing` protocol is enabled.
-    pub fn send_broadcast(&self, message: Bytes) -> io::Result<()> {
+    pub fn send_broadcast(&self, message: Bytes) {
         for (message_sender, addr) in self.connections.senders() {
             let _ = message_sender.try_send(message.clone()).map_err(|e| {
                 error!(parent: self.span(), "can't send a message to {}: {}", addr, e);
             });
         }
-
-        Ok(())
     }
 
     /// Returns a list containing addresses of active connections.

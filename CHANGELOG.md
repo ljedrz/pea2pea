@@ -1,3 +1,9 @@
+# 0.22.0
+
+### Changed
+
+- `Node::send_broadcast` doesn't return a value anymore
+
 # 0.21.1
 
 ### Fixed
