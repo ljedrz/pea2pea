@@ -44,31 +44,26 @@ where
                     let node = writer_clone.node();
                     trace!(parent: node.span(), "spawned a task for writing messages to {}", addr);
 
-                    loop {
-                        // TODO: when try_recv is available in tokio again (https://github.com/tokio-rs/tokio/issues/3350),
-                        // use try_recv() in order to write to the stream less often
-                        if let Some(msg) = outbound_message_receiver.recv().await {
-                            match writer_clone
-                                .write_to_stream(&msg, addr, &mut buffer, &mut writer)
-                                .await
-                            {
-                                Ok(len) => {
-                                    node.known_peers().register_sent_message(addr, len);
-                                    node.stats().register_sent_message(len);
-                                    trace!(parent: node.span(), "sent {}B to {}", len, addr);
-                                }
-                                Err(e) => {
-                                    node.known_peers().register_failure(addr);
-                                    error!(parent: node.span(), "couldn't send a message to {}: {}", addr, e);
-                                    if node.config().fatal_io_errors.contains(&e.kind()) {
-                                        node.disconnect(addr);
-                                        break;
-                                    }
+                    // TODO: when try_recv is available in tokio again (https://github.com/tokio-rs/tokio/issues/3350),
+                    // use try_recv() in order to write to the stream less often
+                    while let Some(msg) = outbound_message_receiver.recv().await {
+                        match writer_clone
+                            .write_to_stream(&msg, addr, &mut buffer, &mut writer)
+                            .await
+                        {
+                            Ok(len) => {
+                                node.known_peers().register_sent_message(addr, len);
+                                node.stats().register_sent_message(len);
+                                trace!(parent: node.span(), "sent {}B to {}", len, addr);
+                            }
+                            Err(e) => {
+                                node.known_peers().register_failure(addr);
+                                error!(parent: node.span(), "couldn't send a message to {}: {}", addr, e);
+                                if node.config().fatal_io_errors.contains(&e.kind()) {
+                                    node.disconnect(addr);
+                                    break;
                                 }
                             }
-                        } else {
-                            node.disconnect(addr);
-                            break;
                         }
                     }
                 });
