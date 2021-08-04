@@ -302,8 +302,8 @@ impl Node {
         self.connections
             .sender(addr)?
             .try_send(message)
-            .map_err(|_| {
-                error!(parent: self.span(), "the outbound channel of {} is full; message dropped.", addr);
+            .map_err(|e| {
+                error!(parent: self.span(), "can't send a message to {}: {}", addr, e);
                 io::ErrorKind::Other.into()
             })
     }
@@ -311,9 +311,8 @@ impl Node {
     /// Broadcasts the provided message to all peers, as long as the `Writing` protocol is enabled.
     pub fn send_broadcast(&self, message: Bytes) -> io::Result<()> {
         for (message_sender, addr) in self.connections.senders() {
-            // an error means the connection is shutting down, which is already reported in logs
-            let _ = message_sender.try_send(message.clone()).map_err(|_| {
-                error!(parent: self.span(), "the outbound channel of {} is full; message dropped.", addr);
+            let _ = message_sender.try_send(message.clone()).map_err(|e| {
+                error!(parent: self.span(), "can't send a message to {}: {}", addr, e);
             });
         }
 
