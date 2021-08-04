@@ -84,6 +84,14 @@ async fn node_duplicate_connection_fails() {
 }
 
 #[tokio::test]
+async fn node_two_way_connection_works() {
+    let mut nodes = common::start_inert_nodes(2, None).await;
+    assert!(connect_nodes(&nodes, Topology::Line).await.is_ok());
+    nodes.reverse();
+    assert!(connect_nodes(&nodes, Topology::Line).await.is_ok());
+}
+
+#[tokio::test]
 async fn node_connector_limit_breach_fails() {
     let config = NodeConfig {
         max_connections: 0,
