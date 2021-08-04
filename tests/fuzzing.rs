@@ -45,7 +45,7 @@ impl Writing for Tester {
 }
 
 #[ignore]
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn fuzzing() {
     const MAX_MSG_SIZE: usize = 1024 * 1024;
 
@@ -78,10 +78,10 @@ async fn fuzzing() {
     loop {
         let random_len: usize = rng.gen_range(1..MAX_MSG_SIZE - 2); // account for the length prefix
         let random_payload: Vec<u8> = (&mut rng).sample_iter(Standard).take(random_len).collect();
-        sender
+        // ignore full outbound queue channel errors
+        let _ = sender
             .node()
-            .send_direct_message(tester.node().listening_addr(), random_payload.into())
-            .unwrap();
+            .send_direct_message(tester.node().listening_addr(), random_payload.into());
 
         if tester.node().num_connected() == 0 {
             panic!("the fuzz test failed!");
