@@ -25,7 +25,7 @@ use std::{
 };
 
 macro_rules! enable_protocol {
-    ($protocol_name: expr, $handler_type: ident, $node:expr, $conn: expr) => {
+    ($handler_type: ident, $node:expr, $conn: expr) => {
         if let Some(handler) = $node.protocols.$handler_type.get() {
             let (conn_returner, conn_retriever) = oneshot::channel();
 
@@ -197,9 +197,9 @@ impl Node {
     }
 
     async fn enable_protocols(&self, conn: Connection) -> io::Result<Connection> {
-        let conn = enable_protocol!("HandshakeProtocol", handshake_handler, self, conn);
-        let conn = enable_protocol!("ReadingProtocol", reading_handler, self, conn);
-        let conn = enable_protocol!("WritingProtocol", writing_handler, self, conn);
+        let conn = enable_protocol!(handshake_handler, self, conn);
+        let conn = enable_protocol!(reading_handler, self, conn);
+        let conn = enable_protocol!(writing_handler, self, conn);
 
         Ok(conn)
     }
