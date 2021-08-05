@@ -2,7 +2,7 @@ use tokio::time::sleep;
 use tracing::*;
 
 mod common;
-use pea2pea::{Node, NodeConfig, Pea2Pea};
+use pea2pea::Pea2Pea;
 
 use std::{sync::atomic::Ordering::Relaxed, time::Duration};
 
@@ -36,16 +36,10 @@ impl common::MessagingNode {
 
 #[tokio::test]
 async fn maintenance_example() {
-    tracing_subscriber::fmt::init();
+    // tracing_subscriber::fmt::init();
 
-    let rando = common::MessagingNode::new("0").await;
-
-    let tidy_config = NodeConfig {
-        name: Some("tidy".into()),
-        ..Default::default()
-    };
-    let tidy = Node::new(Some(tidy_config)).await.unwrap();
-    let tidy = common::MessagingNode(tidy);
+    let tidy = common::MessagingNode::new("tidyboi").await;
+    let rando = common::MessagingNode::new("rando").await;
 
     tidy.node()
         .connect(rando.node().listening_addr().unwrap())

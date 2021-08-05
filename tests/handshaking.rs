@@ -132,7 +132,7 @@ impl Handshaking for SecureishNode {
 
 #[tokio::test]
 async fn handshake_example() {
-    tracing_subscriber::fmt::init();
+    // tracing_subscriber::fmt::init();
 
     let initiator_config = NodeConfig {
         name: Some("initiator".into()),

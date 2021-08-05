@@ -80,7 +80,7 @@ impl Writing for EchoNode {
 
 #[tokio::test]
 async fn messaging_example() {
-    tracing_subscriber::fmt::init();
+    // tracing_subscriber::fmt::init();
 
     let shouter = common::MessagingNode::new("shout").await;
     shouter.enable_reading();

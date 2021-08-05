@@ -23,7 +23,7 @@ impl Disconnect for common::MessagingNode {
 
 #[tokio::test]
 async fn send_message_before_disconnect() {
-    tracing_subscriber::fmt::init();
+    // tracing_subscriber::fmt::init();
 
     let connector = common::MessagingNode::new("connector").await;
     connector.enable_writing();

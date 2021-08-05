@@ -4,7 +4,7 @@ use tracing::*;
 mod common;
 use pea2pea::{
     protocols::{Reading, Writing},
-    Node, NodeConfig, Pea2Pea,
+    Pea2Pea,
 };
 
 use std::time::Duration;
@@ -32,7 +32,7 @@ impl common::MessagingNode {
 
 #[tokio::test]
 async fn broadcast_example() {
-    tracing_subscriber::fmt::init();
+    // tracing_subscriber::fmt::init();
 
     let random_nodes = common::start_nodes(4, None)
         .await
@@ -43,12 +43,7 @@ async fn broadcast_example() {
         rando.enable_reading();
     }
 
-    let broadcaster_config = NodeConfig {
-        name: Some("chatty".into()),
-        ..Default::default()
-    };
-    let broadcaster = Node::new(Some(broadcaster_config)).await.unwrap();
-    let broadcaster = common::MessagingNode(broadcaster);
+    let broadcaster = common::MessagingNode::new("chatty").await;
 
     broadcaster.enable_writing();
     broadcaster.send_periodic_broadcasts();
