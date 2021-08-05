@@ -157,9 +157,8 @@ where
                             self.node().stats().register_received_message(len);
 
                             // send the message for further processing
-                            if message_sender.send(msg).await.is_err() {
-                                error!(parent: self.node().span(), "the inbound message channel is closed");
-                                return Err(io::ErrorKind::BrokenPipe.into());
+                            if let Err(e) = message_sender.try_send(msg) {
+                                error!(parent: self.node().span(), "can't process a message from {}: {}", addr, e);
                             }
 
                             // if the read is exhausted, reset the carry and return

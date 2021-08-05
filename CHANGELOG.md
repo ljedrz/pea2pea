@@ -3,6 +3,7 @@
 ### Changed
 
 - `Node::send_broadcast` doesn't return a value anymore
+- the node no longer waits when a per-connection inbound queue is full; the message gets dropped
 
 # 0.21.1
 
