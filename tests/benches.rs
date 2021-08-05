@@ -20,23 +20,6 @@ static RANDOM_BYTES: Lazy<Bytes> = Lazy::new(|| {
 });
 
 #[derive(Clone)]
-struct Spammer(Node);
-
-impl Pea2Pea for Spammer {
-    fn node(&self) -> &Node {
-        &self.0
-    }
-}
-
-impl Writing for Spammer {
-    fn write_message(&self, _: SocketAddr, payload: &[u8], buffer: &mut [u8]) -> io::Result<usize> {
-        buffer[..4].copy_from_slice(&(payload.len() as u32).to_le_bytes());
-        buffer[4..][..payload.len()].copy_from_slice(payload);
-        Ok(4 + payload.len())
-    }
-}
-
-#[derive(Clone)]
 struct Sink(Node);
 
 impl Pea2Pea for Sink {
@@ -93,7 +76,10 @@ async fn run_bench_scenario(sender_count: usize) -> f64 {
         ..Default::default()
     };
     let spammers = common::start_nodes(sender_count, Some(config)).await;
-    let spammers = spammers.into_iter().map(Spammer).collect::<Vec<_>>();
+    let spammers = spammers
+        .into_iter()
+        .map(common::MessagingNode)
+        .collect::<Vec<_>>();
 
     for spammer in &spammers {
         spammer.enable_writing();

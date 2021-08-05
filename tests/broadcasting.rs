@@ -7,31 +7,14 @@ use pea2pea::{
     Node, NodeConfig, Pea2Pea,
 };
 
-use std::{io, net::SocketAddr, time::Duration};
+use std::time::Duration;
 
-#[derive(Clone)]
-struct ChattyNode(Node);
-
-impl Pea2Pea for ChattyNode {
-    fn node(&self) -> &Node {
-        &self.0
-    }
-}
-
-impl Writing for ChattyNode {
-    fn write_message(&self, _: SocketAddr, payload: &[u8], buffer: &mut [u8]) -> io::Result<usize> {
-        buffer[..2].copy_from_slice(&(payload.len() as u16).to_le_bytes());
-        buffer[2..][..payload.len()].copy_from_slice(payload);
-        Ok(2 + payload.len())
-    }
-}
-
-impl ChattyNode {
+impl common::MessagingNode {
     fn send_periodic_broadcasts(&self) {
         let node = self.node().clone();
         tokio::spawn(async move {
             let message = "hello there ( ͡° ͜ʖ ͡°)";
-            let bytes = common::prefix_with_len(2, message.as_bytes());
+            let bytes = common::prefix_with_len(4, message.as_bytes());
 
             loop {
                 if node.num_connected() != 0 {
@@ -66,7 +49,7 @@ async fn broadcast_example() {
         ..Default::default()
     };
     let broadcaster = Node::new(Some(broadcaster_config)).await.unwrap();
-    let broadcaster = ChattyNode(broadcaster);
+    let broadcaster = common::MessagingNode(broadcaster);
 
     broadcaster.enable_writing();
     broadcaster.send_periodic_broadcasts();

@@ -48,9 +48,9 @@ impl Reading for EchoNode {
         _source: SocketAddr,
         buffer: &[u8],
     ) -> io::Result<Option<(Self::Message, usize)>> {
-        let bytes = common::read_len_prefixed_message(2, buffer)?;
+        let bytes = common::read_len_prefixed_message(4, buffer)?;
 
-        Ok(bytes.map(|bytes| (TestMessage::from(bytes[2]), bytes.len())))
+        Ok(bytes.map(|bytes| (TestMessage::from(bytes[4]), bytes.len())))
     }
 
     async fn process_message(&self, source: SocketAddr, message: Self::Message) -> io::Result<()> {
@@ -72,9 +72,9 @@ impl Reading for EchoNode {
 
 impl Writing for EchoNode {
     fn write_message(&self, _: SocketAddr, payload: &[u8], buffer: &mut [u8]) -> io::Result<usize> {
-        buffer[..2].copy_from_slice(&(payload.len() as u16).to_le_bytes());
-        buffer[2..][..payload.len()].copy_from_slice(payload);
-        Ok(2 + payload.len())
+        buffer[..4].copy_from_slice(&(payload.len() as u32).to_le_bytes());
+        buffer[4..][..payload.len()].copy_from_slice(payload);
+        Ok(4 + payload.len())
     }
 }
 

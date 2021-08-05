@@ -6,16 +6,7 @@ use pea2pea::{Node, NodeConfig, Pea2Pea};
 
 use std::{sync::atomic::Ordering::Relaxed, time::Duration};
 
-#[derive(Clone)]
-struct TidyNode(Node);
-
-impl Pea2Pea for TidyNode {
-    fn node(&self) -> &Node {
-        &self.0
-    }
-}
-
-impl TidyNode {
+impl common::MessagingNode {
     fn perform_periodic_maintenance(&self) {
         let node = self.node().clone();
         tokio::spawn(async move {
@@ -55,7 +46,7 @@ async fn maintenance_example() {
         ..Default::default()
     };
     let tidy = Node::new(Some(tidy_config)).await.unwrap();
-    let tidy = TidyNode(tidy);
+    let tidy = common::MessagingNode(tidy);
 
     tidy.node()
         .connect(rando.node().listening_addr())

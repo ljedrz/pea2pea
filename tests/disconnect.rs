@@ -11,7 +11,7 @@ use std::{net::SocketAddr, time::Duration};
 impl Disconnect for common::MessagingNode {
     async fn handle_disconnect(&self, addr: SocketAddr) {
         let disconnect_message = "bye-bye!";
-        let bytes = common::prefix_with_len(2, disconnect_message.as_bytes());
+        let bytes = common::prefix_with_len(4, disconnect_message.as_bytes());
 
         self.node().send_direct_message(addr, bytes).unwrap();
 
