@@ -15,13 +15,7 @@ use pea2pea::{
 };
 
 use std::{
-    collections::HashMap,
-    convert::TryInto,
-    io,
-    net::{Ipv4Addr, SocketAddr},
-    str,
-    sync::Arc,
-    time::Duration,
+    collections::HashMap, convert::TryInto, io, net::SocketAddr, str, sync::Arc, time::Duration,
 };
 
 // maximum noise message size, as specified by its protocol
@@ -79,7 +73,6 @@ impl SecureNode {
     async fn new(name: &str) -> io::Result<Self> {
         let config = NodeConfig {
             name: Some(name.into()),
-            listener_ip: Some(Ipv4Addr::LOCALHOST.into()),
             conn_read_buffer_size: NOISE_BUF_LEN + 2, // 2 for the encrypted message length,
             ..Default::default()
         };

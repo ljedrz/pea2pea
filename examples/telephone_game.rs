@@ -8,15 +8,10 @@ use tracing_subscriber::filter::LevelFilter;
 use pea2pea::{
     connect_nodes,
     protocols::{Reading, Writing},
-    Node, NodeConfig, Pea2Pea, Topology,
+    Node, Pea2Pea, Topology,
 };
 
-use std::{
-    convert::TryInto,
-    io,
-    net::{Ipv4Addr, SocketAddr},
-    time::Duration,
-};
+use std::{convert::TryInto, io, net::SocketAddr, time::Duration};
 
 #[derive(Clone)]
 struct Player(Node);
@@ -90,12 +85,8 @@ async fn main() {
     common::start_logger(LevelFilter::INFO);
 
     let mut players = Vec::with_capacity(NUM_PLAYERS);
-    let config = NodeConfig {
-        listener_ip: Some(Ipv4Addr::LOCALHOST.into()),
-        ..Default::default()
-    };
     for _ in 0..NUM_PLAYERS {
-        let player = Player(Node::new(Some(config.clone())).await.unwrap());
+        let player = Player(Node::new(None).await.unwrap());
         players.push(player);
     }
 

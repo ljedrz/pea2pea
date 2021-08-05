@@ -10,11 +10,7 @@ use pea2pea::{
     Connection, ConnectionSide, Node, NodeConfig, Pea2Pea,
 };
 
-use std::{
-    io,
-    net::{Ipv4Addr, SocketAddr},
-    time::Duration,
-};
+use std::{io, net::SocketAddr, time::Duration};
 
 #[derive(Clone)]
 struct JoJoNode(Node);
@@ -114,7 +110,6 @@ async fn main() {
 
     let config = NodeConfig {
         name: Some("Jotaro".into()),
-        listener_ip: Some(Ipv4Addr::LOCALHOST.into()),
         max_handshake_time_ms: 10_000,
         ..Default::default()
     };
@@ -122,7 +117,6 @@ async fn main() {
 
     let config = NodeConfig {
         name: Some("Dio".into()),
-        listener_ip: Some(Ipv4Addr::LOCALHOST.into()),
         max_handshake_time_ms: 10_000,
         ..Default::default()
     };

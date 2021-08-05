@@ -8,11 +8,7 @@ use pea2pea::{
     Node, NodeConfig, Pea2Pea,
 };
 
-use std::{
-    convert::TryInto,
-    io,
-    net::{Ipv4Addr, SocketAddr},
-};
+use std::{convert::TryInto, io, net::SocketAddr};
 
 pub async fn start_nodes(count: usize, config: Option<NodeConfig>) -> Vec<Node> {
     let mut nodes = Vec::with_capacity(count);
@@ -57,7 +53,6 @@ impl MessagingNode {
     pub async fn new<T: AsRef<str>>(name: T) -> Self {
         let config = NodeConfig {
             name: Some(name.as_ref().into()),
-            listener_ip: Some(Ipv4Addr::LOCALHOST.into()),
             ..Default::default()
         };
         Self(Node::new(Some(config)).await.unwrap())

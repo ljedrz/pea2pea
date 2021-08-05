@@ -4,7 +4,7 @@ use tracing::*;
 mod common;
 use pea2pea::{Node, NodeConfig, Pea2Pea};
 
-use std::{net::Ipv4Addr, sync::atomic::Ordering::Relaxed, time::Duration};
+use std::{sync::atomic::Ordering::Relaxed, time::Duration};
 
 impl common::MessagingNode {
     fn perform_periodic_maintenance(&self) {
@@ -42,7 +42,6 @@ async fn maintenance_example() {
 
     let tidy_config = NodeConfig {
         name: Some("tidy".into()),
-        listener_ip: Some(Ipv4Addr::LOCALHOST.into()),
         ..Default::default()
     };
     let tidy = Node::new(Some(tidy_config)).await.unwrap();

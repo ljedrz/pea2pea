@@ -9,13 +9,7 @@ use pea2pea::{
 };
 
 use parking_lot::RwLock;
-use std::{
-    collections::HashMap,
-    convert::TryInto,
-    io,
-    net::{Ipv4Addr, SocketAddr},
-    sync::Arc,
-};
+use std::{collections::HashMap, convert::TryInto, io, net::SocketAddr, sync::Arc};
 
 #[derive(Debug)]
 enum HandshakeMsg {
@@ -139,7 +133,6 @@ async fn handshake_example() {
 
     let initiator_config = NodeConfig {
         name: Some("initiator".into()),
-        listener_ip: Some(Ipv4Addr::LOCALHOST.into()),
         ..Default::default()
     };
     let initiator = Node::new(Some(initiator_config)).await.unwrap();
@@ -150,7 +143,6 @@ async fn handshake_example() {
 
     let responder_config = NodeConfig {
         name: Some("responder".into()),
-        listener_ip: Some(Ipv4Addr::LOCALHOST.into()),
         ..Default::default()
     };
     let responder = Node::new(Some(responder_config)).await.unwrap();
@@ -184,7 +176,7 @@ async fn handshake_example() {
 async fn no_handshake_no_messaging() {
     let initiator_config = NodeConfig {
         name: Some("initiator".into()),
-        listener_ip: Some(Ipv4Addr::LOCALHOST.into()),
+
         ..Default::default()
     };
     let initiator = Node::new(Some(initiator_config)).await.unwrap();
@@ -195,7 +187,7 @@ async fn no_handshake_no_messaging() {
 
     let responder_config = NodeConfig {
         name: Some("responder".into()),
-        listener_ip: Some(Ipv4Addr::LOCALHOST.into()),
+
         ..Default::default()
     };
     let responder = Node::new(Some(responder_config)).await.unwrap();

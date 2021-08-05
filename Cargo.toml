@@ -14,6 +14,9 @@ keywords = ["p2p", "peer-to-peer", "networking"]
 [lib]
 crate-type = ["lib"]
 
+[features]
+test = []
+
 [dependencies]
 async-trait = "0.1"
 bytes = "1"
@@ -31,3 +34,4 @@ serde = { version = "1", default-features = false, features = ["derive"] }
 snow = "0.8"
 tokio = { version = "1.0", features = ["macros", "rt-multi-thread"] }
 tracing-subscriber = { version = "0.2", default-features = false, features = ["ansi", "env-filter", "fmt", "parking_lot", "smallvec"] }
+pea2pea = { path = ".", features = ["test"] } # a workaround to use the `test` feature in tests by default

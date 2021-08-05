@@ -8,11 +8,7 @@ use pea2pea::{
     Node, NodeConfig, Pea2Pea,
 };
 
-use std::{
-    io,
-    net::{Ipv4Addr, SocketAddr},
-    time::Instant,
-};
+use std::{io, net::SocketAddr, time::Instant};
 
 static RANDOM_BYTES: Lazy<Bytes> = Lazy::new(|| {
     Bytes::from(
@@ -75,7 +71,6 @@ async fn run_bench_scenario(sender_count: usize) -> f64 {
 
     let config = NodeConfig {
         conn_write_buffer_size: MSG_SIZE,
-        listener_ip: Some(Ipv4Addr::LOCALHOST.into()),
         conn_outbound_queue_depth: NUM_MESSAGES,
         ..Default::default()
     };
@@ -92,7 +87,6 @@ async fn run_bench_scenario(sender_count: usize) -> f64 {
     let config = NodeConfig {
         conn_read_buffer_size: MSG_SIZE * 3,
         max_connections: sender_count as u16,
-        listener_ip: Some(Ipv4Addr::LOCALHOST.into()),
         ..Default::default()
     };
     let sink = Sink(Node::new(Some(config)).await.unwrap());

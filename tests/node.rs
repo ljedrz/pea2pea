@@ -31,7 +31,6 @@ async fn node_creation_any_port_works() {
 async fn node_creation_bad_params_panic() {
     let config = NodeConfig {
         allow_random_port: false,
-        listener_ip: Some(Ipv4Addr::LOCALHOST.into()),
         ..Default::default()
     };
     let _node = Node::new(Some(config)).await.unwrap();
@@ -42,7 +41,6 @@ async fn node_creation_used_port_fails() {
     let config = NodeConfig {
         desired_listening_port: Some(9), // the official Discard Protocol port
         allow_random_port: false,
-        listener_ip: Some(Ipv4Addr::LOCALHOST.into()),
         ..Default::default()
     };
     assert!(Node::new(Some(config)).await.is_err());
@@ -99,7 +97,6 @@ async fn node_two_way_connection_works() {
 async fn node_connector_limit_breach_fails() {
     let config = NodeConfig {
         max_connections: 0,
-        listener_ip: Some(Ipv4Addr::LOCALHOST.into()),
         ..Default::default()
     };
     let connector = Node::new(Some(config)).await.unwrap();
@@ -115,7 +112,6 @@ async fn node_connector_limit_breach_fails() {
 async fn node_connectee_limit_breach_fails() {
     let config = NodeConfig {
         max_connections: 0,
-        listener_ip: Some(Ipv4Addr::LOCALHOST.into()),
         ..Default::default()
     };
     let connectee = Node::new(Some(config)).await.unwrap();
@@ -165,6 +161,13 @@ async fn node_shutdown_closes_the_listener() {
 }
 
 #[tokio::test]
+async fn test_nodes_use_localhost() {
+    let node = Node::new(None).await.unwrap();
+
+    assert_eq!(node.listening_addr().unwrap().ip(), Ipv4Addr::LOCALHOST);
+}
+
+#[tokio::test]
 async fn node_hung_handshake_fails() {
     #[derive(Clone)]
     struct Wrap(Node);
@@ -188,7 +191,6 @@ async fn node_hung_handshake_fails() {
 
     let config = NodeConfig {
         max_handshake_time_ms: 10,
-        listener_ip: Some(Ipv4Addr::LOCALHOST.into()),
         ..Default::default()
     };
     let connector = Wrap(Node::new(None).await.unwrap());
@@ -240,7 +242,6 @@ async fn node_common_timeout_when_spammed_with_connections() {
     let config = NodeConfig {
         max_handshake_time_ms: TIMEOUT_SECS * 1_000,
         max_connections: NUM_ATTEMPTS,
-        listener_ip: Some(Ipv4Addr::LOCALHOST.into()),
         ..Default::default()
     };
     let victim = Wrap(Node::new(Some(config)).await.unwrap());

@@ -43,9 +43,19 @@ pub struct NodeConfig {
 
 impl Default for NodeConfig {
     fn default() -> Self {
+        #[cfg(feature = "test")]
+        fn default_ip() -> Option<IpAddr> {
+            Some(IpAddr::V4(Ipv4Addr::LOCALHOST))
+        }
+
+        #[cfg(not(feature = "test"))]
+        fn default_ip() -> Option<IpAddr> {
+            Some(IpAddr::V4(Ipv4Addr::UNSPECIFIED))
+        }
+
         Self {
             name: None,
-            listener_ip: Some(IpAddr::V4(Ipv4Addr::UNSPECIFIED)),
+            listener_ip: default_ip(),
             desired_listening_port: None,
             allow_random_port: true,
             protocol_handler_queue_depth: 16,

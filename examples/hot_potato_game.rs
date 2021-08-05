@@ -14,14 +14,14 @@ use tracing_subscriber::filter::LevelFilter;
 use pea2pea::{
     connect_nodes,
     protocols::{Handshaking, Reading, Writing},
-    Connection, ConnectionSide, Node, NodeConfig, Pea2Pea, Topology,
+    Connection, ConnectionSide, Node, Pea2Pea, Topology,
 };
 
 use std::{
     collections::HashMap,
     convert::TryInto,
     io,
-    net::{Ipv4Addr, SocketAddr},
+    net::SocketAddr,
     sync::{
         atomic::{AtomicUsize, Ordering::Relaxed},
         Arc,
@@ -49,13 +49,8 @@ struct Player {
 
 impl Player {
     async fn new() -> Self {
-        let config = NodeConfig {
-            listener_ip: Some(Ipv4Addr::LOCALHOST.into()),
-            ..Default::default()
-        };
-
         Self {
-            node: Node::new(Some(config)).await.unwrap(),
+            node: Node::new(None).await.unwrap(),
             other_players: Default::default(),
             potato_count: Default::default(),
         }

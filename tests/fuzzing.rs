@@ -6,8 +6,6 @@ use pea2pea::{
     Node, NodeConfig, Pea2Pea,
 };
 
-use std::net::Ipv4Addr;
-
 #[ignore]
 #[tokio::test(flavor = "multi_thread")]
 async fn fuzzing() {
@@ -15,7 +13,6 @@ async fn fuzzing() {
 
     let config = NodeConfig {
         conn_read_buffer_size: MAX_MSG_SIZE,
-        listener_ip: Some(Ipv4Addr::LOCALHOST.into()),
         ..Default::default()
     };
     let tester = common::MessagingNode(Node::new(Some(config)).await.unwrap());
@@ -23,7 +20,6 @@ async fn fuzzing() {
 
     let config = NodeConfig {
         conn_write_buffer_size: MAX_MSG_SIZE,
-        listener_ip: Some(Ipv4Addr::LOCALHOST.into()),
         ..Default::default()
     };
     let sender = common::MessagingNode(Node::new(Some(config)).await.unwrap());
