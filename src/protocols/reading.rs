@@ -49,15 +49,10 @@ where
                     let node = processing_clone.node();
                     trace!(parent: node.span(), "spawned a task for processing messages from {}", addr);
 
-                    loop {
-                        if let Some(msg) = inbound_message_receiver.recv().await {
-                            if let Err(e) = processing_clone.process_message(addr, msg).await {
-                                error!(parent: node.span(), "can't process an inbound message: {}", e);
-                                node.known_peers().register_failure(addr);
-                            }
-                        } else {
-                            node.disconnect(addr);
-                            break;
+                    while let Some(msg) = inbound_message_receiver.recv().await {
+                        if let Err(e) = processing_clone.process_message(addr, msg).await {
+                            error!(parent: node.span(), "can't process an inbound message: {}", e);
+                            node.known_peers().register_failure(addr);
                         }
                     }
                 });
