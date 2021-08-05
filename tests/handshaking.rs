@@ -179,7 +179,6 @@ async fn handshake_example() {
 async fn no_handshake_no_messaging() {
     let initiator_config = NodeConfig {
         name: Some("initiator".into()),
-
         ..Default::default()
     };
     let initiator = Node::new(Some(initiator_config)).await.unwrap();
@@ -190,7 +189,6 @@ async fn no_handshake_no_messaging() {
 
     let responder_config = NodeConfig {
         name: Some("responder".into()),
-
         ..Default::default()
     };
     let responder = Node::new(Some(responder_config)).await.unwrap();
