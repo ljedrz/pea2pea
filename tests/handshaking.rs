@@ -220,7 +220,7 @@ async fn no_handshake_no_messaging() {
 }
 
 #[tokio::test]
-async fn node_hung_handshake_fails() {
+async fn hung_handshake_fails() {
     #[derive(Clone)]
     struct Wrap(Node);
 
@@ -269,7 +269,7 @@ async fn node_hung_handshake_fails() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn node_common_timeout_when_spammed_with_connections() {
+async fn timeout_when_spammed_with_connections() {
     const NUM_ATTEMPTS: u16 = 200;
     const TIMEOUT_SECS: u64 = 1;
 
