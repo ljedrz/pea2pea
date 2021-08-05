@@ -1,5 +1,9 @@
 use bytes::Bytes;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use parking_lot::RwLock;
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    net::TcpStream,
+};
 use tracing::*;
 
 mod common;
@@ -8,7 +12,6 @@ use pea2pea::{
     Connection, ConnectionSide, Node, NodeConfig, Pea2Pea,
 };
 
-use parking_lot::RwLock;
 use std::{collections::HashMap, convert::TryInto, io, net::SocketAddr, sync::Arc};
 
 #[derive(Debug)]
@@ -216,4 +219,98 @@ async fn no_handshake_no_messaging() {
         .unwrap();
 
     wait_until!(1, responder.node().num_connected() == 0);
+}
+
+#[tokio::test]
+async fn node_hung_handshake_fails() {
+    #[derive(Clone)]
+    struct Wrap(Node);
+
+    impl Pea2Pea for Wrap {
+        fn node(&self) -> &Node {
+            &self.0
+        }
+    }
+
+    // a badly implemented handshake protocol; 1B is expected by both the initiator and the responder (no distinction
+    // is even made), but it is never provided by either of them
+    #[async_trait::async_trait]
+    impl Handshaking for Wrap {
+        async fn perform_handshake(&self, mut conn: Connection) -> io::Result<Connection> {
+            let _ = conn.reader().read_exact(&mut [0u8; 1]).await;
+
+            unreachable!();
+        }
+    }
+
+    let config = NodeConfig {
+        max_handshake_time_ms: 10,
+        ..Default::default()
+    };
+    let connector = Wrap(Node::new(None).await.unwrap());
+    let connectee = Wrap(Node::new(Some(config)).await.unwrap());
+
+    // note: the connector does NOT enable handshaking
+    connectee.enable_handshaking();
+
+    // the connection attempt should register just fine for the connector, as it doesn't expect a handshake
+    assert!(connector
+        .node()
+        .connect(connectee.node().listening_addr().unwrap())
+        .await
+        .is_ok());
+
+    // the TPC connection itself has been established, and with no reading, the connector doesn't know
+    // that the connectee has already disconnected from it by now
+    assert!(connector.node().num_connected() == 1);
+    assert!(connector.node().num_connecting() == 0);
+
+    // the connectee should have rejected the connection attempt on its side
+    assert!(connectee.node().num_connected() == 0);
+    assert!(connectee.node().num_connecting() == 0);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn node_common_timeout_when_spammed_with_connections() {
+    const NUM_ATTEMPTS: u16 = 200;
+    const TIMEOUT_SECS: u64 = 1;
+
+    #[derive(Clone)]
+    struct Wrap(Node);
+
+    impl Pea2Pea for Wrap {
+        fn node(&self) -> &Node {
+            &self.0
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl Handshaking for Wrap {
+        async fn perform_handshake(&self, mut conn: Connection) -> io::Result<Connection> {
+            conn.reader().read_exact(&mut [0u8; 1]).await?;
+
+            Ok(conn)
+        }
+    }
+
+    let config = NodeConfig {
+        max_handshake_time_ms: TIMEOUT_SECS * 1_000,
+        max_connections: NUM_ATTEMPTS,
+        ..Default::default()
+    };
+    let victim = Wrap(Node::new(Some(config)).await.unwrap());
+    victim.enable_handshaking();
+    let victim_addr = victim.node().listening_addr().unwrap();
+
+    let mut sockets = Vec::with_capacity(NUM_ATTEMPTS as usize);
+
+    for _ in 0..NUM_ATTEMPTS {
+        if let Ok(socket) = TcpStream::connect(victim_addr).await {
+            sockets.push(socket);
+        }
+    }
+
+    wait_until!(3, victim.node().num_connecting() == NUM_ATTEMPTS as usize);
+
+    wait_until!(TIMEOUT_SECS + 1, victim.node().num_connecting() == 0);
 }
