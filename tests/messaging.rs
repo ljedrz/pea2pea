@@ -202,7 +202,7 @@ async fn drop_connection_on_zero_read() {
     wait_until!(1, reader.node().num_connected() == 1);
 
     // the peer shuts down, i.e. disconnects
-    peer.node().shut_down();
+    peer.node().shut_down().await;
 
     // the reader should drop its connection too now
     wait_until!(1, reader.node().num_connected() == 0);

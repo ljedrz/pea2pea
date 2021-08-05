@@ -7,40 +7,43 @@ use crate::connections::Connection;
 use once_cell::sync::OnceCell;
 use tokio::sync::{mpsc, oneshot};
 
-use std::io;
+use std::{io, net::SocketAddr};
 
+mod disconnect;
 mod handshaking;
 mod reading;
 mod writing;
 
+pub use disconnect::Disconnect;
 pub use handshaking::Handshaking;
 pub use reading::Reading;
 pub use writing::Writing;
 
 #[derive(Default)]
 pub(crate) struct Protocols {
-    pub(crate) handshake_handler: OnceCell<ProtocolHandler>,
-    pub(crate) reading_handler: OnceCell<ProtocolHandler>,
-    pub(crate) writing_handler: OnceCell<ProtocolHandler>,
+    pub(crate) handshake_handler: OnceCell<ProtocolHandler<ReturnableConnection>>,
+    pub(crate) reading_handler: OnceCell<ProtocolHandler<ReturnableConnection>>,
+    pub(crate) writing_handler: OnceCell<ProtocolHandler<ReturnableConnection>>,
+    pub(crate) disconnect_handler: OnceCell<ProtocolHandler<(SocketAddr, oneshot::Sender<()>)>>,
 }
 
 /// An object dedicated to managing a protocol; it contains a `Sender` whose other side is
 /// owned by the protocol's task.
-pub struct ProtocolHandler {
-    sender: mpsc::Sender<ReturnableConnection>,
+pub struct ProtocolHandler<T: Send> {
+    sender: mpsc::Sender<T>,
 }
 
-impl ProtocolHandler {
-    /// Sends a returnable `Connection` to a task spawned by the protocol handler.
-    pub async fn send(&self, returnable_conn: ReturnableConnection) {
-        if self.sender.send(returnable_conn).await.is_err() {
+impl<T: Send> ProtocolHandler<T> {
+    /// Sends a returnable item to a task spawned by the protocol handler.
+    pub async fn send(&self, item: T) {
+        if self.sender.send(item).await.is_err() {
             unreachable!(); // protocol's task is down! can't recover
         }
     }
 }
 
-impl From<mpsc::Sender<ReturnableConnection>> for ProtocolHandler {
-    fn from(sender: mpsc::Sender<ReturnableConnection>) -> Self {
+impl<T: Send> From<mpsc::Sender<T>> for ProtocolHandler<T> {
+    fn from(sender: mpsc::Sender<T>) -> Self {
         Self { sender }
     }
 }

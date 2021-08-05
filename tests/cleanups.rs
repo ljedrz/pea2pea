@@ -4,7 +4,7 @@ use tracing::*;
 
 mod common;
 use pea2pea::{
-    protocols::{Handshaking, Reading, Writing},
+    protocols::{Disconnect, Handshaking, Reading, Writing},
     Connection, Node, NodeConfig, Pea2Pea,
 };
 
@@ -68,6 +68,17 @@ impl Writing for TestNode {
     }
 }
 
+#[async_trait::async_trait]
+impl Disconnect for TestNode {
+    async fn handle_disconnect(&self, _addr: SocketAddr) {
+        if self.node().name() == "Drebin" {
+            info!(parent: self.node().span(), "All right. Who else is almost dead?");
+        } else {
+            info!(parent: self.node().span(), "<dies>");
+        }
+    }
+}
+
 #[tokio::test]
 async fn check_node_cleanups() {
     // turn on for a silly commentary
@@ -76,7 +87,7 @@ async fn check_node_cleanups() {
     #[global_allocator]
     static PEAK_ALLOC: PeakAlloc = PeakAlloc;
 
-    const NUM_CONNECTIONS: usize = 1_000;
+    const NUM_CONNECTIONS: usize = 1_00;
 
     let config = NodeConfig {
         name: Some("Drebin".into()),
@@ -89,6 +100,7 @@ async fn check_node_cleanups() {
     drebin.enable_handshaking();
     drebin.enable_reading();
     drebin.enable_writing();
+    drebin.enable_disconnect();
 
     let mut peak_heap = PEAK_ALLOC.peak_usage_as_kb();
     let mut peak_heap_post_1st_conn = 0.0;
@@ -99,6 +111,7 @@ async fn check_node_cleanups() {
         hapsburgs_thug.enable_handshaking();
         hapsburgs_thug.enable_reading();
         hapsburgs_thug.enable_writing();
+        hapsburgs_thug.enable_disconnect();
 
         // Habsburg's thugs alert Drebin of their presence; conveniently, it is also the connection
         // direction that allows the collection of `KnownPeers` to remain empty for Drebin
@@ -106,6 +119,7 @@ async fn check_node_cleanups() {
         wait_until!(1, drebin.node().num_connected() == 1);
         let thug_addr = drebin.node().connected_addrs()[0];
 
+        info!(parent: hapsburgs_thug.node().span(), "<raises hand>");
         info!(parent: drebin.node().span(), "Talk!");
         drebin
             .node()
@@ -115,12 +129,10 @@ async fn check_node_cleanups() {
         wait_until!(1, hapsburgs_thug.node().stats().sent().0 == 2);
 
         // the thug dies before revealing the location of Hapsburg's Plan B
-        hapsburgs_thug.node().shut_down();
+        hapsburgs_thug.node().shut_down().await;
 
         // won't get anything out of this one
-        drebin.node().disconnect(thug_addr);
-
-        info!(parent: drebin.node().span(), "All right. Who else is almost dead?");
+        drebin.node().disconnect(thug_addr).await;
 
         // wait until Drebin realizes the thug is dead
         wait_until!(1, drebin.node().num_connected() == 0);

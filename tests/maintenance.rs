@@ -34,7 +34,7 @@ impl TidyNode {
                 }
 
                 for addr in addrs_to_disconnect {
-                    node.disconnect(addr);
+                    node.disconnect(addr).await;
                 }
 
                 sleep(Duration::from_millis(10)).await;

@@ -1,4 +1,5 @@
-# only count the code of the actual library
+# only count the code of the core library
+src/protocols
 examples
 tests
 Cargo.toml

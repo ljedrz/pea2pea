@@ -13,7 +13,7 @@
 - substituting other, "heavier" nodes in local network tests
 
 ## goals
-- small, simple codebase: the library - _including_ the optional protocols - is under 1k LOC and there are few dependencies
+- small, simple codebase: the core library is under 1k LOC and there are few dependencies
 - ease of use: few objects and traits, no "turboeels" or generics/references forcing all parent objects to adapt
 - correctness: no `unsafe` code; there's more code in `tests` than in the actual library
 - interoperability: strives to be as versatile as possible without sacrificing simplicity and ease of use

@@ -60,7 +60,7 @@ where
                                 node.known_peers().register_failure(addr);
                                 error!(parent: node.span(), "couldn't send a message to {}: {}", addr, e);
                                 if node.config().fatal_io_errors.contains(&e.kind()) {
-                                    node.disconnect(addr);
+                                    node.disconnect(addr).await;
                                     break;
                                 }
                             }

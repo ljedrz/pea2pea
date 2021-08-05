@@ -1,6 +1,6 @@
 use crate::{
     connections::{Connection, ConnectionSide, Connections},
-    protocols::{ProtocolHandler, Protocols},
+    protocols::{ProtocolHandler, Protocols, ReturnableConnection},
     KnownPeers, NodeConfig, NodeStats,
 };
 
@@ -285,11 +285,20 @@ impl Node {
     }
 
     /// Disconnects from the provided `SocketAddr`.
-    pub fn disconnect(&self, addr: SocketAddr) -> bool {
+    pub async fn disconnect(&self, addr: SocketAddr) -> bool {
+        if let Some(handler) = self.protocols.disconnect_handler.get() {
+            if self.is_connected(addr) {
+                let (sender, receiver) = oneshot::channel();
+
+                handler.send((addr, sender)).await;
+                let _ = receiver.await; // can't really fail
+            }
+        }
+
         let disconnected = self.connections.remove(addr);
 
         if disconnected {
-            info!(parent: self.span(), "disconnected from {}", addr);
+            debug!(parent: self.span(), "disconnected from {}", addr);
         } else {
             warn!(parent: self.span(), "wasn't connected to {}", addr);
         }
@@ -355,28 +364,38 @@ impl Node {
     }
 
     /// Sets up the handshake handler, as part of the `Handshaking` protocol.
-    pub fn set_handshake_handler(&self, handler: ProtocolHandler) {
+    pub fn set_handshake_handler(&self, handler: ProtocolHandler<ReturnableConnection>) {
         if self.protocols.handshake_handler.set(handler).is_err() {
             panic!("the handshake_handler field was set more than once!");
         }
     }
 
     /// Sets up the reading handler, as part of enabling the `Reading` protocol.
-    pub fn set_reading_handler(&self, handler: ProtocolHandler) {
+    pub fn set_reading_handler(&self, handler: ProtocolHandler<ReturnableConnection>) {
         if self.protocols.reading_handler.set(handler).is_err() {
             panic!("the reading_handler field was set more than once!");
         }
     }
 
     /// Sets up the writing handler, as part of enabling the `Writing` protocol.
-    pub fn set_writing_handler(&self, handler: ProtocolHandler) {
+    pub fn set_writing_handler(&self, handler: ProtocolHandler<ReturnableConnection>) {
         if self.protocols.writing_handler.set(handler).is_err() {
             panic!("the writing_handler field was set more than once!");
         }
     }
 
+    /// Sets up the disconnect handler, as part of enabling the `Disconnect` protocol.
+    pub fn set_disconnect_handler(
+        &self,
+        handler: ProtocolHandler<(SocketAddr, oneshot::Sender<()>)>,
+    ) {
+        if self.protocols.disconnect_handler.set(handler).is_err() {
+            panic!("the disconnect_handler field was set more than once!");
+        }
+    }
+
     /// Gracefully shuts the node down.
-    pub fn shut_down(&self) {
+    pub async fn shut_down(&self) {
         debug!(parent: self.span(), "shutting down");
 
         let mut tasks = std::mem::take(&mut *self.tasks.lock()).into_iter();
@@ -385,7 +404,7 @@ impl Node {
         }
 
         for addr in self.connected_addrs() {
-            self.disconnect(addr);
+            self.disconnect(addr).await;
         }
 
         for handle in tasks {

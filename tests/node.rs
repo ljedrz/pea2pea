@@ -61,7 +61,7 @@ async fn node_connect_and_disconnect() {
     assert!(nodes[0].num_connecting() == 0);
     assert!(nodes[1].num_connecting() == 0);
 
-    assert!(nodes[0].disconnect(nodes[1].listening_addr()));
+    assert!(nodes[0].disconnect(nodes[1].listening_addr()).await);
 
     wait_until!(1, nodes[0].num_connected() == 0);
 
@@ -149,7 +149,7 @@ async fn node_shutdown_closes_the_listener() {
     let addr = node.listening_addr();
 
     assert!(TcpListener::bind(addr).await.is_err());
-    node.shut_down();
+    node.shut_down().await;
     sleep(Duration::from_millis(100)).await;
     assert!(TcpListener::bind(addr).await.is_ok());
 }

@@ -1,9 +1,14 @@
 # 0.22.0
 
+### Added
+
+- a new protocol, `Disconnect`
+
 ### Changed
 
 - `Node::send_broadcast` doesn't return a value anymore
 - the node no longer waits when a per-connection inbound queue is full; the message gets dropped
+- downgraded the disconnect log from `INFO` to `DEBUG`
 
 # 0.21.1
 
