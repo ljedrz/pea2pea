@@ -8,7 +8,10 @@ use pea2pea::{
     Connection, Node, NodeConfig, Pea2Pea,
 };
 
-use std::{io, net::SocketAddr};
+use std::{
+    io,
+    net::{Ipv4Addr, SocketAddr},
+};
 
 #[derive(Clone)]
 struct TestNode(Node);
@@ -91,11 +94,11 @@ async fn check_node_cleanups() {
 
     let config = NodeConfig {
         name: Some("Drebin".into()),
-        listener_ip: "127.0.0.1".parse().unwrap(),
+        listener_ip: Some(Ipv4Addr::LOCALHOST.into()),
         ..Default::default()
     };
     let drebin = TestNode(Node::new(Some(config)).await.unwrap());
-    let drebin_addr = drebin.node().listening_addr();
+    let drebin_addr = drebin.node().listening_addr().unwrap();
 
     drebin.enable_handshaking();
     drebin.enable_reading();

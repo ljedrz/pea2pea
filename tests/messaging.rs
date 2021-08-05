@@ -9,7 +9,12 @@ use pea2pea::{
 };
 use TestMessage::*;
 
-use std::{collections::HashSet, io, net::SocketAddr, sync::Arc};
+use std::{
+    collections::HashSet,
+    io,
+    net::{Ipv4Addr, SocketAddr},
+    sync::Arc,
+};
 
 #[derive(PartialEq, Eq, Hash, Debug, Clone, Copy)]
 enum TestMessage {
@@ -88,7 +93,7 @@ async fn messaging_example() {
 
     let picky_echo_config = NodeConfig {
         name: Some("picky_echo".into()),
-        listener_ip: "127.0.0.1".parse().unwrap(),
+        listener_ip: Some(Ipv4Addr::LOCALHOST.into()),
         ..Default::default()
     };
     let picky_echo = EchoNode {
@@ -98,7 +103,7 @@ async fn messaging_example() {
     picky_echo.enable_reading();
     picky_echo.enable_writing();
 
-    let picky_echo_addr = picky_echo.node().listening_addr();
+    let picky_echo_addr = picky_echo.node().listening_addr().unwrap();
 
     shouter.node().connect(picky_echo_addr).await.unwrap();
 
@@ -133,7 +138,7 @@ async fn drop_connection_on_invalid_message() {
 
     writer
         .node()
-        .connect(reader.node().listening_addr())
+        .connect(reader.node().listening_addr().unwrap())
         .await
         .unwrap();
 
@@ -144,7 +149,7 @@ async fn drop_connection_on_invalid_message() {
 
     writer
         .node()
-        .send_direct_message(reader.node().listening_addr(), bad_message.into())
+        .send_direct_message(reader.node().listening_addr().unwrap(), bad_message.into())
         .unwrap();
 
     wait_until!(1, reader.node().num_connected() == 0);
@@ -160,7 +165,7 @@ async fn drop_connection_on_oversized_message() {
     let config = NodeConfig {
         name: Some("reader".into()),
         conn_read_buffer_size: MSG_SIZE_LIMIT,
-        listener_ip: "127.0.0.1".parse().unwrap(),
+        listener_ip: Some(Ipv4Addr::LOCALHOST.into()),
         ..Default::default()
     };
     let reader = common::MessagingNode(Node::new(Some(config)).await.unwrap());
@@ -168,7 +173,7 @@ async fn drop_connection_on_oversized_message() {
 
     writer
         .node()
-        .connect(reader.node().listening_addr())
+        .connect(reader.node().listening_addr().unwrap())
         .await
         .unwrap();
 
@@ -180,7 +185,7 @@ async fn drop_connection_on_oversized_message() {
     writer
         .node()
         .send_direct_message(
-            reader.node().listening_addr(),
+            reader.node().listening_addr().unwrap(),
             common::prefix_with_len(2, &oversized_payload),
         )
         .unwrap();
@@ -195,7 +200,7 @@ async fn drop_connection_on_zero_read() {
     let peer = common::MessagingNode::new("peer").await;
 
     peer.node()
-        .connect(reader.node().listening_addr())
+        .connect(reader.node().listening_addr().unwrap())
         .await
         .unwrap();
 

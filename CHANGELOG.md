@@ -1,3 +1,9 @@
+# 0.23.0
+
+### Changed
+
+- the node no longer has to listen for connections
+
 # 0.22.0
 
 ### Added

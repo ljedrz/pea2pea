@@ -15,7 +15,13 @@ use pea2pea::{
 };
 
 use std::{
-    collections::HashMap, convert::TryInto, io, net::SocketAddr, str, sync::Arc, time::Duration,
+    collections::HashMap,
+    convert::TryInto,
+    io,
+    net::{Ipv4Addr, SocketAddr},
+    str,
+    sync::Arc,
+    time::Duration,
 };
 
 // maximum noise message size, as specified by its protocol
@@ -73,7 +79,7 @@ impl SecureNode {
     async fn new(name: &str) -> io::Result<Self> {
         let config = NodeConfig {
             name: Some(name.into()),
-            listener_ip: "127.0.0.1".parse().unwrap(),
+            listener_ip: Some(Ipv4Addr::LOCALHOST.into()),
             conn_read_buffer_size: NOISE_BUF_LEN + 2, // 2 for the encrypted message length,
             ..Default::default()
         };
@@ -236,7 +242,7 @@ async fn main() {
     // connect the initiator to the responder
     initiator
         .node()
-        .connect(responder.node().listening_addr())
+        .connect(responder.node().listening_addr().unwrap())
         .await
         .unwrap();
 
@@ -247,7 +253,7 @@ async fn main() {
     let msg = b"why hello there, fellow noise protocol user; I'm the initiator";
     initiator
         .node()
-        .send_direct_message(responder.node().listening_addr(), msg[..].into())
+        .send_direct_message(responder.node().listening_addr().unwrap(), msg[..].into())
         .unwrap();
 
     // send a message from responder to initiator; determine the latter's address first

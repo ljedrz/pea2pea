@@ -13,7 +13,7 @@ use pea2pea::{
 
 use std::{
     io,
-    net::SocketAddr,
+    net::{Ipv4Addr, SocketAddr},
     sync::{
         atomic::{AtomicUsize, Ordering::Relaxed},
         Arc,
@@ -31,7 +31,7 @@ async fn node_creation_any_port_works() {
 async fn node_creation_bad_params_panic() {
     let config = NodeConfig {
         allow_random_port: false,
-        listener_ip: "127.0.0.1".parse().unwrap(),
+        listener_ip: Some(Ipv4Addr::LOCALHOST.into()),
         ..Default::default()
     };
     let _node = Node::new(Some(config)).await.unwrap();
@@ -42,7 +42,7 @@ async fn node_creation_used_port_fails() {
     let config = NodeConfig {
         desired_listening_port: Some(9), // the official Discard Protocol port
         allow_random_port: false,
-        listener_ip: "127.0.0.1".parse().unwrap(),
+        listener_ip: Some(Ipv4Addr::LOCALHOST.into()),
         ..Default::default()
     };
     assert!(Node::new(Some(config)).await.is_err());
@@ -61,7 +61,11 @@ async fn node_connect_and_disconnect() {
     assert!(nodes[0].num_connecting() == 0);
     assert!(nodes[1].num_connecting() == 0);
 
-    assert!(nodes[0].disconnect(nodes[1].listening_addr()).await);
+    assert!(
+        nodes[0]
+            .disconnect(nodes[1].listening_addr().unwrap())
+            .await
+    );
 
     wait_until!(1, nodes[0].num_connected() == 0);
 
@@ -73,7 +77,7 @@ async fn node_connect_and_disconnect() {
 #[tokio::test]
 async fn node_self_connection_fails() {
     let node = Node::new(None).await.unwrap();
-    assert!(node.connect(node.listening_addr()).await.is_err());
+    assert!(node.connect(node.listening_addr().unwrap()).await.is_err());
 }
 
 #[tokio::test]
@@ -95,27 +99,33 @@ async fn node_two_way_connection_works() {
 async fn node_connector_limit_breach_fails() {
     let config = NodeConfig {
         max_connections: 0,
-        listener_ip: "127.0.0.1".parse().unwrap(),
+        listener_ip: Some(Ipv4Addr::LOCALHOST.into()),
         ..Default::default()
     };
     let connector = Node::new(Some(config)).await.unwrap();
     let connectee = Node::new(None).await.unwrap();
 
-    assert!(connector.connect(connectee.listening_addr()).await.is_err());
+    assert!(connector
+        .connect(connectee.listening_addr().unwrap())
+        .await
+        .is_err());
 }
 
 #[tokio::test]
 async fn node_connectee_limit_breach_fails() {
     let config = NodeConfig {
         max_connections: 0,
-        listener_ip: "127.0.0.1".parse().unwrap(),
+        listener_ip: Some(Ipv4Addr::LOCALHOST.into()),
         ..Default::default()
     };
     let connectee = Node::new(Some(config)).await.unwrap();
     let connector = Node::new(None).await.unwrap();
 
     // a breached connection limit doesn't close the listener, so this works
-    connector.connect(connectee.listening_addr()).await.unwrap();
+    connector
+        .connect(connectee.listening_addr().unwrap())
+        .await
+        .unwrap();
 
     // the number of connections on connectee side needs to be checked instead
     wait_until!(1, connectee.num_connected() == 0);
@@ -127,7 +137,7 @@ async fn node_overlapping_duplicate_connection_attempts_fail() {
 
     let connector = Node::new(None).await.unwrap();
     let connectee = Node::new(None).await.unwrap();
-    let addr = connectee.listening_addr();
+    let addr = connectee.listening_addr().unwrap();
 
     let err_count = Arc::new(AtomicUsize::new(0));
     for _ in 0..NUM_ATTEMPTS {
@@ -146,7 +156,7 @@ async fn node_overlapping_duplicate_connection_attempts_fail() {
 #[tokio::test]
 async fn node_shutdown_closes_the_listener() {
     let node = Node::new(None).await.unwrap();
-    let addr = node.listening_addr();
+    let addr = node.listening_addr().unwrap();
 
     assert!(TcpListener::bind(addr).await.is_err());
     node.shut_down().await;
@@ -178,7 +188,7 @@ async fn node_hung_handshake_fails() {
 
     let config = NodeConfig {
         max_handshake_time_ms: 10,
-        listener_ip: "127.0.0.1".parse().unwrap(),
+        listener_ip: Some(Ipv4Addr::LOCALHOST.into()),
         ..Default::default()
     };
     let connector = Wrap(Node::new(None).await.unwrap());
@@ -190,7 +200,7 @@ async fn node_hung_handshake_fails() {
     // the connection attempt should register just fine for the connector, as it doesn't expect a handshake
     assert!(connector
         .node()
-        .connect(connectee.node().listening_addr())
+        .connect(connectee.node().listening_addr().unwrap())
         .await
         .is_ok());
 
@@ -230,12 +240,12 @@ async fn node_common_timeout_when_spammed_with_connections() {
     let config = NodeConfig {
         max_handshake_time_ms: TIMEOUT_SECS * 1_000,
         max_connections: NUM_ATTEMPTS,
-        listener_ip: "127.0.0.1".parse().unwrap(),
+        listener_ip: Some(Ipv4Addr::LOCALHOST.into()),
         ..Default::default()
     };
     let victim = Wrap(Node::new(Some(config)).await.unwrap());
     victim.enable_handshaking();
-    let victim_addr = victim.node().listening_addr();
+    let victim_addr = victim.node().listening_addr().unwrap();
 
     let mut sockets = Vec::with_capacity(NUM_ATTEMPTS as usize);
 
@@ -278,7 +288,7 @@ async fn node_stats_received() {
     reader.enable_reading();
 
     // no need to set up a writer node; a raw stream will suffice
-    let mut writer = TcpStream::connect(reader.node().listening_addr())
+    let mut writer = TcpStream::connect(reader.node().listening_addr().unwrap())
         .await
         .unwrap();
     let writer_addr = writer.local_addr().unwrap();

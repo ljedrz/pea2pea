@@ -11,7 +11,12 @@ use pea2pea::{
     Node, NodeConfig, Pea2Pea, Topology,
 };
 
-use std::{convert::TryInto, io, net::SocketAddr, time::Duration};
+use std::{
+    convert::TryInto,
+    io,
+    net::{Ipv4Addr, SocketAddr},
+    time::Duration,
+};
 
 #[derive(Clone)]
 struct Player(Node);
@@ -86,7 +91,7 @@ async fn main() {
 
     let mut players = Vec::with_capacity(NUM_PLAYERS);
     let config = NodeConfig {
-        listener_ip: "127.0.0.1".parse().unwrap(),
+        listener_ip: Some(Ipv4Addr::LOCALHOST.into()),
         ..Default::default()
     };
     for _ in 0..NUM_PLAYERS {
@@ -107,7 +112,7 @@ async fn main() {
     players[0]
         .node()
         .send_direct_message(
-            players[1].node().listening_addr(),
+            players[1].node().listening_addr().unwrap(),
             message.as_bytes().into(),
         )
         .unwrap();

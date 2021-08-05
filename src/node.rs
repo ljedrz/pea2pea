@@ -64,7 +64,7 @@ pub struct InnerNode {
     /// The node's configuration.
     config: NodeConfig,
     /// The node's listening address.
-    listening_addr: SocketAddr,
+    listening_addr: Option<SocketAddr>,
     /// Contains objects used by the protocols implemented by the node.
     protocols: Protocols,
     /// A list of connections that have not been finalized yet.
@@ -93,30 +93,41 @@ impl Node {
         let span = create_span(config.name.as_deref().unwrap());
 
         // procure a listening address
-        let listener_ip = config.listener_ip;
-        let listener = if let Some(port) = config.desired_listening_port {
-            let desired_listening_addr = SocketAddr::new(listener_ip, port);
-            match TcpListener::bind(desired_listening_addr).await {
-                Ok(listener) => listener,
-                Err(e) => {
-                    if config.allow_random_port {
-                        warn!(parent: span.clone(), "trying any port, the desired one is unavailable: {}", e);
-                        let random_available_addr = SocketAddr::new(listener_ip, 0);
-                        TcpListener::bind(random_available_addr).await?
-                    } else {
-                        error!(parent: span.clone(), "the desired port is unavailable: {}", e);
-                        return Err(e);
+        let listener = if let Some(listener_ip) = config.listener_ip {
+            let listener = if let Some(port) = config.desired_listening_port {
+                let desired_listening_addr = SocketAddr::new(listener_ip, port);
+                match TcpListener::bind(desired_listening_addr).await {
+                    Ok(listener) => listener,
+                    Err(e) => {
+                        if config.allow_random_port {
+                            warn!(parent: span.clone(), "trying any port, the desired one is unavailable: {}", e);
+                            let random_available_addr = SocketAddr::new(listener_ip, 0);
+                            TcpListener::bind(random_available_addr).await?
+                        } else {
+                            error!(parent: span.clone(), "the desired port is unavailable: {}", e);
+                            return Err(e);
+                        }
                     }
                 }
-            }
-        } else if config.allow_random_port {
-            let random_available_addr = SocketAddr::new(listener_ip, 0);
-            TcpListener::bind(random_available_addr).await?
+            } else if config.allow_random_port {
+                let random_available_addr = SocketAddr::new(listener_ip, 0);
+                TcpListener::bind(random_available_addr).await?
+            } else {
+                panic!(
+                    "you must either provide a desired port or allow a random port to be chosen"
+                );
+            };
+
+            Some(listener)
         } else {
-            panic!("you must either provide a desired port or allow a random port to be chosen");
+            None
         };
 
-        let listening_addr = listener.local_addr()?;
+        let listening_addr = if let Some(ref listener) = listener {
+            Some(listener.local_addr()?)
+        } else {
+            None
+        };
 
         let node = Node(Arc::new(InnerNode {
             span,
@@ -130,42 +141,48 @@ impl Node {
             tasks: Default::default(),
         }));
 
-        let node_clone = node.clone();
-        let listening_task = tokio::spawn(async move {
-            trace!(parent: node_clone.span(), "spawned the listening task");
-            loop {
-                match listener.accept().await {
-                    Ok((stream, addr)) => {
-                        debug!(parent: node_clone.span(), "tentatively accepted a connection from {}", addr);
+        if let Some(listener) = listener {
+            let node_clone = node.clone();
+            let listening_task = tokio::spawn(async move {
+                trace!(parent: node_clone.span(), "spawned the listening task");
+                loop {
+                    match listener.accept().await {
+                        Ok((stream, addr)) => {
+                            debug!(parent: node_clone.span(), "tentatively accepted a connection from {}", addr);
 
-                        if !node_clone.can_add_connection() {
-                            debug!(parent: node_clone.span(), "rejecting the connection from {}", addr);
-                            continue;
-                        }
-
-                        node_clone.connecting.lock().insert(addr);
-
-                        let node_clone2 = node_clone.clone();
-                        task::spawn(async move {
-                            if let Err(e) = node_clone2
-                                .adapt_stream(stream, addr, ConnectionSide::Responder)
-                                .await
-                            {
-                                node_clone2.connecting.lock().remove(&addr);
-                                node_clone2.known_peers().register_failure(addr);
-                                error!(parent: node_clone2.span(), "couldn't accept a connection: {}", e);
+                            if !node_clone.can_add_connection() {
+                                debug!(parent: node_clone.span(), "rejecting the connection from {}", addr);
+                                continue;
                             }
-                        });
-                    }
-                    Err(e) => {
-                        error!(parent: node_clone.span(), "couldn't accept a connection: {}", e);
+
+                            node_clone.connecting.lock().insert(addr);
+
+                            let node_clone2 = node_clone.clone();
+                            task::spawn(async move {
+                                if let Err(e) = node_clone2
+                                    .adapt_stream(stream, addr, ConnectionSide::Responder)
+                                    .await
+                                {
+                                    node_clone2.connecting.lock().remove(&addr);
+                                    node_clone2.known_peers().register_failure(addr);
+                                    error!(parent: node_clone2.span(), "couldn't accept a connection: {}", e);
+                                }
+                            });
+                        }
+                        Err(e) => {
+                            error!(parent: node_clone.span(), "couldn't accept a connection: {}", e);
+                        }
                     }
                 }
-            }
-        });
-        node.tasks.lock().push(listening_task);
+            });
+            node.tasks.lock().push(listening_task);
 
-        debug!(parent: node.span(), "the node is ready; listening on {}", listening_addr);
+            debug!(parent: node.span(), "the node is ready");
+        }
+
+        if let Some(listening_addr) = node.listening_addr {
+            debug!(parent: node.span(), "listening on port {}", listening_addr);
+        }
 
         Ok(node)
     }
@@ -191,9 +208,11 @@ impl Node {
         &self.span
     }
 
-    /// Returns the node's listening address.
-    pub fn listening_addr(&self) -> SocketAddr {
+    /// Returns the node's listening address; returns an error if the node was configured
+    /// to not listen for inbound connections.
+    pub fn listening_addr(&self) -> io::Result<SocketAddr> {
         self.listening_addr
+            .ok_or_else(|| io::ErrorKind::AddrNotAvailable.into())
     }
 
     async fn enable_protocols(&self, conn: Connection) -> io::Result<Connection> {
@@ -244,11 +263,13 @@ impl Node {
 
     /// Connects to the provided `SocketAddr`.
     pub async fn connect(&self, addr: SocketAddr) -> io::Result<()> {
-        if addr == self.listening_addr()
-            || addr.ip().is_loopback() && addr.port() == self.listening_addr().port()
-        {
-            error!(parent: self.span(), "can't connect to node's own listening address ({})", addr);
-            return Err(io::ErrorKind::AddrInUse.into());
+        if let Ok(listening_addr) = self.listening_addr() {
+            if addr == listening_addr
+                || addr.ip().is_loopback() && addr.port() == listening_addr.port()
+            {
+                error!(parent: self.span(), "can't connect to node's own listening address ({})", addr);
+                return Err(io::ErrorKind::AddrInUse.into());
+            }
         }
 
         if !self.can_add_connection() {

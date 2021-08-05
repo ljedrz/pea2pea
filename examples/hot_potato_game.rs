@@ -21,7 +21,7 @@ use std::{
     collections::HashMap,
     convert::TryInto,
     io,
-    net::SocketAddr,
+    net::{Ipv4Addr, SocketAddr},
     sync::{
         atomic::{AtomicUsize, Ordering::Relaxed},
         Arc,
@@ -50,7 +50,7 @@ struct Player {
 impl Player {
     async fn new() -> Self {
         let config = NodeConfig {
-            listener_ip: "127.0.0.1".parse().unwrap(),
+            listener_ip: Some(Ipv4Addr::LOCALHOST.into()),
             ..Default::default()
         };
 

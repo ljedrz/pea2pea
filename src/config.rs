@@ -11,7 +11,9 @@ pub struct NodeConfig {
     /// note: if set to `None`, the `Node` will automatically be assigned a sequential, zero-based numeric identifier.
     pub name: Option<String>,
     /// The IP address the node's connection listener should bind to.
-    pub listener_ip: IpAddr,
+    ///
+    /// note: if set to `None`, the `Node` will not listen for inbound connections at all.
+    pub listener_ip: Option<IpAddr>,
     /// The desired listening port of the node.
     pub desired_listening_port: Option<u16>,
     /// Allow listening on a different port if `desired_listening_port` is unavailable.
@@ -43,7 +45,7 @@ impl Default for NodeConfig {
     fn default() -> Self {
         Self {
             name: None,
-            listener_ip: IpAddr::V4(Ipv4Addr::UNSPECIFIED),
+            listener_ip: Some(IpAddr::V4(Ipv4Addr::UNSPECIFIED)),
             desired_listening_port: None,
             allow_random_port: true,
             protocol_handler_queue_depth: 16,

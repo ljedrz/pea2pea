@@ -7,7 +7,7 @@ use pea2pea::{
     Node, NodeConfig, Pea2Pea,
 };
 
-use std::time::Duration;
+use std::{net::Ipv4Addr, time::Duration};
 
 impl common::MessagingNode {
     fn send_periodic_broadcasts(&self) {
@@ -45,7 +45,7 @@ async fn broadcast_example() {
 
     let broadcaster_config = NodeConfig {
         name: Some("chatty".into()),
-        listener_ip: "127.0.0.1".parse().unwrap(),
+        listener_ip: Some(Ipv4Addr::LOCALHOST.into()),
         ..Default::default()
     };
     let broadcaster = Node::new(Some(broadcaster_config)).await.unwrap();
@@ -57,7 +57,7 @@ async fn broadcast_example() {
     for rando in &random_nodes {
         broadcaster
             .0
-            .connect(rando.node().listening_addr())
+            .connect(rando.node().listening_addr().unwrap())
             .await
             .unwrap();
     }

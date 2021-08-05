@@ -9,7 +9,13 @@ use pea2pea::{
 };
 
 use parking_lot::RwLock;
-use std::{collections::HashMap, convert::TryInto, io, net::SocketAddr, sync::Arc};
+use std::{
+    collections::HashMap,
+    convert::TryInto,
+    io,
+    net::{Ipv4Addr, SocketAddr},
+    sync::Arc,
+};
 
 #[derive(Debug)]
 enum HandshakeMsg {
@@ -133,7 +139,7 @@ async fn handshake_example() {
 
     let initiator_config = NodeConfig {
         name: Some("initiator".into()),
-        listener_ip: "127.0.0.1".parse().unwrap(),
+        listener_ip: Some(Ipv4Addr::LOCALHOST.into()),
         ..Default::default()
     };
     let initiator = Node::new(Some(initiator_config)).await.unwrap();
@@ -144,7 +150,7 @@ async fn handshake_example() {
 
     let responder_config = NodeConfig {
         name: Some("responder".into()),
-        listener_ip: "127.0.0.1".parse().unwrap(),
+        listener_ip: Some(Ipv4Addr::LOCALHOST.into()),
         ..Default::default()
     };
     let responder = Node::new(Some(responder_config)).await.unwrap();
@@ -163,7 +169,7 @@ async fn handshake_example() {
 
     initiator
         .node()
-        .connect(responder.node().listening_addr())
+        .connect(responder.node().listening_addr().unwrap())
         .await
         .unwrap();
 
@@ -178,7 +184,7 @@ async fn handshake_example() {
 async fn no_handshake_no_messaging() {
     let initiator_config = NodeConfig {
         name: Some("initiator".into()),
-        listener_ip: "127.0.0.1".parse().unwrap(),
+        listener_ip: Some(Ipv4Addr::LOCALHOST.into()),
         ..Default::default()
     };
     let initiator = Node::new(Some(initiator_config)).await.unwrap();
@@ -189,7 +195,7 @@ async fn no_handshake_no_messaging() {
 
     let responder_config = NodeConfig {
         name: Some("responder".into()),
-        listener_ip: "127.0.0.1".parse().unwrap(),
+        listener_ip: Some(Ipv4Addr::LOCALHOST.into()),
         ..Default::default()
     };
     let responder = Node::new(Some(responder_config)).await.unwrap();
@@ -206,7 +212,7 @@ async fn no_handshake_no_messaging() {
 
     initiator
         .node()
-        .connect(responder.node().listening_addr())
+        .connect(responder.node().listening_addr().unwrap())
         .await
         .unwrap();
 
@@ -214,7 +220,7 @@ async fn no_handshake_no_messaging() {
 
     initiator
         .node()
-        .send_direct_message(responder.node().listening_addr(), message)
+        .send_direct_message(responder.node().listening_addr().unwrap(), message)
         .unwrap();
 
     wait_until!(1, responder.node().num_connected() == 0);

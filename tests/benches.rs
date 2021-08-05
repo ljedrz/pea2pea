@@ -8,7 +8,11 @@ use pea2pea::{
     Node, NodeConfig, Pea2Pea,
 };
 
-use std::{io, net::SocketAddr, time::Instant};
+use std::{
+    io,
+    net::{Ipv4Addr, SocketAddr},
+    time::Instant,
+};
 
 static RANDOM_BYTES: Lazy<Bytes> = Lazy::new(|| {
     Bytes::from(
@@ -71,7 +75,7 @@ async fn run_bench_scenario(sender_count: usize) -> f64 {
 
     let config = NodeConfig {
         conn_write_buffer_size: MSG_SIZE,
-        listener_ip: "127.0.0.1".parse().unwrap(),
+        listener_ip: Some(Ipv4Addr::LOCALHOST.into()),
         conn_outbound_queue_depth: NUM_MESSAGES,
         ..Default::default()
     };
@@ -88,7 +92,7 @@ async fn run_bench_scenario(sender_count: usize) -> f64 {
     let config = NodeConfig {
         conn_read_buffer_size: MSG_SIZE * 3,
         max_connections: sender_count as u16,
-        listener_ip: "127.0.0.1".parse().unwrap(),
+        listener_ip: Some(Ipv4Addr::LOCALHOST.into()),
         ..Default::default()
     };
     let sink = Sink(Node::new(Some(config)).await.unwrap());
@@ -98,14 +102,14 @@ async fn run_bench_scenario(sender_count: usize) -> f64 {
     for spammer in &spammers {
         spammer
             .node()
-            .connect(sink.node().listening_addr())
+            .connect(sink.node().listening_addr().unwrap())
             .await
             .unwrap();
     }
 
     wait_until!(10, sink.node().num_connected() == sender_count);
 
-    let sink_addr = sink.node().listening_addr();
+    let sink_addr = sink.node().listening_addr().unwrap();
 
     let start = Instant::now();
     for spammer in spammers {

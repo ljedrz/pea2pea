@@ -32,7 +32,7 @@ async fn send_message_before_disconnect() {
     let connectee = common::MessagingNode::new("connectee").await;
     connectee.enable_reading();
 
-    let connectee_addr = connectee.node().listening_addr();
+    let connectee_addr = connectee.node().listening_addr().unwrap();
 
     connector.node().connect(connectee_addr).await.unwrap();
 
