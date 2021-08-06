@@ -198,3 +198,51 @@ async fn drop_connection_on_zero_read() {
     // the reader should drop its connection too now
     wait_until!(1, reader.node().num_connected() == 0);
 }
+
+#[tokio::test]
+async fn no_reading_no_delivery() {
+    let reader = common::MessagingNode::new("defunct reader").await;
+    let reader_addr = reader.node().listening_addr().unwrap();
+
+    let writer = common::MessagingNode::new("writer").await;
+    writer.enable_writing();
+
+    writer.node().connect(reader_addr).await.unwrap();
+
+    wait_until!(1, reader.node().num_connected() == 1);
+
+    // writer sends a message
+    writer
+        .node()
+        .send_direct_message(reader_addr, common::prefix_with_len(4, &[0; 16]))
+        .unwrap();
+
+    sleep(Duration::from_millis(10)).await;
+
+    // but the reader didn't enable reading, so it won't receive anything
+    wait_until!(1, reader.node().stats().received() == (0, 0));
+}
+
+#[tokio::test]
+async fn no_writing_no_delivery() {
+    let reader = common::MessagingNode::new("reader").await;
+    let reader_addr = reader.node().listening_addr().unwrap();
+    reader.enable_reading();
+
+    let writer = common::MessagingNode::new("defunct writer").await;
+
+    writer.node().connect(reader_addr).await.unwrap();
+
+    wait_until!(1, reader.node().num_connected() == 1);
+
+    // writer tries to send a message
+    assert!(writer
+        .node()
+        .send_direct_message(reader_addr, common::prefix_with_len(4, &[0; 16]))
+        .is_err());
+
+    sleep(Duration::from_millis(10)).await;
+
+    // the writer didn't enable writing, so the reader won't receive anything
+    wait_until!(1, reader.node().stats().received() == (0, 0));
+}
