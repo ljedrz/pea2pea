@@ -159,6 +159,7 @@ where
                             // send the message for further processing
                             if let Err(e) = message_sender.try_send(msg) {
                                 error!(parent: self.node().span(), "can't process a message from {}: {}", addr, e);
+                                self.node().stats().register_failure();
                             }
 
                             // if the read is exhausted, reset the carry and return

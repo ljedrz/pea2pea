@@ -333,6 +333,7 @@ impl Node {
             .try_send(message)
             .map_err(|e| {
                 error!(parent: self.span(), "can't send a message to {}: {}", addr, e);
+                self.stats().register_failure();
                 io::ErrorKind::Other.into()
             })
     }
@@ -342,6 +343,7 @@ impl Node {
         for (message_sender, addr) in self.connections.senders() {
             let _ = message_sender.try_send(message.clone()).map_err(|e| {
                 error!(parent: self.span(), "can't send a message to {}: {}", addr, e);
+                self.stats().register_failure();
             });
         }
     }

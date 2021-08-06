@@ -3,6 +3,7 @@
 ### Added
 
 - `KnownPeers::{get, snapshot}`
+- the `Node` now tracks its internal failures (currently full channel errors)
 
 ### Changed
 
