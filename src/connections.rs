@@ -138,7 +138,7 @@ impl Connection {
             Ok(sender.clone())
         } else {
             error!(parent: self.node.span(), "can't send messages: the Writing protocol is disabled");
-            Err(io::ErrorKind::Other.into())
+            Err(io::ErrorKind::Unsupported.into())
         }
     }
 }

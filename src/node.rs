@@ -274,7 +274,7 @@ impl Node {
 
         if !self.can_add_connection() {
             error!(parent: self.span(), "too many connections; refusing to connect to {}", addr);
-            return Err(io::ErrorKind::Other.into());
+            return Err(io::ErrorKind::PermissionDenied.into());
         }
 
         if self.connections.is_connected(addr) {

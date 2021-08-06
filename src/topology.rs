@@ -21,7 +21,7 @@ pub async fn connect_nodes<T: Pea2Pea>(nodes: &[T], topology: Topology) -> io::R
     let count = nodes.len();
     if count < 2 {
         // there must be more than one node in order to have any connections
-        return Err(io::ErrorKind::Other.into());
+        return Err(io::ErrorKind::InvalidInput.into());
     }
 
     match topology {

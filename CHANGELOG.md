@@ -3,6 +3,7 @@
 ### Changed
 
 - the node no longer has to listen for connections
+- some `ErrorKind::Other` errors were made more specific
 
 # 0.22.0
 

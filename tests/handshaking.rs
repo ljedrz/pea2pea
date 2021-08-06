@@ -27,7 +27,7 @@ impl HandshakeMsg {
         match bytes[0] {
             0 => Ok(HandshakeMsg::A(value)),
             1 => Ok(HandshakeMsg::B(value)),
-            _ => Err(io::ErrorKind::Other.into()),
+            _ => Err(io::ErrorKind::InvalidData.into()),
         }
     }
 
@@ -80,7 +80,7 @@ macro_rules! read_handshake_message {
                 "received an invalid handshake message from {} (expected {}, got {:?})",
                 $conn.addr, stringify!($expected), msg,
             );
-            return Err(io::ErrorKind::Other.into());
+            return Err(io::ErrorKind::InvalidData.into());
         }
     }}
 }
