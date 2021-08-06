@@ -9,7 +9,7 @@ use pea2pea::{
 use std::sync::atomic::Ordering::Relaxed;
 
 #[tokio::test]
-async fn node_stats() {
+async fn message_stats() {
     let reader = common::MessagingNode::new("reader").await;
     let reader_addr = reader.node().listening_addr().unwrap();
     reader.enable_reading();
