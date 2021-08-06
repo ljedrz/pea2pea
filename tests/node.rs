@@ -1,4 +1,4 @@
-use tokio::{net::TcpListener, time::sleep};
+use tokio::net::TcpListener;
 
 mod common;
 use pea2pea::{connect_nodes, Node, NodeConfig, Topology};
@@ -9,7 +9,6 @@ use std::{
         atomic::{AtomicUsize, Ordering::Relaxed},
         Arc,
     },
-    time::Duration,
 };
 
 #[tokio::test]
@@ -42,13 +41,9 @@ async fn node_connect_and_disconnect() {
     let nodes = common::start_inert_nodes(2, None).await;
     connect_nodes(&nodes, Topology::Line).await.unwrap();
 
-    wait_until!(
-        1,
-        nodes[0].num_connected() == 1 && nodes[1].num_connected() == 1
-    );
+    wait_until!(1, nodes.iter().all(|node| node.num_connected() == 1));
 
-    assert!(nodes[0].num_connecting() == 0);
-    assert!(nodes[1].num_connecting() == 0);
+    assert!(nodes.iter().all(|node| node.num_connecting() == 0));
 
     assert!(
         nodes[0]
@@ -147,7 +142,6 @@ async fn node_shutdown_closes_the_listener() {
 
     assert!(TcpListener::bind(addr).await.is_err());
     node.shut_down().await;
-    sleep(Duration::from_millis(100)).await;
     assert!(TcpListener::bind(addr).await.is_ok());
 }
 
