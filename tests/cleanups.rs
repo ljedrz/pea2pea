@@ -13,6 +13,17 @@ use std::{io, net::SocketAddr};
 #[derive(Clone)]
 struct TestNode(Node);
 
+impl TestNode {
+    async fn new(name: String) -> Self {
+        let config = NodeConfig {
+            name: Some(name),
+            ..Default::default()
+        };
+
+        Self(Node::new(Some(config)).await.unwrap())
+    }
+}
+
 impl Pea2Pea for TestNode {
     fn node(&self) -> &Node {
         &self.0
@@ -87,25 +98,26 @@ async fn check_node_cleanups() {
     #[global_allocator]
     static PEAK_ALLOC: PeakAlloc = PeakAlloc;
 
-    const NUM_CONNECTIONS: usize = 1_00;
+    const NUM_CONNECTIONS: usize = 100;
 
-    let config = NodeConfig {
-        name: Some("Drebin".into()),
-        ..Default::default()
-    };
-    let drebin = TestNode(Node::new(Some(config)).await.unwrap());
+    let drebin = TestNode::new("Drebin".into()).await;
     let drebin_addr = drebin.node().listening_addr().unwrap();
 
+    // enable all the protocols to check for any leaks there too
     drebin.enable_handshaking();
     drebin.enable_reading();
     drebin.enable_writing();
     drebin.enable_disconnect();
 
-    let mut peak_heap = PEAK_ALLOC.peak_usage_as_kb();
-    let mut peak_heap_post_1st_conn = 0.0;
+    let initial_heap_use = PEAK_ALLOC.current_usage_as_kb();
+
+    let mut heap_sizes = vec![initial_heap_use];
+    let mut heap_after_1st_conn = 0.0;
+
+    info!(parent: drebin.node().span(), "Where's Hapsburg?");
 
     for i in 0..NUM_CONNECTIONS {
-        let hapsburgs_thug = TestNode(Node::new(None).await.unwrap());
+        let hapsburgs_thug = TestNode::new(format!("thug {}", i)).await;
 
         hapsburgs_thug.enable_handshaking();
         hapsburgs_thug.enable_reading();
@@ -130,45 +142,40 @@ async fn check_node_cleanups() {
         // the thug dies before revealing the location of Hapsburg's Plan B
         hapsburgs_thug.node().shut_down().await;
 
-        // won't get anything out of this one
-        drebin.node().disconnect(thug_addr).await;
-
         // wait until Drebin realizes the thug is dead
         wait_until!(1, drebin.node().num_connected() == 0);
 
-        // check peak heap use, register bumps
-        let curr_peak = PEAK_ALLOC.peak_usage_as_kb();
-        if curr_peak > peak_heap {
-            if i != 0 {
-                println!(
-                    "heap bump: {:.2}kB at i={} (+{:.2}%)",
-                    curr_peak,
-                    i,
-                    (curr_peak / peak_heap - 1.0) * 100.0
-                );
-            }
-            peak_heap = curr_peak;
-        }
+        let current_heap_size = PEAK_ALLOC.current_usage_as_kb();
+        heap_sizes.push(current_heap_size);
 
-        // register peak heap use once the first connection was established and dropped
+        // register heap use once the first connection was established and dropped
         if i == 0 {
-            peak_heap_post_1st_conn = curr_peak;
+            heap_after_1st_conn = current_heap_size;
         }
     }
 
-    // register peak heap use
-    let max_heap_use = PEAK_ALLOC.peak_usage_as_kb();
+    // calculate avg heap use
+    let avg_heap_use = heap_sizes.iter().sum::<f32>() / heap_sizes.len() as f32;
 
-    // even when 10k Habsburg's thugs show up and die, maximum memory use shouldn't grow
-    // by more than 5% (some of which is probably caused by tokio), as the heap bumps are:
-    //
-    // heap bump: 354.17kB at i=32 (+3.08%)
-    // peak heap use: 354.17kB; total heap growth: 1.0308341
-    let alloc_growth = max_heap_use / peak_heap_post_1st_conn;
-    println!(
-        "peak heap use: {:.2}kB; total heap growth after {} connections: {:.2}",
-        max_heap_use, NUM_CONNECTIONS, alloc_growth
-    );
+    // drop the vector of heap sizes so it doesn't affect the results
+    drop(heap_sizes);
 
-    assert!(alloc_growth < 1.1);
+    // check final heap use and calculate heap growth
+    let final_heap_use = PEAK_ALLOC.current_usage_as_kb();
+    let heap_growth = (final_heap_use - heap_after_1st_conn) / heap_after_1st_conn * 100.0;
+
+    println!("heap use summary:\n");
+    println!("after node setup:      {:.2}kB", initial_heap_use);
+    println!("after 1 connection:    {:.2}kB", heap_after_1st_conn);
+    println!("after all connections: {:.2}kB", final_heap_use);
+    println!();
+    println!("average use: {:.2}kB", avg_heap_use);
+    println!("maximum use: {:.2}kB", PEAK_ALLOC.peak_usage_as_kb());
+    println!("growth:      {:.2}%", heap_growth);
+
+    // regardless of the number of connections the node handles, related memory use
+    // shouldn't grow by more than 5%, and locally actually results in around -3.5%
+    // even after 10k connects and disconnects, which involve spawning and shutting
+    // down temporary nodes
+    assert!(heap_growth < 5.0);
 }
