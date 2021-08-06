@@ -1,5 +1,6 @@
 use bytes::Bytes;
 use parking_lot::Mutex;
+use tokio::time::sleep;
 use tracing::*;
 
 mod common;
@@ -9,7 +10,7 @@ use pea2pea::{
 };
 use TestMessage::*;
 
-use std::{collections::HashSet, io, net::SocketAddr, sync::Arc};
+use std::{collections::HashSet, io, net::SocketAddr, sync::Arc, time::Duration};
 
 #[derive(PartialEq, Eq, Hash, Debug, Clone, Copy)]
 enum TestMessage {
@@ -126,24 +127,22 @@ async fn messaging_example() {
 #[tokio::test]
 async fn drop_connection_on_invalid_message() {
     let reader = common::MessagingNode::new("reader").await;
+    let reader_addr = reader.node().listening_addr().unwrap();
     reader.enable_reading();
+
     let writer = common::MessagingNode::new("writer").await;
     writer.enable_writing();
 
-    writer
-        .node()
-        .connect(reader.node().listening_addr().unwrap())
-        .await
-        .unwrap();
+    writer.node().connect(reader_addr).await.unwrap();
 
     wait_until!(1, reader.node().num_connected() == 1);
 
     // an invalid message: a zero-length payload
-    let bad_message: &'static [u8] = &[];
+    let bad_message = Bytes::from(vec![]);
 
     writer
         .node()
-        .send_direct_message(reader.node().listening_addr().unwrap(), bad_message.into())
+        .send_direct_message(reader_addr, bad_message)
         .unwrap();
 
     wait_until!(1, reader.node().num_connected() == 0);
@@ -162,13 +161,10 @@ async fn drop_connection_on_oversized_message() {
         ..Default::default()
     };
     let reader = common::MessagingNode(Node::new(Some(config)).await.unwrap());
+    let reader_addr = reader.node().listening_addr().unwrap();
     reader.enable_reading();
 
-    writer
-        .node()
-        .connect(reader.node().listening_addr().unwrap())
-        .await
-        .unwrap();
+    writer.node().connect(reader_addr).await.unwrap();
 
     wait_until!(1, reader.node().num_connected() == 1);
 
@@ -177,10 +173,7 @@ async fn drop_connection_on_oversized_message() {
 
     writer
         .node()
-        .send_direct_message(
-            reader.node().listening_addr().unwrap(),
-            common::prefix_with_len(2, &oversized_payload),
-        )
+        .send_direct_message(reader_addr, common::prefix_with_len(2, &oversized_payload))
         .unwrap();
 
     wait_until!(1, reader.node().num_connected() == 0);
