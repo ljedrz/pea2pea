@@ -1,9 +1,20 @@
 # 0.23.0
 
+### Added
+
+- `KnownPeers::{get, snapshot}`
+
 ### Changed
 
 - the node no longer has to listen for connections
 - some `ErrorKind::Other` errors were made more specific
+- merged `NodeStats` with `PeerStats`
+
+### Removed
+
+- the peer stats no longer follow the number of connections
+- `PeerStats` and `NodeStats` (merged into `Stats`)
+- `KnownPeers::{read, register_connection, write}`
 
 # 0.22.0
 

@@ -4,7 +4,7 @@ use tracing::*;
 mod common;
 use pea2pea::Pea2Pea;
 
-use std::{sync::atomic::Ordering::Relaxed, time::Duration};
+use std::time::Duration;
 
 impl common::MessagingNode {
     fn perform_periodic_maintenance(&self) {
@@ -18,9 +18,11 @@ impl common::MessagingNode {
                 // peer stat, which would otherwise lead to a deadlock
                 let mut addrs_to_disconnect = Vec::new();
 
-                for (addr, stats) in node.known_peers().read().iter() {
-                    if stats.failures.load(Relaxed) > 0 {
-                        addrs_to_disconnect.push(*addr);
+                for addr in node.connected_addrs() {
+                    if let Some(stats) = node.known_peers().get(addr).as_deref() {
+                        if stats.failures() > 0 {
+                            addrs_to_disconnect.push(addr);
+                        }
                     }
                 }
 

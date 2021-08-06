@@ -1,83 +1,53 @@
-use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
-
 use fxhash::FxHashMap;
-use std::{
-    net::SocketAddr,
-    sync::{
-        atomic::{AtomicU64, AtomicUsize, Ordering::Relaxed},
-        Arc,
-    },
-};
+use parking_lot::RwLock;
+
+use std::{net::SocketAddr, sync::Arc};
+
+use crate::Stats;
 
 /// Contains statistics related to node's peers, currently connected or not.
 #[derive(Default)]
-pub struct KnownPeers(RwLock<FxHashMap<SocketAddr, Arc<PeerStats>>>);
+pub struct KnownPeers(RwLock<FxHashMap<SocketAddr, Arc<Stats>>>);
 
 impl KnownPeers {
     /// Adds an address to the list of known peers.
     pub fn add(&self, addr: SocketAddr) {
-        self.write().entry(addr).or_default();
+        self.0.write().entry(addr).or_default();
+    }
+
+    /// Returns the stats for the given peer.
+    pub fn get(&self, addr: SocketAddr) -> Option<Arc<Stats>> {
+        self.0.read().get(&addr).map(|stats| Arc::clone(stats))
     }
 
     /// Removes an address to the list of known peers.
-    pub fn remove(&self, addr: SocketAddr) -> Option<Arc<PeerStats>> {
-        self.write().remove(&addr)
+    pub fn remove(&self, addr: SocketAddr) -> Option<Arc<Stats>> {
+        self.0.write().remove(&addr)
     }
 
-    /// Registers a connection to the given address.
-    pub fn register_connection(&self, addr: SocketAddr) {
-        if let Some(stats) = self.read().get(&addr) {
-            stats.times_connected.fetch_add(1, Relaxed);
-        }
+    /// Returns the list of all known peers and their stats.
+    pub fn snapshot(&self) -> FxHashMap<SocketAddr, Arc<Stats>> {
+        self.0.read().clone()
     }
 
     /// Registers a submission of a message to the given address.
-    pub fn register_sent_message(&self, to: SocketAddr, len: usize) {
-        if let Some(stats) = self.read().get(&to) {
-            stats.msgs_sent.fetch_add(1, Relaxed);
-            stats.bytes_sent.fetch_add(len as u64, Relaxed);
+    pub fn register_sent_message(&self, to: SocketAddr, size: usize) {
+        if let Some(stats) = self.0.read().get(&to) {
+            stats.register_sent_message(size);
         }
     }
 
     /// Registers a receipt of a message to the given address.
-    pub fn register_received_message(&self, from: SocketAddr, len: usize) {
-        if let Some(stats) = self.read().get(&from) {
-            stats.msgs_received.fetch_add(1, Relaxed);
-            stats.bytes_received.fetch_add(len as u64, Relaxed);
+    pub fn register_received_message(&self, from: SocketAddr, size: usize) {
+        if let Some(stats) = self.0.read().get(&from) {
+            stats.register_received_message(size);
         }
     }
 
     /// Registers a failure associated with the given address.
     pub fn register_failure(&self, addr: SocketAddr) {
-        if let Some(stats) = self.read().get(&addr) {
-            stats.failures.fetch_add(1, Relaxed);
+        if let Some(stats) = self.0.read().get(&addr) {
+            stats.register_failure();
         }
     }
-
-    /// Acquires a read lock over the collection of known peers.
-    pub fn read(&self) -> RwLockReadGuard<'_, FxHashMap<SocketAddr, Arc<PeerStats>>> {
-        self.0.read()
-    }
-
-    /// Acquires a write lock over the collection of known peers.
-    pub fn write(&self) -> RwLockWriteGuard<'_, FxHashMap<SocketAddr, Arc<PeerStats>>> {
-        self.0.write()
-    }
-}
-
-/// Contains statistics related to a single peer.
-#[derive(Debug, Default)]
-pub struct PeerStats {
-    /// The number of times a connection with the peer has been established.
-    pub times_connected: AtomicUsize,
-    /// The number of messages sent to the peer.
-    pub msgs_sent: AtomicUsize,
-    /// The number of messages received from the peer.
-    pub msgs_received: AtomicUsize,
-    /// The number of bytes sent to the peer.
-    pub bytes_sent: AtomicU64,
-    /// The number of bytes received from the peer.
-    pub bytes_received: AtomicU64,
-    /// The number of failures related to the peer.
-    pub failures: AtomicUsize,
 }

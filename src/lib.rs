@@ -10,7 +10,7 @@
 mod config;
 mod known_peers;
 mod node;
-mod node_stats;
+mod stats;
 mod topology;
 
 pub mod connections;
@@ -18,9 +18,9 @@ pub mod protocols;
 
 pub use config::NodeConfig;
 pub use connections::{Connection, ConnectionSide};
-pub use known_peers::{KnownPeers, PeerStats};
+pub use known_peers::KnownPeers;
 pub use node::Node;
-pub use node_stats::NodeStats;
+pub use stats::Stats;
 pub use topology::{connect_nodes, Topology};
 
 /// A trait for objects containing a `Node`; it is required to implement protocols.

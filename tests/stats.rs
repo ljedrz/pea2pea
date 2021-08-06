@@ -6,8 +6,6 @@ use pea2pea::{
     Pea2Pea,
 };
 
-use std::sync::atomic::Ordering::Relaxed;
-
 #[tokio::test]
 async fn message_stats() {
     let reader = common::MessagingNode::new("reader").await;
@@ -37,9 +35,9 @@ async fn message_stats() {
         writer.node().stats().sent() == (sent_msgs_count, expected_msgs_size)
     );
     wait_until!(1, {
-        if let Some(peer) = writer.node().known_peers().read().values().next() {
-            peer.msgs_sent.load(Relaxed) as u64 == sent_msgs_count
-                && peer.bytes_sent.load(Relaxed) == expected_msgs_size
+        if let Some(stats) = writer.node().known_peers().get(reader_addr) {
+            let (sent_msgs, sent_bytes) = stats.sent();
+            sent_msgs == sent_msgs_count && sent_bytes == expected_msgs_size
         } else {
             false
         }
@@ -50,9 +48,9 @@ async fn message_stats() {
         reader.node().stats().received() == (sent_msgs_count, expected_msgs_size)
     );
     wait_until!(1, {
-        if let Some(peer) = reader.node().known_peers().read().values().next() {
-            peer.msgs_received.load(Relaxed) as u64 == sent_msgs_count
-                && peer.bytes_received.load(Relaxed) == expected_msgs_size
+        if let Some((_, stats)) = reader.node().known_peers().snapshot().iter().next() {
+            let (received_msgs, received_bytes) = stats.received();
+            received_msgs == sent_msgs_count && received_bytes == expected_msgs_size
         } else {
             false
         }

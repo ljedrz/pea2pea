@@ -1,7 +1,7 @@
 use crate::{
     connections::{Connection, ConnectionSide, Connections},
     protocols::{ProtocolHandler, Protocols, ReturnableConnection},
-    KnownPeers, NodeConfig, NodeStats,
+    KnownPeers, NodeConfig, Stats,
 };
 
 use bytes::Bytes;
@@ -74,7 +74,7 @@ pub struct InnerNode {
     /// Collects statistics related to the node's peers.
     known_peers: KnownPeers,
     /// Collects statistics related to the node itself.
-    stats: NodeStats,
+    stats: Stats,
     /// The node's tasks.
     pub(crate) tasks: Mutex<Vec<JoinHandle<()>>>,
 }
@@ -199,7 +199,7 @@ impl Node {
     }
 
     /// Returns a reference to the node's stats.
-    pub fn stats(&self) -> &NodeStats {
+    pub fn stats(&self) -> &Stats {
         &self.stats
     }
 
@@ -256,7 +256,6 @@ impl Node {
 
         self.connections.add(connection);
         self.connecting.lock().remove(&peer_addr);
-        self.known_peers.register_connection(peer_addr);
 
         Ok(())
     }
