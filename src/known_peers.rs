@@ -1,13 +1,12 @@
-use fxhash::FxHashMap;
 use parking_lot::RwLock;
 
-use std::{net::SocketAddr, sync::Arc};
+use std::{collections::HashMap, net::SocketAddr, sync::Arc};
 
 use crate::Stats;
 
 /// Contains statistics related to node's peers, currently connected or not.
 #[derive(Default)]
-pub struct KnownPeers(RwLock<FxHashMap<SocketAddr, Arc<Stats>>>);
+pub struct KnownPeers(RwLock<HashMap<SocketAddr, Arc<Stats>>>);
 
 impl KnownPeers {
     /// Adds an address to the list of known peers.
@@ -26,7 +25,7 @@ impl KnownPeers {
     }
 
     /// Returns the list of all known peers and their stats.
-    pub fn snapshot(&self) -> FxHashMap<SocketAddr, Arc<Stats>> {
+    pub fn snapshot(&self) -> HashMap<SocketAddr, Arc<Stats>> {
         self.0.read().clone()
     }
 

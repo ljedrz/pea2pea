@@ -1,3 +1,7 @@
+# 0.25.0
+
+- removed the `fxhash` dependency (no difference in performance)
+
 # 0.24.0
 
 ### Changed

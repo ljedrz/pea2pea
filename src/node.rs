@@ -5,7 +5,6 @@ use crate::{
 };
 
 use bytes::Bytes;
-use fxhash::FxHashSet;
 use parking_lot::Mutex;
 use tokio::{
     net::{TcpListener, TcpStream},
@@ -15,6 +14,7 @@ use tokio::{
 use tracing::*;
 
 use std::{
+    collections::HashSet,
     io,
     net::SocketAddr,
     ops::Deref,
@@ -68,7 +68,7 @@ pub struct InnerNode {
     /// Contains objects used by the protocols implemented by the node.
     protocols: Protocols,
     /// A list of connections that have not been finalized yet.
-    connecting: Mutex<FxHashSet<SocketAddr>>,
+    connecting: Mutex<HashSet<SocketAddr>>,
     /// Contains objects related to the node's active connections.
     connections: Connections,
     /// Collects statistics related to the node's peers.

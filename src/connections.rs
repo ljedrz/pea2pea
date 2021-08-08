@@ -1,7 +1,6 @@
 //! Objects associated with connection handling.
 
 use bytes::Bytes;
-use fxhash::FxHashMap;
 use parking_lot::RwLock;
 use tokio::{
     net::{
@@ -12,10 +11,10 @@ use tokio::{
     task::JoinHandle,
 };
 
-use std::{io, net::SocketAddr, ops::Not};
+use std::{collections::HashMap, io, net::SocketAddr, ops::Not};
 
 #[derive(Default)]
-pub(crate) struct Connections(RwLock<FxHashMap<SocketAddr, Connection>>);
+pub(crate) struct Connections(RwLock<HashMap<SocketAddr, Connection>>);
 
 impl Connections {
     pub(crate) fn sender(&self, addr: SocketAddr) -> io::Result<Sender<Bytes>> {
