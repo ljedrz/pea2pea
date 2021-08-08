@@ -1,6 +1,6 @@
 use crate::{
     connections::{Connection, ConnectionSide, Connections},
-    protocols::{ProtocolHandler, Protocols, ReturnableConnection},
+    protocols::{ProtocolHandler, Protocols, ReturnableConnection, ReturnableItem},
     KnownPeers, NodeConfig, Stats,
 };
 
@@ -421,10 +421,7 @@ impl Node {
     }
 
     /// Sets up the disconnect handler, as part of enabling the `Disconnect` protocol.
-    pub fn set_disconnect_handler(
-        &self,
-        handler: ProtocolHandler<(SocketAddr, oneshot::Sender<()>)>,
-    ) {
+    pub fn set_disconnect_handler(&self, handler: ProtocolHandler<ReturnableItem<SocketAddr, ()>>) {
         if self.protocols.disconnect_handler.set(handler).is_err() {
             panic!("the disconnect_handler field was set more than once!");
         }

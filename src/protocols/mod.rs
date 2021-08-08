@@ -24,19 +24,17 @@ pub(crate) struct Protocols {
     pub(crate) handshake_handler: OnceCell<ProtocolHandler<ReturnableConnection>>,
     pub(crate) reading_handler: OnceCell<ProtocolHandler<ReturnableConnection>>,
     pub(crate) writing_handler: OnceCell<ProtocolHandler<ReturnableConnection>>,
-    pub(crate) disconnect_handler: OnceCell<ProtocolHandler<(SocketAddr, oneshot::Sender<()>)>>,
+    pub(crate) disconnect_handler: OnceCell<ProtocolHandler<ReturnableItem<SocketAddr, ()>>>,
 }
 
 /// An object dedicated to managing a protocol; it contains a `Sender` whose other side is
 /// owned by the protocol's task.
-pub struct ProtocolHandler<T: Send> {
-    sender: mpsc::Sender<T>,
-}
+pub struct ProtocolHandler<T: Send>(mpsc::Sender<T>);
 
 impl<T: Send> ProtocolHandler<T> {
     /// Sends a returnable item to a task spawned by the protocol handler.
     pub async fn send(&self, item: T) {
-        if self.sender.send(item).await.is_err() {
+        if self.0.send(item).await.is_err() {
             unreachable!(); // protocol's task is down! can't recover
         }
     }
@@ -44,10 +42,13 @@ impl<T: Send> ProtocolHandler<T> {
 
 impl<T: Send> From<mpsc::Sender<T>> for ProtocolHandler<T> {
     fn from(sender: mpsc::Sender<T>) -> Self {
-        Self { sender }
+        Self(sender)
     }
 }
 
-/// An object allowing a `Connection` to be "borrowed" from the owning `Node` to enable a protocol
-/// and to be sent back to it once it's done its job.
-pub type ReturnableConnection = (Connection, oneshot::Sender<io::Result<Connection>>);
+/// An object sent to a protocol handler task; the task assumes control of a protocol-relevant item `T`,
+/// and when it's done with it, it returns it (possibly in a wrapper object) or another relevant object
+/// to the callsite via the counterpart `oneshot::Receiver`.
+pub type ReturnableItem<T, U> = (T, oneshot::Sender<U>);
+
+pub(crate) type ReturnableConnection = ReturnableItem<Connection, io::Result<Connection>>;

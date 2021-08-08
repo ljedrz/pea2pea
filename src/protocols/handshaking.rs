@@ -1,4 +1,4 @@
-use crate::{connections::Connection, protocols::ReturnableConnection, Pea2Pea};
+use crate::{protocols::ReturnableConnection, Connection, Pea2Pea};
 
 use tokio::{sync::mpsc, task, time::timeout};
 use tracing::*;

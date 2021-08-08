@@ -3,6 +3,7 @@
 ### Changed
 
 - the `Connection` no longer carries a reference to the `Node`
+- the `ReturnableConnection` type alias was replaced with a more generic `ReturnableItem<T, U>`
 
 ### Removed
 
