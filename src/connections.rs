@@ -1,7 +1,5 @@
 //! Objects associated with connection handling.
 
-use crate::Node;
-
 use bytes::Bytes;
 use fxhash::FxHashMap;
 use parking_lot::RwLock;
@@ -13,7 +11,6 @@ use tokio::{
     sync::mpsc::Sender,
     task::JoinHandle,
 };
-use tracing::*;
 
 use std::{io, net::SocketAddr, ops::Not};
 
@@ -81,8 +78,6 @@ impl Not for ConnectionSide {
 /// Keeps track of tasks that have been spawned for the purposes of a connection; it
 /// also contains a sender that communicates with the `Writing` protocol handler.
 pub struct Connection {
-    /// A reference to the owning node.
-    pub node: Node,
     /// The address of the connection.
     pub addr: SocketAddr,
     /// Kept only until the protocols are enabled (`Reading` should `take()` it).
@@ -99,16 +94,10 @@ pub struct Connection {
 
 impl Connection {
     /// Creates a `Connection` with placeholders for protocol-related objects.
-    pub(crate) fn new(
-        addr: SocketAddr,
-        stream: TcpStream,
-        side: ConnectionSide,
-        node: &Node,
-    ) -> Self {
+    pub(crate) fn new(addr: SocketAddr, stream: TcpStream, side: ConnectionSide) -> Self {
         let (reader, writer) = stream.into_split();
 
         Self {
-            node: node.clone(),
             addr,
             reader: Some(reader),
             writer: Some(writer),
@@ -137,7 +126,6 @@ impl Connection {
         if let Some(ref sender) = self.outbound_message_sender {
             Ok(sender.clone())
         } else {
-            error!(parent: self.node.span(), "can't send messages: the Writing protocol is disabled");
             Err(io::ErrorKind::Unsupported.into())
         }
     }

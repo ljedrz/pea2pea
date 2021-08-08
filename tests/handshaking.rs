@@ -65,18 +65,18 @@ impl Pea2Pea for SecureishNode {
 }
 
 macro_rules! read_handshake_message {
-    ($expected: path, $conn: expr) => {{
+    ($expected: path, $conn: expr, $node: expr) => {{
         let mut buf = [0u8; 9];
 
         $conn.reader().read_exact(&mut buf).await?;
         let msg = HandshakeMsg::deserialize(&buf)?;
 
         if let $expected(nonce) = msg {
-            debug!(parent: $conn.node.span(), "received {:?} from {}", msg, $conn.addr);
+            debug!(parent: $node.node().span(), "received {:?} from {}", msg, $conn.addr);
             nonce
         } else {
             error!(
-                parent: $conn.node.span(),
+                parent: $node.node().span(),
                 "received an invalid handshake message from {} (expected {}, got {:?})",
                 $conn.addr, stringify!($expected), msg,
             );
@@ -86,12 +86,12 @@ macro_rules! read_handshake_message {
 }
 
 macro_rules! send_handshake_message {
-    ($msg: expr, $conn: expr) => {
+    ($msg: expr, $conn: expr, $node: expr) => {
         $conn.writer()
             .write_all(&$msg.serialize())
             .await?;
 
-        debug!(parent: $conn.node.span(), "sent {:?} to {}", $msg, $conn.addr);
+        debug!(parent: $node.node().span(), "sent {:?} to {}", $msg, $conn.addr);
     }
 }
 
@@ -104,20 +104,20 @@ impl Handshaking for SecureishNode {
             ConnectionSide::Initiator => {
                 // send A
                 let own_nonce = 0;
-                send_handshake_message!(HandshakeMsg::A(own_nonce), conn);
+                send_handshake_message!(HandshakeMsg::A(own_nonce), conn, self);
 
                 // read B
-                let peer_nonce = read_handshake_message!(HandshakeMsg::B, conn);
+                let peer_nonce = read_handshake_message!(HandshakeMsg::B, conn, self);
 
                 NoncePair(own_nonce, peer_nonce)
             }
             ConnectionSide::Responder => {
                 // read A
-                let peer_nonce = read_handshake_message!(HandshakeMsg::A, conn);
+                let peer_nonce = read_handshake_message!(HandshakeMsg::A, conn, self);
 
                 // send B
                 let own_nonce = 1;
-                send_handshake_message!(HandshakeMsg::B(own_nonce), conn);
+                send_handshake_message!(HandshakeMsg::B(own_nonce), conn, self);
 
                 NoncePair(own_nonce, peer_nonce)
             }

@@ -109,20 +109,20 @@ impl Handshaking for SecureNode {
                 conn.writer()
                     .write_all(&packet_message(&buffer[..len]))
                     .await?;
-                debug!(parent: conn.node.span(), "sent e (XX handshake part 1/3)");
+                debug!(parent: self.node().span(), "sent e (XX handshake part 1/3)");
 
                 // <- e, ee, s, es
                 let len = conn.reader().read(&mut buf).await?;
                 let message = read_message(&buf[..len])?.unwrap();
                 noise.read_message(message, &mut buffer).unwrap();
-                debug!(parent: conn.node.span(), "received e, ee, s, es (XX handshake part 2/3)");
+                debug!(parent: self.node().span(), "received e, ee, s, es (XX handshake part 2/3)");
 
                 // -> s, se, psk
                 let len = noise.write_message(&[], &mut buffer).unwrap();
                 conn.writer()
                     .write_all(&packet_message(&buffer[..len]))
                     .await?;
-                debug!(parent: conn.node.span(), "sent s, se, psk (XX handshake part 3/3)");
+                debug!(parent: self.node().span(), "sent s, se, psk (XX handshake part 3/3)");
 
                 noise.into_transport_mode().unwrap()
             }
@@ -133,26 +133,26 @@ impl Handshaking for SecureNode {
                 let len = conn.reader().read(&mut buf).await?;
                 let message = read_message(&buf[..len])?.unwrap();
                 noise.read_message(message, &mut buffer).unwrap();
-                debug!(parent: conn.node.span(), "received e (XX handshake part 1/3)");
+                debug!(parent: self.node().span(), "received e (XX handshake part 1/3)");
 
                 // -> e, ee, s, es
                 let len = noise.write_message(&[], &mut buffer).unwrap();
                 conn.writer()
                     .write_all(&packet_message(&buffer[..len]))
                     .await?;
-                debug!(parent: conn.node.span(), "sent e, ee, s, es (XX handshake part 2/3)");
+                debug!(parent: self.node().span(), "sent e, ee, s, es (XX handshake part 2/3)");
 
                 // <- s, se, psk
                 let len = conn.reader().read(&mut buf).await?;
                 let message = read_message(&buf[..len])?.unwrap();
                 noise.read_message(message, &mut buffer).unwrap();
-                debug!(parent: conn.node.span(), "received s, se, psk (XX handshake part 3/3)");
+                debug!(parent: self.node().span(), "received s, se, psk (XX handshake part 3/3)");
 
                 noise.into_transport_mode().unwrap()
             }
         };
 
-        debug!(parent: conn.node.span(), "XX handshake complete");
+        debug!(parent: self.node().span(), "XX handshake complete");
 
         let noise_state = NoiseState { state, buffer };
 

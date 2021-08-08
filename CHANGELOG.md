@@ -1,3 +1,13 @@
+# 0.24.0
+
+### Changed
+
+- the `Connection` no longer carries a reference to the `Node`
+
+### Removed
+
+- an `ERROR` log when a write is attempted with `Writing` protocol disabled
+
 # 0.23.0
 
 ### Added

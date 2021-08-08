@@ -27,16 +27,16 @@ impl Handshaking for JoJoNode {
         // some handshakes are useful, others are menacing ゴゴゴゴ
         match !conn.side {
             ConnectionSide::Initiator => {
-                info!(parent: conn.node.span(), "Dio!");
+                info!(parent: self.node().span(), "Dio!");
                 sleep(Duration::from_secs(4)).await;
-                info!(parent: conn.node.span(), "I can't beat the shit out of you without getting closer.");
+                info!(parent: self.node().span(), "I can't beat the shit out of you without getting closer.");
                 sleep(Duration::from_secs(3)).await;
             }
             ConnectionSide::Responder => {
                 sleep(Duration::from_secs(1)).await;
-                warn!(parent: conn.node.span(), "Oh, you're approaching me? Instead of running away, you're coming right to me?");
+                warn!(parent: self.node().span(), "Oh, you're approaching me? Instead of running away, you're coming right to me?");
                 sleep(Duration::from_secs(6)).await;
-                warn!(parent: conn.node.span(), "Oh ho! Then come as close as you like.");
+                warn!(parent: self.node().span(), "Oh ho! Then come as close as you like.");
             }
         }
 

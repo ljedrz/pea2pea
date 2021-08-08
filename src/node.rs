@@ -244,7 +244,7 @@ impl Node {
             }
         }
 
-        let connection = Connection::new(peer_addr, stream, !own_side, self);
+        let connection = Connection::new(peer_addr, stream, !own_side);
 
         // enact the enabled protocols
         let mut connection = self.enable_protocols(connection).await?;
