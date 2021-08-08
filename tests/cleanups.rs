@@ -110,17 +110,17 @@ async fn check_node_cleanups() {
     drebin.enable_disconnect();
 
     // register heap use after node setup
-    let initial_heap_use = PEAK_ALLOC.current_usage_as_kb();
+    let initial_heap_use = PEAK_ALLOC.current_usage();
 
     // start keeping track of average heap use
     let mut heap_sizes = Vec::with_capacity(NUM_CONNS);
 
     // decrease the heap measurements in the loop by the helper vector's allocation
-    let mem_deduction = PEAK_ALLOC.current_usage_as_kb() - initial_heap_use;
+    let mem_deduction = PEAK_ALLOC.current_usage() - initial_heap_use;
 
     // due to tokio channel internals, a small heap bump occurs after 32 calls to `mpsc::Sender::send`
     // if it wasn't for that, heap use after the 1st connection (i == 0) would be registered instead
-    let mut heap_after_32_conns = 0.0;
+    let mut heap_after_32_conns = 0;
 
     info!(parent: drebin.node().span(), "Where's Hapsburg?");
 
@@ -156,7 +156,7 @@ async fn check_node_cleanups() {
         // drop the temporary node to fully relinquish its memory
         drop(hapsburgs_thug);
 
-        let current_heap_size = PEAK_ALLOC.current_usage_as_kb() - mem_deduction;
+        let current_heap_size = PEAK_ALLOC.current_usage() - mem_deduction;
 
         // register heap use once the 33rd connection is established and dropped
         if i == 32 {
@@ -168,24 +168,28 @@ async fn check_node_cleanups() {
     }
 
     // calculate avg heap use
-    let avg_heap_use = heap_sizes.iter().sum::<f32>() / heap_sizes.len() as f32;
+    let avg_heap_use = heap_sizes.iter().sum::<usize>() / heap_sizes.len();
 
     // drop the vector of heap sizes so it doesn't affect further measurements
     drop(heap_sizes);
 
     // check final heap use and calculate heap growth
-    let final_heap_use = PEAK_ALLOC.current_usage_as_kb();
-    let heap_growth = (final_heap_use - heap_after_32_conns) / heap_after_32_conns * 100.0;
+    let final_heap_use = PEAK_ALLOC.current_usage();
+    let heap_growth = final_heap_use - heap_after_32_conns;
 
     println!("heap use summary:\n");
-    println!("after node setup:      {:.2}kB", initial_heap_use);
-    println!("after 32 connections:  {:.2}kB", heap_after_32_conns);
-    println!("after {} connections: {:.2}kB", NUM_CONNS, final_heap_use);
+    println!("after node setup:      {}kB", initial_heap_use / 1000);
+    println!("after 32 connections:  {}kB", heap_after_32_conns / 1000);
+    println!(
+        "after {} connections: {}kB",
+        NUM_CONNS,
+        final_heap_use / 1000
+    );
     println!();
-    println!("average use: {:.2}kB", avg_heap_use);
-    println!("maximum use: {:.2}kB", PEAK_ALLOC.peak_usage_as_kb());
-    println!("growth:      {:.2}%", heap_growth);
+    println!("average use: {}kB", avg_heap_use / 1000);
+    println!("maximum use: {}kB", PEAK_ALLOC.peak_usage() / 1000);
+    println!("growth:      {}B", heap_growth);
 
     // regardless of the number of connections the node handles, its memory use shouldn't grow at all
-    assert_eq!(heap_growth, 0.0);
+    assert_eq!(heap_growth, 0);
 }
