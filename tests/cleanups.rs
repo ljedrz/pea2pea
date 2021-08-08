@@ -100,6 +100,9 @@ async fn check_node_cleanups() {
 
     const NUM_CONNS: usize = 100;
 
+    // register heap use before node setup
+    let initial_heap_use = PEAK_ALLOC.current_usage();
+
     let drebin = TestNode::new("Drebin".into()).await;
     let drebin_addr = drebin.node().listening_addr().unwrap();
 
@@ -110,13 +113,13 @@ async fn check_node_cleanups() {
     drebin.enable_disconnect();
 
     // register heap use after node setup
-    let initial_heap_use = PEAK_ALLOC.current_usage();
+    let heap_after_node_setup = PEAK_ALLOC.current_usage();
 
     // start keeping track of average heap use
     let mut heap_sizes = Vec::with_capacity(NUM_CONNS);
 
     // decrease the heap measurements in the loop by the helper vector's allocation
-    let mem_deduction = PEAK_ALLOC.current_usage() - initial_heap_use;
+    let mem_deduction = PEAK_ALLOC.current_usage() - heap_after_node_setup;
 
     // due to tokio channel internals, a small heap bump occurs after 32 calls to `mpsc::Sender::send`
     // if it wasn't for that, heap use after the 1st connection (i == 0) would be registered instead
@@ -177,8 +180,9 @@ async fn check_node_cleanups() {
     let final_heap_use = PEAK_ALLOC.current_usage();
     let heap_growth = final_heap_use - heap_after_32_conns;
 
-    println!("heap use summary:\n");
-    println!("after node setup:      {}kB", initial_heap_use / 1000);
+    println!("---- heap use summary ----\n");
+    println!("before node setup:     {}kB", initial_heap_use / 1000);
+    println!("after node setup:      {}kB", heap_after_node_setup / 1000);
     println!("after 32 connections:  {}kB", heap_after_32_conns / 1000);
     println!(
         "after {} connections: {}kB",
