@@ -45,8 +45,8 @@ impl Connections {
         self.0.read().contains_key(&addr)
     }
 
-    pub(crate) fn remove(&self, addr: SocketAddr) -> bool {
-        self.0.write().remove(&addr).is_some()
+    pub(crate) fn remove(&self, addr: SocketAddr) -> Option<Connection> {
+        self.0.write().remove(&addr)
     }
 
     pub(crate) fn num_connected(&self) -> usize {
@@ -139,24 +139,6 @@ impl Connection {
         } else {
             error!(parent: self.node.span(), "can't send messages: the Writing protocol is disabled");
             Err(io::ErrorKind::Unsupported.into())
-        }
-    }
-}
-
-impl Drop for Connection {
-    fn drop(&mut self) {
-        debug!(parent: self.node.span(), "disconnecting from {}", self.addr);
-
-        // shut the associated tasks down
-        for task in self.tasks.iter().rev() {
-            task.abort();
-        }
-
-        // if the (owning) node was not the initiator of the connection, it doesn't know the listening address
-        // of the associated peer, so the related stats are unreliable; the next connection initiated by the
-        // peer could be bound to an entirely different port number
-        if matches!(self.side, ConnectionSide::Initiator) {
-            self.node.known_peers().remove(self.addr);
         }
     }
 }

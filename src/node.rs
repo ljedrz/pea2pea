@@ -315,15 +315,29 @@ impl Node {
             }
         }
 
-        let disconnected = self.connections.remove(addr);
+        let conn = self.connections.remove(addr);
 
-        if disconnected {
+        if let Some(ref conn) = conn {
+            debug!(parent: self.span(), "disconnecting from {}", conn.addr);
+
+            // shut the associated tasks down
+            for task in conn.tasks.iter().rev() {
+                task.abort();
+            }
+
+            // if the (owning) node was not the initiator of the connection, it doesn't know the listening address
+            // of the associated peer, so the related stats are unreliable; the next connection initiated by the
+            // peer could be bound to an entirely different port number
+            if matches!(conn.side, ConnectionSide::Initiator) {
+                self.known_peers().remove(conn.addr);
+            }
+
             debug!(parent: self.span(), "disconnected from {}", addr);
         } else {
             warn!(parent: self.span(), "wasn't connected to {}", addr);
         }
 
-        disconnected
+        conn.is_some()
     }
 
     /// Sends the provided message to the specified `SocketAddr`, as long as the `Writing` protocol is enabled.
