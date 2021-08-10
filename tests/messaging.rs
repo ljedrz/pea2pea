@@ -72,10 +72,14 @@ impl Reading for EchoNode {
 }
 
 impl Writing for EchoNode {
-    fn write_message(&self, _: SocketAddr, payload: &[u8], buffer: &mut [u8]) -> io::Result<usize> {
-        buffer[..4].copy_from_slice(&(payload.len() as u32).to_le_bytes());
-        buffer[4..][..payload.len()].copy_from_slice(payload);
-        Ok(4 + payload.len())
+    fn write_message<W: io::Write>(
+        &self,
+        _: SocketAddr,
+        payload: &[u8],
+        writer: &mut W,
+    ) -> io::Result<()> {
+        writer.write_all(&(payload.len() as u32).to_le_bytes())?;
+        writer.write_all(payload)
     }
 }
 

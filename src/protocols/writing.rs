@@ -31,8 +31,7 @@ where
             while let Some((mut conn, conn_returner)) = conn_receiver.recv().await {
                 let addr = conn.addr;
                 let mut writer = conn.writer.take().unwrap(); // safe; it is available at this point
-                let mut buffer =
-                    vec![0; self_clone.node().config().conn_write_buffer_size].into_boxed_slice();
+                let mut buffer = Vec::new();
 
                 let (outbound_message_sender, mut outbound_message_receiver) =
                     mpsc::channel(self_clone.node().config().conn_outbound_queue_depth);
@@ -87,22 +86,24 @@ where
         &self,
         message: &[u8],
         addr: SocketAddr,
-        buffer: &mut [u8],
+        buffer: &mut Vec<u8>,
         writer: &mut W,
     ) -> io::Result<usize> {
-        let len = self.write_message(addr, message, buffer)?;
-        writer.write_all(&buffer[..len]).await?;
+        self.write_message(addr, message, buffer)?;
+        let len = buffer.len();
+        writer.write_all(buffer).await?;
+        buffer.clear();
 
         Ok(len)
     }
 
-    /// Writes the provided payload to the given intermediate buffer; the payload can get prepended with a header
+    /// Writes the provided payload to the given intermediate writer; the payload can get prepended with a header
     /// indicating its length, be suffixed with a character indicating that it's complete, etc. Returns the number
-    /// of bytes written to the buffer.
-    fn write_message(
+    /// of bytes written to the writer.
+    fn write_message<W: io::Write>(
         &self,
         target: SocketAddr,
         payload: &[u8],
-        buffer: &mut [u8],
-    ) -> io::Result<usize>;
+        writer: &mut W,
+    ) -> io::Result<()>;
 }

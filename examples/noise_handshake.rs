@@ -197,12 +197,12 @@ impl Reading for SecureNode {
 }
 
 impl Writing for SecureNode {
-    fn write_message(
+    fn write_message<W: io::Write>(
         &self,
         target: SocketAddr,
         payload: &[u8],
-        conn_buffer: &mut [u8],
-    ) -> io::Result<usize> {
+        writer: &mut W,
+    ) -> io::Result<()> {
         let to_encrypt = str::from_utf8(payload).unwrap();
         info!(parent: self.node.span(), "sending an encrypted message to {}: \"{}\"", target, to_encrypt);
 
@@ -212,10 +212,8 @@ impl Writing for SecureNode {
         let len = state.write_message(payload, buffer).unwrap();
         let encrypted_message = &buffer[..len];
 
-        conn_buffer[..2].copy_from_slice(&(len as u16).to_be_bytes());
-        conn_buffer[2..][..len].copy_from_slice(encrypted_message);
-
-        Ok(2 + len)
+        writer.write_all(&(len as u16).to_be_bytes())?;
+        writer.write_all(encrypted_message)
     }
 }
 

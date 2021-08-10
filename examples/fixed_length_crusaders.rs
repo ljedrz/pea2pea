@@ -90,9 +90,14 @@ impl Reading for JoJoNode {
 }
 
 impl Writing for JoJoNode {
-    fn write_message(&self, _: SocketAddr, payload: &[u8], buffer: &mut [u8]) -> io::Result<usize> {
-        buffer[0] = payload[0];
-        let battle_cry = BattleCry::from(buffer[0]);
+    fn write_message<W: io::Write>(
+        &self,
+        _: SocketAddr,
+        payload: &[u8],
+        writer: &mut W,
+    ) -> io::Result<()> {
+        writer.write_all(&payload[..1])?;
+        let battle_cry = BattleCry::from(payload[0]);
 
         if battle_cry == BattleCry::Ora {
             info!(parent: self.node().span(), "{:?}!", battle_cry);
@@ -100,7 +105,7 @@ impl Writing for JoJoNode {
             warn!(parent: self.node().span(), "{:?}!", battle_cry);
         };
 
-        Ok(1)
+        Ok(())
     }
 }
 

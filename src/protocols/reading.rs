@@ -37,8 +37,7 @@ where
             while let Some((mut conn, conn_returner)) = conn_receiver.recv().await {
                 let addr = conn.addr;
                 let mut reader = conn.reader.take().unwrap(); // safe; it is available at this point
-                let mut buffer =
-                    vec![0; self_clone.node().config().conn_read_buffer_size].into_boxed_slice();
+                let mut buffer = Vec::new();
 
                 let (inbound_message_sender, mut inbound_message_receiver) =
                     mpsc::channel(self_clone.node().config().conn_inbound_queue_depth);
@@ -70,32 +69,24 @@ where
                         sleep(Duration::from_millis(5)).await;
                     }
 
-                    let mut carry = 0;
                     loop {
-                        match reader_clone
+                        if let Err(e) = reader_clone
                             .read_from_stream(
                                 addr,
                                 &mut buffer,
                                 &mut reader,
-                                carry,
                                 &inbound_message_sender,
                             )
                             .await
                         {
-                            Ok(leftover) => {
-                                carry = leftover;
-                            }
-                            Err(e) => {
-                                node.known_peers().register_failure(addr);
-                                if node.config().fatal_io_errors.contains(&e.kind()) {
-                                    node.disconnect(addr).await;
-                                    break;
-                                } else {
-                                    sleep(Duration::from_secs(
-                                        node.config().invalid_read_delay_secs,
-                                    ))
+                            node.known_peers().register_failure(addr);
+                            buffer.clear();
+                            if node.config().fatal_io_errors.contains(&e.kind()) {
+                                node.disconnect(addr).await;
+                                break;
+                            } else {
+                                sleep(Duration::from_secs(node.config().invalid_read_delay_secs))
                                     .await;
-                                }
                             }
                         }
                     }
@@ -121,13 +112,16 @@ where
     async fn read_from_stream<R: AsyncRead + Unpin + Send>(
         &self,
         addr: SocketAddr,
-        buffer: &mut [u8],
+        buffer: &mut Vec<u8>,
         reader: &mut R,
-        carry: usize,
         message_sender: &mpsc::Sender<Self::Message>,
-    ) -> io::Result<usize> {
-        // perform a read from the stream, being careful not to overwrite any bytes carried over from the previous read
-        match reader.read(&mut buffer[carry..]).await {
+    ) -> io::Result<()> {
+        // register the number of bytes carried over from the previous read (if there were any)
+        let carry = buffer.len();
+        // limit the maximum number of bytes that can be read
+        let mut handle = reader.take((self.node().config().conn_read_buffer_size - carry) as u64);
+        // perform a read from the stream
+        match handle.read_buf(buffer).await {
             Ok(0) => Err(io::ErrorKind::UnexpectedEof.into()),
             Ok(n) => {
                 trace!(parent: self.node().span(), "read {}B from {}", n, addr);
@@ -164,14 +158,16 @@ where
 
                             // if the read is exhausted, reset the carry and return
                             if left == 0 {
-                                return Ok(0);
+                                buffer.clear();
+                                return Ok(());
                             }
                         }
                         // the message in the buffer is incomplete
                         Ok(None) => {
                             // forbid messages that are larger than the read buffer
-                            if left >= buffer.len() {
+                            if buffer.len() + left > self.node().config().conn_read_buffer_size {
                                 error!(parent: self.node().span(), "a message from {} is too large", addr);
+                                buffer.clear();
                                 return Err(io::ErrorKind::InvalidData.into());
                             }
 
@@ -185,12 +181,14 @@ where
                             // move the leftover bytes to the beginning of the buffer; the next read will append bytes
                             // starting from where the leftover ones end, allowing the message to be completed
                             buffer.copy_within(processed..processed + left, 0);
+                            buffer.truncate(left);
 
-                            return Ok(left);
+                            return Ok(());
                         }
                         // an erroneous message (e.g. an unexpected zero-length payload)
                         Err(_) => {
                             error!(parent: self.node().span(), "a message from {} is invalid", addr);
+                            buffer.clear();
                             return Err(io::ErrorKind::InvalidData.into());
                         }
                     }
@@ -199,6 +197,7 @@ where
             // a stream read error
             Err(e) => {
                 error!(parent: self.node().span(), "can't read from {}: {}", addr, e);
+                buffer.clear();
                 Err(e)
             }
         }
