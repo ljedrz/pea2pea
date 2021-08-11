@@ -5,7 +5,7 @@ use std::{
 
 /// The node's configuration.
 #[derive(Debug, Clone)]
-pub struct NodeConfig {
+pub struct Config {
     /// The name/identifier of the node.
     ///
     /// note: if set to `None`, the `Node` will automatically be assigned a sequential, zero-based numeric identifier.
@@ -42,7 +42,7 @@ pub struct NodeConfig {
     pub max_handshake_time_ms: u64,
 }
 
-impl Default for NodeConfig {
+impl Default for Config {
     fn default() -> Self {
         #[cfg(feature = "test")]
         fn default_ip() -> Option<IpAddr> {

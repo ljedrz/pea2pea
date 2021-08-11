@@ -21,7 +21,7 @@ where
     type Message: Send;
 
     /// Prepares the node to receive messages; failures to read from a connection's stream are penalized by a timeout
-    /// defined in `NodeConfig`, while broken/unreadable messages result in an immediate disconnect (in order to avoid
+    /// defined in `Config`, while broken/unreadable messages result in an immediate disconnect (in order to avoid
     /// accidentally reading "borked" messages).
     fn enable_reading(&self) {
         let (conn_sender, mut conn_receiver) = mpsc::channel::<ReturnableConnection>(

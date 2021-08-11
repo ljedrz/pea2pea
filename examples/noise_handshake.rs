@@ -11,7 +11,7 @@ use tracing_subscriber::filter::LevelFilter;
 
 use pea2pea::{
     protocols::{Handshaking, Reading, Writing},
-    Connection, ConnectionSide, Node, NodeConfig, Pea2Pea,
+    Config, Connection, ConnectionSide, Node, Pea2Pea,
 };
 
 use std::{
@@ -71,7 +71,7 @@ fn packet_message(message: &[u8]) -> Bytes {
 impl SecureNode {
     // create a SecureNode
     async fn new(name: &str) -> io::Result<Self> {
-        let config = NodeConfig {
+        let config = Config {
             name: Some(name.into()),
             read_buffer_size: NOISE_BUF_LEN + 2, // 2 for the encrypted message length,
             ..Default::default()

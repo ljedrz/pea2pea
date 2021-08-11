@@ -5,12 +5,12 @@ use tracing::*;
 
 use pea2pea::{
     protocols::{Reading, Writing},
-    Node, NodeConfig, Pea2Pea,
+    Config, Node, Pea2Pea,
 };
 
 use std::{convert::TryInto, io, net::SocketAddr};
 
-pub async fn start_nodes(count: usize, config: Option<NodeConfig>) -> Vec<Node> {
+pub async fn start_nodes(count: usize, config: Option<Config>) -> Vec<Node> {
     let mut nodes = Vec::with_capacity(count);
 
     for _ in 0..count {
@@ -38,7 +38,7 @@ impl std::ops::Deref for InertNode {
     }
 }
 
-pub async fn start_inert_nodes(count: usize, config: Option<NodeConfig>) -> Vec<InertNode> {
+pub async fn start_inert_nodes(count: usize, config: Option<Config>) -> Vec<InertNode> {
     start_nodes(count, config)
         .await
         .into_iter()
@@ -51,7 +51,7 @@ pub struct MessagingNode(pub Node);
 
 impl MessagingNode {
     pub async fn new<T: AsRef<str>>(name: T) -> Self {
-        let config = NodeConfig {
+        let config = Config {
             name: Some(name.as_ref().into()),
             ..Default::default()
         };

@@ -6,7 +6,7 @@ use tracing::*;
 mod common;
 use pea2pea::{
     protocols::{Reading, Writing},
-    Node, NodeConfig, Pea2Pea,
+    Config, Node, Pea2Pea,
 };
 use TestMessage::*;
 
@@ -91,7 +91,7 @@ async fn messaging_example() {
     shouter.enable_reading();
     shouter.enable_writing();
 
-    let picky_echo_config = NodeConfig {
+    let picky_echo_config = Config {
         name: Some("picky_echo".into()),
         ..Default::default()
     };
@@ -159,7 +159,7 @@ async fn drop_connection_on_oversized_message() {
     let writer = common::MessagingNode::new("writer").await;
     writer.enable_writing();
 
-    let config = NodeConfig {
+    let config = Config {
         name: Some("reader".into()),
         read_buffer_size: MSG_SIZE_LIMIT,
         ..Default::default()

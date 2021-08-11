@@ -1,7 +1,7 @@
 use tokio::{net::TcpListener, time::sleep};
 
 mod common;
-use pea2pea::{connect_nodes, Node, NodeConfig, Topology};
+use pea2pea::{connect_nodes, Config, Node, Topology};
 
 use std::{
     net::Ipv4Addr,
@@ -20,7 +20,7 @@ async fn node_creation_any_port_works() {
 #[should_panic]
 #[tokio::test]
 async fn node_creation_bad_params_panic() {
-    let config = NodeConfig {
+    let config = Config {
         allow_random_port: false,
         ..Default::default()
     };
@@ -29,7 +29,7 @@ async fn node_creation_bad_params_panic() {
 
 #[tokio::test]
 async fn node_creation_used_port_fails() {
-    let config = NodeConfig {
+    let config = Config {
         desired_listening_port: Some(9), // the official Discard Protocol port
         allow_random_port: false,
         ..Default::default()
@@ -82,7 +82,7 @@ async fn node_two_way_connection_works() {
 
 #[tokio::test]
 async fn node_connector_limit_breach_fails() {
-    let config = NodeConfig {
+    let config = Config {
         max_connections: 0,
         ..Default::default()
     };
@@ -97,7 +97,7 @@ async fn node_connector_limit_breach_fails() {
 
 #[tokio::test]
 async fn node_connectee_limit_breach_fails() {
-    let config = NodeConfig {
+    let config = Config {
         max_connections: 0,
         ..Default::default()
     };

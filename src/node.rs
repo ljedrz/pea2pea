@@ -1,7 +1,7 @@
 use crate::{
     connections::{Connection, ConnectionSide, Connections},
     protocols::{ProtocolHandler, Protocols, ReturnableConnection, ReturnableItem},
-    KnownPeers, NodeConfig, Stats,
+    Config, KnownPeers, Stats,
 };
 
 use bytes::Bytes;
@@ -62,7 +62,7 @@ pub struct InnerNode {
     /// The tracing span.
     span: Span,
     /// The node's configuration.
-    config: NodeConfig,
+    config: Config,
     /// The node's listening address.
     listening_addr: Option<SocketAddr>,
     /// Contains objects used by the protocols implemented by the node.
@@ -80,8 +80,8 @@ pub struct InnerNode {
 }
 
 impl Node {
-    /// Creates a new `Node` optionally using a given `NodeConfig`.
-    pub async fn new(config: Option<NodeConfig>) -> io::Result<Self> {
+    /// Creates a new `Node` optionally using a given `Config`.
+    pub async fn new(config: Option<Config>) -> io::Result<Self> {
         let mut config = config.unwrap_or_default();
 
         // if there is no pre-configured name, assign a sequential numeric identifier
@@ -189,12 +189,12 @@ impl Node {
 
     /// Returns the name assigned to the node.
     pub fn name(&self) -> &str {
-        // safe; can be set as None in NodeConfig, but receives a default value on Node creation
+        // safe; can be set as None in Config, but receives a default value on Node creation
         self.config.name.as_deref().unwrap()
     }
 
     /// Returns a reference to the node's config.
-    pub fn config(&self) -> &NodeConfig {
+    pub fn config(&self) -> &Config {
         &self.config
     }
 

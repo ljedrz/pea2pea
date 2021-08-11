@@ -7,7 +7,7 @@ use tracing_subscriber::filter::LevelFilter;
 
 use pea2pea::{
     protocols::{Handshaking, Reading, Writing},
-    Connection, ConnectionSide, Node, NodeConfig, Pea2Pea,
+    Config, Connection, ConnectionSide, Node, Pea2Pea,
 };
 
 use std::{io, net::SocketAddr, time::Duration};
@@ -113,14 +113,14 @@ impl Writing for JoJoNode {
 async fn main() {
     common::start_logger(LevelFilter::INFO);
 
-    let config = NodeConfig {
+    let config = Config {
         name: Some("Jotaro".into()),
         max_handshake_time_ms: 10_000,
         ..Default::default()
     };
     let jotaro = JoJoNode(Node::new(Some(config)).await.unwrap());
 
-    let config = NodeConfig {
+    let config = Config {
         name: Some("Dio".into()),
         max_handshake_time_ms: 10_000,
         ..Default::default()

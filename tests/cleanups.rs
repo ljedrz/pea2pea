@@ -5,7 +5,7 @@ use tracing::*;
 mod common;
 use pea2pea::{
     protocols::{Disconnect, Handshaking, Reading, Writing},
-    Connection, Node, NodeConfig, Pea2Pea,
+    Config, Connection, Node, Pea2Pea,
 };
 
 use std::{io, net::SocketAddr};
@@ -15,7 +15,7 @@ struct TestNode(Node);
 
 impl TestNode {
     async fn new(name: String) -> Self {
-        let config = NodeConfig {
+        let config = Config {
             name: Some(name),
             ..Default::default()
         };

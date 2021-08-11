@@ -9,7 +9,7 @@ use tracing::*;
 mod common;
 use pea2pea::{
     protocols::{Handshaking, Reading, Writing},
-    Connection, ConnectionSide, Node, NodeConfig, Pea2Pea,
+    Config, Connection, ConnectionSide, Node, Pea2Pea,
 };
 
 use std::{collections::HashMap, convert::TryInto, io, net::SocketAddr, sync::Arc};
@@ -134,7 +134,7 @@ impl Handshaking for SecureishNode {
 async fn handshake_example() {
     // tracing_subscriber::fmt::init();
 
-    let initiator_config = NodeConfig {
+    let initiator_config = Config {
         name: Some("initiator".into()),
         ..Default::default()
     };
@@ -144,7 +144,7 @@ async fn handshake_example() {
         handshakes: Default::default(),
     };
 
-    let responder_config = NodeConfig {
+    let responder_config = Config {
         name: Some("responder".into()),
         ..Default::default()
     };
@@ -177,7 +177,7 @@ async fn handshake_example() {
 
 #[tokio::test]
 async fn no_handshake_no_messaging() {
-    let initiator_config = NodeConfig {
+    let initiator_config = Config {
         name: Some("initiator".into()),
         ..Default::default()
     };
@@ -187,7 +187,7 @@ async fn no_handshake_no_messaging() {
         handshakes: Default::default(),
     };
 
-    let responder_config = NodeConfig {
+    let responder_config = Config {
         name: Some("responder".into()),
         ..Default::default()
     };
@@ -241,7 +241,7 @@ async fn hung_handshake_fails() {
         }
     }
 
-    let config = NodeConfig {
+    let config = Config {
         max_handshake_time_ms: 10,
         ..Default::default()
     };
@@ -291,7 +291,7 @@ async fn timeout_when_spammed_with_connections() {
         }
     }
 
-    let config = NodeConfig {
+    let config = Config {
         max_handshake_time_ms: TIMEOUT_SECS * 1_000,
         max_connections: NUM_ATTEMPTS,
         ..Default::default()

@@ -3,7 +3,7 @@ use rand::{distributions::Standard, rngs::SmallRng, Rng, SeedableRng};
 mod common;
 use pea2pea::{
     protocols::{Reading, Writing},
-    Node, NodeConfig, Pea2Pea,
+    Config, Node, Pea2Pea,
 };
 
 #[ignore]
@@ -11,14 +11,14 @@ use pea2pea::{
 async fn fuzzing() {
     const MAX_MSG_SIZE: usize = 1024 * 1024;
 
-    let config = NodeConfig {
+    let config = Config {
         read_buffer_size: MAX_MSG_SIZE,
         ..Default::default()
     };
     let tester = common::MessagingNode(Node::new(Some(config)).await.unwrap());
     tester.enable_reading();
 
-    let config = NodeConfig {
+    let config = Config {
         write_buffer_size: MAX_MSG_SIZE,
         ..Default::default()
     };

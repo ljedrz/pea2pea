@@ -5,7 +5,7 @@ use rand::{distributions::Standard, rngs::SmallRng, Rng, SeedableRng};
 mod common;
 use pea2pea::{
     protocols::{Reading, Writing},
-    Node, NodeConfig, Pea2Pea,
+    Config, Node, Pea2Pea,
 };
 
 use std::{io, net::SocketAddr, time::Instant};
@@ -69,7 +69,7 @@ async fn run_bench_scenario(sender_count: usize) -> f64 {
     const NUM_MESSAGES: usize = 10_000;
     const MSG_SIZE: usize = 64 * 1024;
 
-    let config = NodeConfig {
+    let config = Config {
         write_buffer_size: MSG_SIZE,
         outbound_queue_depth: NUM_MESSAGES,
         ..Default::default()
@@ -84,7 +84,7 @@ async fn run_bench_scenario(sender_count: usize) -> f64 {
         spammer.enable_writing();
     }
 
-    let config = NodeConfig {
+    let config = Config {
         read_buffer_size: MSG_SIZE * 3,
         max_connections: sender_count as u16,
         ..Default::default()

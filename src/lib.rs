@@ -16,7 +16,7 @@ mod topology;
 pub mod connections;
 pub mod protocols;
 
-pub use config::NodeConfig;
+pub use config::Config;
 pub use connections::{Connection, ConnectionSide};
 pub use known_peers::KnownPeers;
 pub use node::Node;
