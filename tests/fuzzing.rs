@@ -18,11 +18,7 @@ async fn fuzzing() {
     let tester = common::MessagingNode(Node::new(Some(config)).await.unwrap());
     tester.enable_reading();
 
-    let config = Config {
-        write_buffer_size: MAX_MSG_SIZE,
-        ..Default::default()
-    };
-    let sender = common::MessagingNode(Node::new(Some(config)).await.unwrap());
+    let sender = common::MessagingNode(Node::new(None).await.unwrap());
     sender.enable_writing();
 
     sender

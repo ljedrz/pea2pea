@@ -70,7 +70,6 @@ async fn run_bench_scenario(sender_count: usize) -> f64 {
     const MSG_SIZE: usize = 64 * 1024;
 
     let config = Config {
-        write_buffer_size: MSG_SIZE,
         outbound_queue_depth: NUM_MESSAGES,
         ..Default::default()
     };

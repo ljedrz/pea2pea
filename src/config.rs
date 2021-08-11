@@ -32,8 +32,6 @@ pub struct Config {
 
     /// The size of a per-connection buffer for reading inbound messages.
     pub read_buffer_size: usize,
-    /// The size of a per-connection buffer for writing outbound messages.
-    pub write_buffer_size: usize,
     /// The depth of per-connection queues used to process inbound messages.
     pub inbound_queue_depth: usize,
     /// The depth of per-connection queues used to send outbound messages.
@@ -71,7 +69,6 @@ impl Default for Config {
             max_connections: 100,
 
             read_buffer_size: 64 * 1024,
-            write_buffer_size: 64 * 1024,
             inbound_queue_depth: 64,
             outbound_queue_depth: 64,
             max_handshake_time_ms: 3_000,
