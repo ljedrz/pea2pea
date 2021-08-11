@@ -165,7 +165,7 @@ where
                         // the message in the buffer is incomplete
                         Ok(None) => {
                             // forbid messages that are larger than the read buffer
-                            if buffer.len() + left > self.node().config().read_buffer_size {
+                            if left > self.node().config().read_buffer_size {
                                 error!(parent: self.node().span(), "a message from {} is too large", addr);
                                 buffer.clear();
                                 return Err(io::ErrorKind::InvalidData.into());
