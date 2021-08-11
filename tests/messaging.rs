@@ -161,7 +161,7 @@ async fn drop_connection_on_oversized_message() {
 
     let config = NodeConfig {
         name: Some("reader".into()),
-        conn_read_buffer_size: MSG_SIZE_LIMIT,
+        read_buffer_size: MSG_SIZE_LIMIT,
         ..Default::default()
     };
     let reader = common::MessagingNode(Node::new(Some(config)).await.unwrap());

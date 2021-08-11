@@ -70,8 +70,8 @@ async fn run_bench_scenario(sender_count: usize) -> f64 {
     const MSG_SIZE: usize = 64 * 1024;
 
     let config = NodeConfig {
-        conn_write_buffer_size: MSG_SIZE,
-        conn_outbound_queue_depth: NUM_MESSAGES,
+        write_buffer_size: MSG_SIZE,
+        outbound_queue_depth: NUM_MESSAGES,
         ..Default::default()
     };
     let spammers = common::start_nodes(sender_count, Some(config)).await;
@@ -85,7 +85,7 @@ async fn run_bench_scenario(sender_count: usize) -> f64 {
     }
 
     let config = NodeConfig {
-        conn_read_buffer_size: MSG_SIZE * 3,
+        read_buffer_size: MSG_SIZE * 3,
         max_connections: sender_count as u16,
         ..Default::default()
     };

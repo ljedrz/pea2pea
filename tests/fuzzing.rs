@@ -12,14 +12,14 @@ async fn fuzzing() {
     const MAX_MSG_SIZE: usize = 1024 * 1024;
 
     let config = NodeConfig {
-        conn_read_buffer_size: MAX_MSG_SIZE,
+        read_buffer_size: MAX_MSG_SIZE,
         ..Default::default()
     };
     let tester = common::MessagingNode(Node::new(Some(config)).await.unwrap());
     tester.enable_reading();
 
     let config = NodeConfig {
-        conn_write_buffer_size: MAX_MSG_SIZE,
+        write_buffer_size: MAX_MSG_SIZE,
         ..Default::default()
     };
     let sender = common::MessagingNode(Node::new(Some(config)).await.unwrap());

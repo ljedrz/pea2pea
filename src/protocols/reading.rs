@@ -40,7 +40,7 @@ where
                 let mut buffer = Vec::new();
 
                 let (inbound_message_sender, mut inbound_message_receiver) =
-                    mpsc::channel(self_clone.node().config().conn_inbound_queue_depth);
+                    mpsc::channel(self_clone.node().config().inbound_queue_depth);
 
                 // the task for processing parsed messages
                 let processing_clone = self_clone.clone();
@@ -119,7 +119,7 @@ where
         // register the number of bytes carried over from the previous read (if there were any)
         let carry = buffer.len();
         // limit the maximum number of bytes that can be read
-        let mut handle = reader.take((self.node().config().conn_read_buffer_size - carry) as u64);
+        let mut handle = reader.take((self.node().config().read_buffer_size - carry) as u64);
         // perform a read from the stream
         match handle.read_buf(buffer).await {
             Ok(0) => Err(io::ErrorKind::UnexpectedEof.into()),
@@ -165,7 +165,7 @@ where
                         // the message in the buffer is incomplete
                         Ok(None) => {
                             // forbid messages that are larger than the read buffer
-                            if buffer.len() + left > self.node().config().conn_read_buffer_size {
+                            if buffer.len() + left > self.node().config().read_buffer_size {
                                 error!(parent: self.node().span(), "a message from {} is too large", addr);
                                 buffer.clear();
                                 return Err(io::ErrorKind::InvalidData.into());

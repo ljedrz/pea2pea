@@ -8,6 +8,7 @@
 
 - the connection buffers are now elastic/growable, i.e. they don't immediately allocate their configured size
 - `Writing::write_message` now expects an `io::Write` instead of a `&mut [u8]`, and it returns `io::Result<()>`
+- the `NodeConfig` members with names starting with `conn_` lose this prefix
 
 # 0.24.0
 

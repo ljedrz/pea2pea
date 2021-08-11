@@ -34,7 +34,7 @@ where
                 let mut buffer = Vec::new();
 
                 let (outbound_message_sender, mut outbound_message_receiver) =
-                    mpsc::channel(self_clone.node().config().conn_outbound_queue_depth);
+                    mpsc::channel(self_clone.node().config().outbound_queue_depth);
                 conn.outbound_message_sender = Some(outbound_message_sender);
 
                 // the task for writing outbound messages

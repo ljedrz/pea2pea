@@ -73,7 +73,7 @@ impl SecureNode {
     async fn new(name: &str) -> io::Result<Self> {
         let config = NodeConfig {
             name: Some(name.into()),
-            conn_read_buffer_size: NOISE_BUF_LEN + 2, // 2 for the encrypted message length,
+            read_buffer_size: NOISE_BUF_LEN + 2, // 2 for the encrypted message length,
             ..Default::default()
         };
         let node = Node::new(Some(config)).await?;
