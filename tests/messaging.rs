@@ -172,8 +172,18 @@ async fn drop_connection_on_oversized_message() {
 
     wait_until!(1, reader.node().num_connected() == 1);
 
-    // when prefixed with length, it'll exceed MSG_SIZE_LIMIT, i.e. the read buffer size of the reader,
-    // by a single byte (it will be 11B long)
+    // when prefixed with length, it'll be equal to MSG_SIZE_LIMIT
+    let max_size_payload = vec![0u8; MSG_SIZE_LIMIT - 4];
+
+    writer
+        .node()
+        .send_direct_message(reader_addr, max_size_payload.into())
+        .unwrap();
+
+    wait_until!(1, reader.node().stats().received() == (1, 10));
+
+    // this message exceed MSG_SIZE_LIMIT, i.e. the read buffer size of the reader,
+    // by a single byte
     let oversized_payload = vec![0u8; MSG_SIZE_LIMIT - 3];
 
     writer
