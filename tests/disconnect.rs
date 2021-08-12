@@ -1,19 +1,22 @@
+use bytes::Bytes;
+use tokio::time::sleep;
+
 mod common;
 use pea2pea::{
     protocols::{Disconnect, Reading, Writing},
     Pea2Pea,
 };
-use tokio::time::sleep;
 
 use std::{net::SocketAddr, time::Duration};
 
 #[async_trait::async_trait]
 impl Disconnect for common::MessagingNode {
     async fn handle_disconnect(&self, addr: SocketAddr) {
-        let disconnect_message = "bye-bye!";
-        let bytes = common::prefix_with_len(4, disconnect_message.as_bytes());
+        let disconnect_message = Bytes::from("bye-bye!".as_bytes());
 
-        self.node().send_direct_message(addr, bytes).unwrap();
+        self.node()
+            .send_direct_message(addr, disconnect_message)
+            .unwrap();
 
         // a small delay so that the connection isn't severed too quickly
         // and the disconnect message can get processed by the recipient

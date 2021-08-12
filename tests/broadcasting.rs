@@ -1,3 +1,4 @@
+use bytes::Bytes;
 use tokio::time::sleep;
 use tracing::*;
 
@@ -14,7 +15,7 @@ impl common::MessagingNode {
         let node = self.node().clone();
         tokio::spawn(async move {
             let message = "hello there ( ͡° ͜ʖ ͡°)";
-            let bytes = common::prefix_with_len(4, message.as_bytes());
+            let bytes = Bytes::from(message.as_bytes());
 
             loop {
                 if node.num_connected() != 0 {

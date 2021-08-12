@@ -172,12 +172,13 @@ async fn drop_connection_on_oversized_message() {
 
     wait_until!(1, reader.node().num_connected() == 1);
 
-    // when prefixed with length, it'll exceed MSG_SIZE_LIMIT, i.e. the read buffer size of the reader
-    let oversized_payload = vec![0u8; MSG_SIZE_LIMIT];
+    // when prefixed with length, it'll exceed MSG_SIZE_LIMIT, i.e. the read buffer size of the reader,
+    // by a single byte (it will be 11B long)
+    let oversized_payload = vec![0u8; MSG_SIZE_LIMIT - 3];
 
     writer
         .node()
-        .send_direct_message(reader_addr, common::prefix_with_len(2, &oversized_payload))
+        .send_direct_message(reader_addr, oversized_payload.into())
         .unwrap();
 
     wait_until!(1, reader.node().num_connected() == 0);
@@ -218,7 +219,7 @@ async fn no_reading_no_delivery() {
     // writer sends a message
     writer
         .node()
-        .send_direct_message(reader_addr, common::prefix_with_len(4, &[0; 16]))
+        .send_direct_message(reader_addr, vec![0; 16].into())
         .unwrap();
 
     sleep(Duration::from_millis(10)).await;
@@ -242,7 +243,7 @@ async fn no_writing_no_delivery() {
     // writer tries to send a message
     assert!(writer
         .node()
-        .send_direct_message(reader_addr, common::prefix_with_len(4, &[0; 16]))
+        .send_direct_message(reader_addr, vec![0; 16].into())
         .is_err());
 
     sleep(Duration::from_millis(10)).await;
