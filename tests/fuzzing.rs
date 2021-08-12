@@ -6,7 +6,6 @@ use pea2pea::{
     Config, Node, Pea2Pea,
 };
 
-#[ignore]
 #[tokio::test(flavor = "multi_thread")]
 async fn fuzzing() {
     const MAX_MSG_SIZE: usize = 1024 * 1024;
@@ -31,7 +30,7 @@ async fn fuzzing() {
 
     let mut rng = SmallRng::from_entropy();
 
-    loop {
+    for _ in 0..1_000 {
         let random_len: usize = rng.gen_range(1..MAX_MSG_SIZE - 2); // account for the length prefix
         let random_payload: Vec<u8> = (&mut rng).sample_iter(Standard).take(random_len).collect();
         // ignore full outbound queue channel errors
