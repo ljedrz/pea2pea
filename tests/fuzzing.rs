@@ -31,7 +31,7 @@ async fn fuzzing() {
     let mut rng = SmallRng::from_entropy();
 
     for _ in 0..1_000 {
-        let random_len: usize = rng.gen_range(1..MAX_MSG_SIZE - 2); // account for the length prefix
+        let random_len: usize = rng.gen_range(1..=MAX_MSG_SIZE - 2); // account for the length prefix
         let random_payload: Vec<u8> = (&mut rng).sample_iter(Standard).take(random_len).collect();
         // ignore full outbound queue channel errors
         let _ = sender.node().send_direct_message(
