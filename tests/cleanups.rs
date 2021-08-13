@@ -42,14 +42,14 @@ impl Handshaking for TestNode {
 impl Reading for TestNode {
     type Message = String;
 
-    fn read_message(
+    fn read_message<R: io::Read>(
         &self,
         _source: SocketAddr,
-        buffer: &[u8],
-    ) -> io::Result<Option<(Self::Message, usize)>> {
-        let bytes = common::read_len_prefixed_message(2, buffer)?;
+        reader: &mut R,
+    ) -> io::Result<Option<Self::Message>> {
+        let vec = common::read_len_prefixed_message::<R, 2>(reader)?;
 
-        Ok(bytes.map(|bytes| (String::from_utf8(bytes[2..].to_vec()).unwrap(), bytes.len())))
+        Ok(vec.map(|v| (String::from_utf8(v).unwrap())))
     }
 
     async fn process_message(&self, source: SocketAddr, message: Self::Message) -> io::Result<()> {

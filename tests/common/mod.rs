@@ -8,7 +8,11 @@ use pea2pea::{
     Config, Node, Pea2Pea,
 };
 
-use std::{convert::TryInto, io, net::SocketAddr};
+use std::{
+    convert::TryInto,
+    io::{self, Read},
+    net::SocketAddr,
+};
 
 pub async fn start_nodes(count: usize, config: Option<Config>) -> Vec<Node> {
     let mut nodes = Vec::with_capacity(count);
@@ -65,25 +69,32 @@ impl Pea2Pea for MessagingNode {
     }
 }
 
-pub fn read_len_prefixed_message(len_size: usize, buffer: &[u8]) -> io::Result<Option<&[u8]>> {
-    if buffer.len() >= len_size {
-        let payload_len = match len_size {
-            2 => u16::from_le_bytes(buffer[..len_size].try_into().unwrap()) as usize,
-            4 => u32::from_le_bytes(buffer[..len_size].try_into().unwrap()) as usize,
-            _ => unimplemented!(),
-        };
+pub fn read_len_prefixed_message<R: io::Read, const N: usize>(
+    reader: &mut R,
+) -> io::Result<Option<Vec<u8>>> {
+    let mut len_arr = [0u8; N];
+    if reader.read_exact(&mut len_arr).is_err() {
+        return Ok(None);
+    }
+    let payload_len = match N {
+        2 => u16::from_le_bytes(len_arr[..].try_into().unwrap()) as usize,
+        4 => u32::from_le_bytes(len_arr[..].try_into().unwrap()) as usize,
+        _ => unreachable!(),
+    };
 
-        if payload_len == 0 {
-            return Err(io::ErrorKind::InvalidData.into());
-        }
+    if payload_len == 0 {
+        return Err(io::ErrorKind::InvalidData.into());
+    }
 
-        if buffer[len_size..].len() >= payload_len {
-            Ok(Some(&buffer[..len_size + payload_len]))
-        } else {
-            Ok(None)
-        }
-    } else {
+    let mut buffer = vec![0u8; payload_len];
+    if reader
+        .take(payload_len as u64)
+        .read_exact(&mut buffer)
+        .is_err()
+    {
         Ok(None)
+    } else {
+        Ok(Some(buffer))
     }
 }
 
@@ -108,10 +119,10 @@ macro_rules! impl_messaging {
         impl Reading for $target {
             type Message = Bytes;
 
-            fn read_message(&self, _source: SocketAddr, buffer: &[u8]) -> io::Result<Option<(Self::Message, usize)>> {
-                let bytes = crate::common::read_len_prefixed_message(4, buffer)?;
+            fn read_message<R: io::Read>(&self, _source: SocketAddr, reader: &mut R) -> io::Result<Option<Self::Message>> {
+                let vec = crate::common::read_len_prefixed_message::<R, 4>(reader)?;
 
-                Ok(bytes.map(|bytes| (Bytes::copy_from_slice(&bytes[4..]), bytes.len())))
+                Ok(vec.map(Bytes::from))
             }
 
             async fn process_message(&self, source: SocketAddr, _message: Self::Message) -> io::Result<()> {

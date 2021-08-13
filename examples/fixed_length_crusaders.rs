@@ -64,14 +64,16 @@ impl From<u8> for BattleCry {
 impl Reading for JoJoNode {
     type Message = BattleCry;
 
-    fn read_message(
+    fn read_message<R: io::Read>(
         &self,
         _source: SocketAddr,
-        buffer: &[u8],
-    ) -> io::Result<Option<(Self::Message, usize)>> {
-        let battle_cry = BattleCry::from(buffer[0]);
+        reader: &mut R,
+    ) -> io::Result<Option<Self::Message>> {
+        let mut arr = [0u8; 1];
+        reader.read_exact(&mut arr)?;
+        let battle_cry = BattleCry::from(arr[0]);
 
-        Ok(Some((battle_cry, 1)))
+        Ok(Some(battle_cry))
     }
 
     async fn process_message(

@@ -8,7 +8,10 @@ use pea2pea::{
     Config, Node, Pea2Pea,
 };
 
-use std::{io, net::SocketAddr, time::Instant};
+use std::{convert::TryInto, io, net::SocketAddr, time::Instant};
+
+const NUM_MESSAGES: usize = 10_000;
+const MSG_SIZE: usize = 64 * 1024;
 
 static RANDOM_BYTES: Lazy<Bytes> = Lazy::new(|| {
     Bytes::from(
@@ -31,14 +34,25 @@ impl Pea2Pea for Sink {
 impl Reading for Sink {
     type Message = ();
 
-    fn read_message(
+    fn read_message<R: io::Read>(
         &self,
         _source: SocketAddr,
-        buffer: &[u8],
-    ) -> io::Result<Option<(Self::Message, usize)>> {
-        let bytes = common::read_len_prefixed_message(4, buffer)?;
+        reader: &mut R,
+    ) -> io::Result<Option<Self::Message>> {
+        let mut buf = [0u8; MSG_SIZE];
 
-        Ok(bytes.map(|bytes| ((), bytes.len())))
+        let payload_len = {
+            if reader.read_exact(&mut buf[..4]).is_err() {
+                return Ok(None);
+            }
+            u32::from_le_bytes(buf[..4].try_into().unwrap()) as usize
+        };
+
+        if reader.read_exact(&mut buf[..payload_len]).is_err() {
+            Ok(None)
+        } else {
+            Ok(Some(()))
+        }
     }
 }
 
@@ -66,9 +80,6 @@ struct BenchParams {
 }
 
 async fn run_bench_scenario(sender_count: usize) -> f64 {
-    const NUM_MESSAGES: usize = 10_000;
-    const MSG_SIZE: usize = 64 * 1024;
-
     let config = Config {
         outbound_queue_depth: NUM_MESSAGES,
         ..Default::default()

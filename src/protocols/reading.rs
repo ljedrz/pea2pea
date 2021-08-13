@@ -121,29 +121,35 @@ where
         // limit the maximum number of bytes that can be read
         let mut handle = reader.take((self.node().config().read_buffer_size - carry) as u64);
         // perform a read from the stream
-        match handle.read_buf(buffer).await {
+        let read = handle.read_buf(buffer).await;
+
+        match read {
             Ok(0) => Err(io::ErrorKind::UnexpectedEof.into()),
             Ok(n) => {
                 trace!(parent: self.node().span(), "read {}B from {}", n, addr);
-                let mut processed = 0;
                 let mut left = carry + n;
+
+                // wrap the read buffer in a reader
+                let mut buf_reader = io::Cursor::new(&mut buffer[..left]);
 
                 // several messages could have been read at once; process the contents of the buffer
                 loop {
+                    // the position in the buffer before the message read attempt
+                    let initial_buf_pos = buf_reader.position() as usize;
+
                     // try to read a single message from the buffer
-                    match self.read_message(addr, &buffer[processed..processed + left]) {
+                    match self.read_message(addr, &mut buf_reader) {
                         // a full message was read successfully
-                        Ok(Some((msg, len))) => {
-                            // advance the counters
-                            processed += len;
+                        Ok(Some(msg)) => {
+                            let len = buf_reader.position() as usize - initial_buf_pos;
                             left -= len;
 
                             trace!(
                                 parent: self.node().span(),
-                                "isolated {}B as a message from {}; {}B left to process",
+                                "isolated {}B as a message from {}, {}B left",
                                 len,
                                 addr,
-                                left
+                                left,
                             );
                             self.node()
                                 .known_peers()
@@ -156,7 +162,7 @@ where
                                 self.node().stats().register_failure();
                             }
 
-                            // if the read is exhausted, reset the carry and return
+                            // if the read is exhausted, clear the read buffer and return
                             if left == 0 {
                                 buffer.clear();
                                 return Ok(());
@@ -180,7 +186,8 @@ where
 
                             // move the leftover bytes to the beginning of the buffer; the next read will append bytes
                             // starting from where the leftover ones end, allowing the message to be completed
-                            buffer.copy_within(processed..processed + left, 0);
+                            let post_read_buf_pos = buf_reader.position() as usize;
+                            buffer.copy_within(initial_buf_pos..post_read_buf_pos, 0);
                             buffer.truncate(left);
 
                             return Ok(());
@@ -203,15 +210,15 @@ where
         }
     }
 
-    /// Reads a single message from the given buffer; `Ok(None)` indicates that the message is
-    /// incomplete, i.e. further reads from the stream must be performed in order to produce the whole message.
-    /// Alongside the message it returns the number of bytes the read message occupied in the buffer. An `Err`
-    /// returned here will result in the associated connection being dropped.
-    fn read_message(
+    /// Reads a single message from the given reader; `Ok(None)` indicates that the message is incomplete,
+    /// i.e. further reads from the stream must be performed in order to produce the whole message. An `Err`
+    /// returned here indicates an invalid message which, depending on the configured list of fatal errors,
+    /// can cause the related connection to be dropped.
+    fn read_message<R: io::Read>(
         &self,
         source: SocketAddr,
-        buffer: &[u8],
-    ) -> io::Result<Option<(Self::Message, usize)>>;
+        reader: &mut R,
+    ) -> io::Result<Option<Self::Message>>;
 
     /// Processes an inbound message. Can be used to update state, send replies etc.
     #[allow(unused_variables)]

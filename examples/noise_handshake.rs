@@ -15,7 +15,12 @@ use pea2pea::{
 };
 
 use std::{
-    collections::HashMap, convert::TryInto, io, net::SocketAddr, str, sync::Arc, time::Duration,
+    collections::HashMap,
+    io::{self, Read},
+    net::SocketAddr,
+    str,
+    sync::Arc,
+    time::Duration,
 };
 
 // maximum noise message size, as specified by its protocol
@@ -39,22 +44,27 @@ impl Pea2Pea for SecureNode {
 }
 
 // read the first message from the provided buffer
-fn read_message(buffer: &[u8]) -> io::Result<Option<&[u8]>> {
+fn read_message<R: io::Read>(reader: &mut R) -> io::Result<Option<Vec<u8>>> {
     // expecting the test messages to be prefixed with their length encoded as a BE u16
-    if buffer.len() >= 2 {
-        let payload_len = u16::from_be_bytes(buffer[..2].try_into().unwrap()) as usize;
+    let mut len_arr = [0u8; 2];
+    if reader.read_exact(&mut len_arr).is_err() {
+        return Ok(None);
+    }
+    let payload_len = u16::from_be_bytes(len_arr) as usize;
 
-        if payload_len == 0 {
-            return Err(io::ErrorKind::InvalidData.into());
-        }
+    if payload_len == 0 {
+        return Err(io::ErrorKind::InvalidData.into());
+    }
 
-        if buffer[2..].len() >= payload_len {
-            Ok(Some(&buffer[2..][..payload_len]))
-        } else {
-            Ok(None)
-        }
-    } else {
+    let mut buffer = vec![0u8; payload_len];
+    if reader
+        .take(payload_len as u64)
+        .read_exact(&mut buffer)
+        .is_err()
+    {
         Ok(None)
+    } else {
+        Ok(Some(buffer))
     }
 }
 
@@ -112,9 +122,9 @@ impl Handshaking for SecureNode {
                 debug!(parent: self.node().span(), "sent e (XX handshake part 1/3)");
 
                 // <- e, ee, s, es
-                let len = conn.reader().read(&mut buf).await?;
-                let message = read_message(&buf[..len])?.unwrap();
-                noise.read_message(message, &mut buffer).unwrap();
+                conn.reader().read(&mut buf).await?;
+                let message = read_message(&mut io::Cursor::new(buf))?.unwrap();
+                noise.read_message(&message, &mut buffer).unwrap();
                 debug!(parent: self.node().span(), "received e, ee, s, es (XX handshake part 2/3)");
 
                 // -> s, se, psk
@@ -130,9 +140,9 @@ impl Handshaking for SecureNode {
                 let mut noise = noise_builder.build_responder().unwrap();
 
                 // <- e
-                let len = conn.reader().read(&mut buf).await?;
-                let message = read_message(&buf[..len])?.unwrap();
-                noise.read_message(message, &mut buffer).unwrap();
+                conn.reader().read(&mut buf).await?;
+                let message = read_message(&mut io::Cursor::new(buf))?.unwrap();
+                noise.read_message(&message, &mut buffer).unwrap();
                 debug!(parent: self.node().span(), "received e (XX handshake part 1/3)");
 
                 // -> e, ee, s, es
@@ -143,9 +153,9 @@ impl Handshaking for SecureNode {
                 debug!(parent: self.node().span(), "sent e, ee, s, es (XX handshake part 2/3)");
 
                 // <- s, se, psk
-                let len = conn.reader().read(&mut buf).await?;
-                let message = read_message(&buf[..len])?.unwrap();
-                noise.read_message(message, &mut buffer).unwrap();
+                conn.reader().read(&mut buf).await?;
+                let message = read_message(&mut io::Cursor::new(buf))?.unwrap();
+                noise.read_message(&message, &mut buffer).unwrap();
                 debug!(parent: self.node().span(), "received s, se, psk (XX handshake part 3/3)");
 
                 noise.into_transport_mode().unwrap()
@@ -168,22 +178,22 @@ impl Handshaking for SecureNode {
 impl Reading for SecureNode {
     type Message = String;
 
-    fn read_message(
+    fn read_message<R: io::Read>(
         &self,
         source: SocketAddr,
-        buffer: &[u8],
-    ) -> io::Result<Option<(Self::Message, usize)>> {
-        let bytes = read_message(buffer)?;
+        reader: &mut R,
+    ) -> io::Result<Option<Self::Message>> {
+        let bytes = read_message(reader)?;
 
         if let Some(bytes) = bytes {
             let noise = Arc::clone(self.noise_states.read().get(&source).unwrap());
             let NoiseState { state, buffer } = &mut *noise.lock();
 
-            let len = state.read_message(bytes, buffer).ok().unwrap();
+            let len = state.read_message(&bytes, buffer).ok().unwrap();
             let decrypted_message = String::from_utf8(buffer[..len].to_vec()).unwrap();
 
             // account for the length prefix discarded in read_message
-            Ok(Some((decrypted_message, bytes.len() + 2)))
+            Ok(Some(decrypted_message))
         } else {
             Ok(None)
         }

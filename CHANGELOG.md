@@ -1,3 +1,9 @@
+# 0.26.0
+
+### Changed
+
+- the signature of `Reading::read_message` was simplified
+
 # 0.25.0
 
 ### Changed

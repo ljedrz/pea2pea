@@ -19,8 +19,7 @@ use pea2pea::{
 
 use std::{
     collections::HashMap,
-    convert::TryInto,
-    io,
+    io::{self, Read},
     net::SocketAddr,
     sync::{
         atomic::{AtomicUsize, Ordering::Relaxed},
@@ -134,28 +133,32 @@ enum Message {
 impl Reading for Player {
     type Message = Message;
 
-    fn read_message(
+    fn read_message<R: io::Read>(
         &self,
         _source: SocketAddr,
-        buffer: &[u8],
-    ) -> io::Result<Option<(Self::Message, usize)>> {
+        reader: &mut R,
+    ) -> io::Result<Option<Self::Message>> {
         // expecting inbound messages to be prefixed with their length encoded as a LE u16
-        if buffer.len() >= 2 {
-            let payload_len = u16::from_le_bytes(buffer[..2].try_into().unwrap()) as usize;
+        let mut len_arr = [0u8; 2];
+        if reader.read_exact(&mut len_arr).is_err() {
+            return Ok(None);
+        }
+        let payload_len = u16::from_le_bytes(len_arr) as usize;
 
-            if payload_len == 0 {
-                return Err(io::ErrorKind::InvalidData.into());
-            }
+        if payload_len == 0 {
+            return Err(io::ErrorKind::InvalidData.into());
+        }
 
-            if buffer[2..].len() >= payload_len {
-                let message = bincode::deserialize(&buffer[2..][..payload_len]).unwrap();
-
-                Ok(Some((message, 2 + payload_len)))
-            } else {
-                Ok(None)
-            }
-        } else {
+        let mut buffer = vec![0u8; payload_len];
+        if reader
+            .take(payload_len as u64)
+            .read_exact(&mut buffer)
+            .is_err()
+        {
             Ok(None)
+        } else {
+            let message = bincode::deserialize(&buffer).unwrap();
+            Ok(Some(message))
         }
     }
 

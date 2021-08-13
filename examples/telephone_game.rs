@@ -11,7 +11,11 @@ use pea2pea::{
     Node, Pea2Pea, Topology,
 };
 
-use std::{convert::TryInto, io, net::SocketAddr, time::Duration};
+use std::{
+    io::{self, Read},
+    net::SocketAddr,
+    time::Duration,
+};
 
 #[derive(Clone)]
 struct Player(Node);
@@ -28,23 +32,31 @@ const NUM_PLAYERS: usize = 100;
 impl Reading for Player {
     type Message = String;
 
-    fn read_message(&self, _src: SocketAddr, buffer: &[u8]) -> io::Result<Option<(String, usize)>> {
-        if buffer.len() >= 2 {
-            let payload_len = u16::from_le_bytes(buffer[..2].try_into().unwrap()) as usize;
-            if payload_len == 0 {
-                return Err(io::ErrorKind::InvalidData.into());
-            }
+    fn read_message<R: io::Read>(
+        &self,
+        _src: SocketAddr,
+        reader: &mut R,
+    ) -> io::Result<Option<String>> {
+        let mut len_arr = [0u8; 2];
+        if reader.read_exact(&mut len_arr).is_err() {
+            return Ok(None);
+        }
+        let payload_len = u16::from_le_bytes(len_arr) as usize;
 
-            if buffer[2..].len() >= payload_len {
-                let message = String::from_utf8(buffer[2..][..payload_len].to_vec())
-                    .map_err(|_| io::ErrorKind::InvalidData)?;
+        if payload_len == 0 {
+            return Err(io::ErrorKind::InvalidData.into());
+        }
 
-                Ok(Some((message, 2 + payload_len)))
-            } else {
-                Ok(None)
-            }
-        } else {
+        let mut buffer = vec![0u8; payload_len];
+        if reader
+            .take(payload_len as u64)
+            .read_exact(&mut buffer)
+            .is_err()
+        {
             Ok(None)
+        } else {
+            let str = String::from_utf8(buffer).map_err(|_| io::ErrorKind::InvalidData)?;
+            Ok(Some(str))
         }
     }
 

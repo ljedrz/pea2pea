@@ -44,14 +44,13 @@ impl Pea2Pea for EchoNode {
 impl Reading for EchoNode {
     type Message = TestMessage;
 
-    fn read_message(
+    fn read_message<R: io::Read>(
         &self,
         _source: SocketAddr,
-        buffer: &[u8],
-    ) -> io::Result<Option<(Self::Message, usize)>> {
-        let bytes = common::read_len_prefixed_message(4, buffer)?;
-
-        Ok(bytes.map(|bytes| (TestMessage::from(bytes[4]), bytes.len())))
+        reader: &mut R,
+    ) -> io::Result<Option<Self::Message>> {
+        let byte = common::read_len_prefixed_message::<R, 4>(reader)?;
+        Ok(byte.map(|byte| TestMessage::from(byte[0])))
     }
 
     async fn process_message(&self, source: SocketAddr, message: Self::Message) -> io::Result<()> {
