@@ -3,6 +3,7 @@
 ### Changed
 
 - the signature of `Reading::read_message` was simplified
+- `Reading::read_message` errors can now be non-fatal too
 
 # 0.25.0
 

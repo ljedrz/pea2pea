@@ -193,10 +193,10 @@ where
                             return Ok(());
                         }
                         // an erroneous message (e.g. an unexpected zero-length payload)
-                        Err(_) => {
+                        Err(e) => {
                             error!(parent: self.node().span(), "a message from {} is invalid", addr);
                             buffer.clear();
-                            return Err(io::ErrorKind::InvalidData.into());
+                            return Err(e);
                         }
                     }
                 }
