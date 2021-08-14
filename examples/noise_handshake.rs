@@ -1,6 +1,6 @@
 mod common;
+use common::{prefix_with_len, read_len_prefixed_message};
 
-use bytes::Bytes;
 use parking_lot::{Mutex, RwLock};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
@@ -14,14 +14,7 @@ use pea2pea::{
     Config, Connection, ConnectionSide, Node, Pea2Pea,
 };
 
-use std::{
-    collections::HashMap,
-    io::{self, Read},
-    net::SocketAddr,
-    str,
-    sync::Arc,
-    time::Duration,
-};
+use std::{collections::HashMap, io, net::SocketAddr, str, sync::Arc, time::Duration};
 
 // maximum noise message size, as specified by its protocol
 const NOISE_BUF_LEN: usize = 65535;
@@ -41,41 +34,6 @@ impl Pea2Pea for SecureNode {
     fn node(&self) -> &Node {
         &self.node
     }
-}
-
-// read the first message from the provided buffer
-fn read_message<R: io::Read>(reader: &mut R) -> io::Result<Option<Vec<u8>>> {
-    // expecting the test messages to be prefixed with their length encoded as a BE u16
-    let mut len_arr = [0u8; 2];
-    if reader.read_exact(&mut len_arr).is_err() {
-        return Ok(None);
-    }
-    let payload_len = u16::from_be_bytes(len_arr) as usize;
-
-    if payload_len == 0 {
-        return Err(io::ErrorKind::InvalidData.into());
-    }
-
-    let mut buffer = vec![0u8; payload_len];
-    if reader
-        .take(payload_len as u64)
-        .read_exact(&mut buffer)
-        .is_err()
-    {
-        Ok(None)
-    } else {
-        Ok(Some(buffer))
-    }
-}
-
-// prepend the given message with its length encoded as a BE u16
-fn packet_message(message: &[u8]) -> Bytes {
-    let mut bytes = Vec::with_capacity(2 + message.len());
-    let u16_len_header = (message.len() as u16).to_be_bytes();
-    bytes.extend_from_slice(&u16_len_header);
-    bytes.extend_from_slice(message);
-
-    bytes.into()
 }
 
 impl SecureNode {
@@ -117,20 +75,21 @@ impl Handshaking for SecureNode {
                 // -> e
                 let len = noise.write_message(&[], &mut buffer).unwrap();
                 conn.writer()
-                    .write_all(&packet_message(&buffer[..len]))
+                    .write_all(&prefix_with_len(2, &buffer[..len]))
                     .await?;
                 debug!(parent: self.node().span(), "sent e (XX handshake part 1/3)");
 
                 // <- e, ee, s, es
                 conn.reader().read(&mut buf).await?;
-                let message = read_message(&mut io::Cursor::new(buf))?.unwrap();
+                let message =
+                    read_len_prefixed_message::<_, 2>(&mut io::Cursor::new(buf))?.unwrap();
                 noise.read_message(&message, &mut buffer).unwrap();
                 debug!(parent: self.node().span(), "received e, ee, s, es (XX handshake part 2/3)");
 
                 // -> s, se, psk
                 let len = noise.write_message(&[], &mut buffer).unwrap();
                 conn.writer()
-                    .write_all(&packet_message(&buffer[..len]))
+                    .write_all(&prefix_with_len(2, &buffer[..len]))
                     .await?;
                 debug!(parent: self.node().span(), "sent s, se, psk (XX handshake part 3/3)");
 
@@ -141,20 +100,22 @@ impl Handshaking for SecureNode {
 
                 // <- e
                 conn.reader().read(&mut buf).await?;
-                let message = read_message(&mut io::Cursor::new(buf))?.unwrap();
+                let message =
+                    read_len_prefixed_message::<_, 2>(&mut io::Cursor::new(buf))?.unwrap();
                 noise.read_message(&message, &mut buffer).unwrap();
                 debug!(parent: self.node().span(), "received e (XX handshake part 1/3)");
 
                 // -> e, ee, s, es
                 let len = noise.write_message(&[], &mut buffer).unwrap();
                 conn.writer()
-                    .write_all(&packet_message(&buffer[..len]))
+                    .write_all(&prefix_with_len(2, &buffer[..len]))
                     .await?;
                 debug!(parent: self.node().span(), "sent e, ee, s, es (XX handshake part 2/3)");
 
                 // <- s, se, psk
                 conn.reader().read(&mut buf).await?;
-                let message = read_message(&mut io::Cursor::new(buf))?.unwrap();
+                let message =
+                    read_len_prefixed_message::<_, 2>(&mut io::Cursor::new(buf))?.unwrap();
                 noise.read_message(&message, &mut buffer).unwrap();
                 debug!(parent: self.node().span(), "received s, se, psk (XX handshake part 3/3)");
 
@@ -183,7 +144,7 @@ impl Reading for SecureNode {
         source: SocketAddr,
         reader: &mut R,
     ) -> io::Result<Option<Self::Message>> {
-        let bytes = read_message(reader)?;
+        let bytes = read_len_prefixed_message::<_, 2>(reader)?;
 
         if let Some(bytes) = bytes {
             let noise = Arc::clone(self.noise_states.read().get(&source).unwrap());
@@ -192,7 +153,6 @@ impl Reading for SecureNode {
             let len = state.read_message(&bytes, buffer).ok().unwrap();
             let decrypted_message = String::from_utf8(buffer[..len].to_vec()).unwrap();
 
-            // account for the length prefix discarded in read_message
             Ok(Some(decrypted_message))
         } else {
             Ok(None)
@@ -222,7 +182,7 @@ impl Writing for SecureNode {
         let len = state.write_message(payload, buffer).unwrap();
         let encrypted_message = &buffer[..len];
 
-        writer.write_all(&(len as u16).to_be_bytes())?;
+        writer.write_all(&(len as u16).to_le_bytes())?;
         writer.write_all(encrypted_message)
     }
 }

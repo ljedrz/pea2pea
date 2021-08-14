@@ -99,17 +99,17 @@ pub fn read_len_prefixed_message<R: io::Read, const N: usize>(
 }
 
 pub fn prefix_with_len(len_size: usize, message: &[u8]) -> Bytes {
-    let mut bytes = Vec::with_capacity(len_size + message.len());
+    let mut vec = Vec::with_capacity(len_size + message.len());
 
     match len_size {
-        2 => bytes.extend_from_slice(&(message.len() as u16).to_le_bytes()),
-        4 => bytes.extend_from_slice(&(message.len() as u32).to_le_bytes()),
+        2 => vec.extend_from_slice(&(message.len() as u16).to_le_bytes()),
+        4 => vec.extend_from_slice(&(message.len() as u32).to_le_bytes()),
         _ => unreachable!(),
     }
 
-    bytes.extend_from_slice(message);
+    vec.extend_from_slice(message);
 
-    bytes.into()
+    vec.into()
 }
 
 #[macro_export]

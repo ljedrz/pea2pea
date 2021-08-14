@@ -19,7 +19,7 @@ use pea2pea::{
 
 use std::{
     collections::HashMap,
-    io::{self, Read},
+    io,
     net::SocketAddr,
     sync::{
         atomic::{AtomicUsize, Ordering::Relaxed},
@@ -139,27 +139,10 @@ impl Reading for Player {
         reader: &mut R,
     ) -> io::Result<Option<Self::Message>> {
         // expecting inbound messages to be prefixed with their length encoded as a LE u16
-        let mut len_arr = [0u8; 2];
-        if reader.read_exact(&mut len_arr).is_err() {
-            return Ok(None);
-        }
-        let payload_len = u16::from_le_bytes(len_arr) as usize;
+        let vec = common::read_len_prefixed_message::<R, 2>(reader)?;
 
-        if payload_len == 0 {
-            return Err(io::ErrorKind::InvalidData.into());
-        }
-
-        let mut buffer = vec![0u8; payload_len];
-        if reader
-            .take(payload_len as u64)
-            .read_exact(&mut buffer)
-            .is_err()
-        {
-            Ok(None)
-        } else {
-            let message = bincode::deserialize(&buffer).unwrap();
-            Ok(Some(message))
-        }
+        vec.map(|v| bincode::deserialize(&v).map_err(|_| io::ErrorKind::InvalidData.into()))
+            .transpose()
     }
 
     async fn process_message(&self, _source: SocketAddr, message: Self::Message) -> io::Result<()> {
