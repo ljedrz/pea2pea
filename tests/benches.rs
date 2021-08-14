@@ -17,7 +17,7 @@ static RANDOM_BYTES: Lazy<Bytes> = Lazy::new(|| {
     Bytes::from(
         (&mut SmallRng::from_entropy())
             .sample_iter(Standard)
-            .take(64 * 1024 - 4)
+            .take(MSG_SIZE - 4)
             .collect::<Vec<_>>(),
     )
 });

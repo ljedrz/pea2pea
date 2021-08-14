@@ -120,10 +120,9 @@ where
         let carry = buffer.len();
         // limit the maximum number of bytes that can be read
         let mut handle = reader.take((self.node().config().read_buffer_size - carry) as u64);
-        // perform a read from the stream
-        let read = handle.read_buf(buffer).await;
 
-        match read {
+        // perform a read from the stream
+        match handle.read_buf(buffer).await {
             Ok(0) => Err(io::ErrorKind::UnexpectedEof.into()),
             Ok(n) => {
                 trace!(parent: self.node().span(), "read {}B from {}", n, addr);

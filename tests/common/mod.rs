@@ -54,9 +54,9 @@ pub async fn start_inert_nodes(count: usize, config: Option<Config>) -> Vec<Iner
 pub struct MessagingNode(pub Node);
 
 impl MessagingNode {
-    pub async fn new<T: AsRef<str>>(name: T) -> Self {
+    pub async fn new<T: Into<String>>(name: T) -> Self {
         let config = Config {
-            name: Some(name.as_ref().into()),
+            name: Some(name.into()),
             ..Default::default()
         };
         Self(Node::new(Some(config)).await.unwrap())
@@ -104,7 +104,7 @@ pub fn prefix_with_len(len_size: usize, message: &[u8]) -> Bytes {
     match len_size {
         2 => bytes.extend_from_slice(&(message.len() as u16).to_le_bytes()),
         4 => bytes.extend_from_slice(&(message.len() as u32).to_le_bytes()),
-        _ => unimplemented!(),
+        _ => unreachable!(),
     }
 
     bytes.extend_from_slice(message);
