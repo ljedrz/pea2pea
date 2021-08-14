@@ -1,104 +1,31 @@
 use bytes::Bytes;
 use peak_alloc::PeakAlloc;
-use tracing::*;
 
 mod common;
 use pea2pea::{
     protocols::{Disconnect, Handshaking, Reading, Writing},
-    Config, Connection, Node, Pea2Pea,
+    Connection, Pea2Pea,
 };
 
 use std::{io, net::SocketAddr};
 
-#[derive(Clone)]
-struct TestNode(Node);
-
-impl TestNode {
-    async fn new(name: String) -> Self {
-        let config = Config {
-            name: Some(name),
-            ..Default::default()
-        };
-
-        Self(Node::new(Some(config)).await.unwrap())
-    }
-}
-
-impl Pea2Pea for TestNode {
-    fn node(&self) -> &Node {
-        &self.0
-    }
-}
-
 #[async_trait::async_trait]
-impl Handshaking for TestNode {
+impl Handshaking for common::MessagingNode {
     async fn perform_handshake(&self, conn: Connection) -> io::Result<Connection> {
-        // nothing of interest going on here
+        // nothing to do here, just using all protocols
         Ok(conn)
     }
 }
 
 #[async_trait::async_trait]
-impl Reading for TestNode {
-    type Message = String;
-
-    fn read_message<R: io::Read>(
-        &self,
-        _source: SocketAddr,
-        reader: &mut R,
-    ) -> io::Result<Option<Self::Message>> {
-        let vec = common::read_len_prefixed_message::<R, 2>(reader)?;
-
-        Ok(vec.map(|v| (String::from_utf8(v).unwrap())))
-    }
-
-    async fn process_message(&self, source: SocketAddr, message: Self::Message) -> io::Result<()> {
-        let reply = if self.node().name() == "Drebin" {
-            if message == "..." {
-                return Ok(());
-            } else {
-                "Where?"
-            }
-        } else if self.node().stats().sent().0 == 0 {
-            "Hapsburg has Plan B in..."
-        } else {
-            "..."
-        };
-
-        info!(parent: self.node().span(), "{}", reply);
-
-        self.node().send_direct_message(source, Bytes::from(reply))
-    }
-}
-
-impl Writing for TestNode {
-    fn write_message<W: io::Write>(
-        &self,
-        _: SocketAddr,
-        payload: &[u8],
-        buffer: &mut W,
-    ) -> io::Result<()> {
-        buffer.write_all(&(payload.len() as u16).to_le_bytes())?;
-        buffer.write_all(payload)
-    }
-}
-
-#[async_trait::async_trait]
-impl Disconnect for TestNode {
+impl Disconnect for common::MessagingNode {
     async fn handle_disconnect(&self, _addr: SocketAddr) {
-        if self.node().name() == "Drebin" {
-            info!(parent: self.node().span(), "All right. Who else is almost dead?");
-        } else {
-            info!(parent: self.node().span(), "<dies>");
-        }
+        // nothing to do here, just using all protocols
     }
 }
 
 #[tokio::test]
 async fn check_node_cleanups() {
-    // turn on for a silly commentary
-    // tracing_subscriber::fmt::init();
-
     #[global_allocator]
     static PEAK_ALLOC: PeakAlloc = PeakAlloc;
 
@@ -107,14 +34,14 @@ async fn check_node_cleanups() {
     // register heap use before node setup
     let initial_heap_use = PEAK_ALLOC.current_usage();
 
-    let drebin = TestNode::new("Drebin".into()).await;
-    let drebin_addr = drebin.node().listening_addr().unwrap();
+    let persistent_node = common::MessagingNode::new("persistent").await;
+    let persistent_addr = persistent_node.node().listening_addr().unwrap();
 
     // enable all the protocols to check for any leaks there too
-    drebin.enable_handshaking();
-    drebin.enable_reading();
-    drebin.enable_writing();
-    drebin.enable_disconnect();
+    persistent_node.enable_handshaking();
+    persistent_node.enable_reading();
+    persistent_node.enable_writing();
+    persistent_node.enable_disconnect();
 
     // register heap use after node setup
     let heap_after_node_setup = PEAK_ALLOC.current_usage();
@@ -129,39 +56,43 @@ async fn check_node_cleanups() {
     // if it wasn't for that, heap use after the 1st connection (i == 0) would be registered instead
     let mut heap_after_32_conns = 0;
 
-    info!(parent: drebin.node().span(), "Where's Hapsburg?");
-
     for i in 0..NUM_CONNS {
-        let hapsburgs_thug = TestNode::new(format!("thug {}", i)).await;
+        let temporary_node = common::MessagingNode::new("temporary_node").await;
 
-        hapsburgs_thug.enable_handshaking();
-        hapsburgs_thug.enable_reading();
-        hapsburgs_thug.enable_writing();
-        hapsburgs_thug.enable_disconnect();
+        temporary_node.enable_handshaking();
+        temporary_node.enable_reading();
+        temporary_node.enable_writing();
+        temporary_node.enable_disconnect();
 
-        // Habsburg's thugs alert Drebin of their presence; conveniently, it is also the connection
-        // direction that allows the collection of `KnownPeers` to remain empty for Drebin
-        hapsburgs_thug.node().connect(drebin_addr).await.unwrap();
-        wait_until!(1, drebin.node().num_connected() == 1);
-        let thug_addr = drebin.node().connected_addrs()[0];
-
-        info!(parent: hapsburgs_thug.node().span(), "<raises hand>");
-        info!(parent: drebin.node().span(), "Talk!");
-        drebin
+        // this connection direction allows the collection of `KnownPeers` to remain empty
+        temporary_node
             .node()
-            .send_direct_message(thug_addr, Bytes::from(&b"Talk!"[..]))
+            .connect(persistent_addr)
+            .await
+            .unwrap();
+        wait_until!(
+            1,
+            persistent_node.node().num_connected() == 1
+                && temporary_node.node().num_connected() == 1
+        );
+        let temporary_addr = persistent_node.node().connected_addrs()[0];
+
+        persistent_node
+            .node()
+            .send_direct_message(temporary_addr, Bytes::from(&b"herp"[..]))
             .unwrap();
 
-        wait_until!(1, hapsburgs_thug.node().stats().sent().0 == 2);
+        temporary_node
+            .node()
+            .send_direct_message(persistent_addr, Bytes::from(&b"derp"[..]))
+            .unwrap();
+        wait_until!(1, temporary_node.node().stats().sent().0 == 1);
 
-        // the thug dies before revealing the location of Hapsburg's Plan B
-        hapsburgs_thug.node().shut_down().await;
-
-        // wait until Drebin realizes the thug is dead
-        wait_until!(1, drebin.node().num_connected() == 0);
+        temporary_node.node().shut_down().await;
+        wait_until!(1, persistent_node.node().num_connected() == 0);
 
         // drop the temporary node to fully relinquish its memory
-        drop(hapsburgs_thug);
+        drop(temporary_node);
 
         let current_heap_size = PEAK_ALLOC.current_usage() - mem_deduction;
 
