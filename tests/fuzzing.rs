@@ -69,3 +69,54 @@ async fn fuzzing() {
         receiver.node().stats().received() == (expected_msg_count, expected_msg_size)
     );
 }
+
+#[tokio::test]
+async fn problem_combination() {
+    const MAX_MSG_SIZE: usize = 1024;
+
+    let config = Config {
+        name: Some("receiver".into()),
+        read_buffer_size: MAX_MSG_SIZE,
+        ..Default::default()
+    };
+    let receiver = common::MessagingNode(Node::new(Some(config)).await.unwrap());
+    receiver.enable_reading();
+
+    let config = Config {
+        name: Some("sender".into()),
+        ..Default::default()
+    };
+    let sender = common::MessagingNode(Node::new(Some(config)).await.unwrap());
+    sender.enable_writing();
+
+    sender
+        .node()
+        .connect(receiver.node().listening_addr().unwrap())
+        .await
+        .unwrap();
+
+    wait_until!(1, receiver.node().num_connected() == 1);
+
+    let mut rng = SmallRng::from_entropy();
+
+    for msg_size in &[
+        706, 688, 738, 613, 542, 683, 765, 688, 837, 640, 842, 677, 990, 1011, 706, 877, 877, 718,
+        674, 566, 1019, 588, 606, 910, 999, 846, 735, 688, 754, 554, 584,
+    ] {
+        let random_payload: Vec<u8> = (&mut rng).sample_iter(Standard).take(*msg_size).collect();
+
+        sender
+            .node()
+            .send_direct_message(
+                receiver.node().listening_addr().unwrap(),
+                random_payload.into(),
+            )
+            .unwrap();
+
+        sleep(Duration::from_millis(5)).await;
+
+        if receiver.node().num_connected() == 0 {
+            panic!("the fuzz test failed!");
+        }
+    }
+}
