@@ -2,7 +2,7 @@
 
 ### Fixed
 
-- a one-off in `Reading::read_from_stream` found by fuzzing
+- an off-by-one in `Reading::read_from_stream` found by fuzzing
 
 # 0.26.0
 
