@@ -118,18 +118,22 @@ where
     ) -> io::Result<()> {
         // register the number of bytes carried over from the previous read (if there were any)
         let carry = buffer.len();
+
         // limit the maximum number of bytes that can be read
-        let mut handle = reader.take((self.node().config().read_buffer_size - carry) as u64);
+        let max_read_size = self.node().config().read_buffer_size - carry;
+        let mut read_handle = reader.take(max_read_size as u64);
 
         // perform a read from the stream
-        match handle.read_buf(buffer).await {
+        match read_handle.read_buf(buffer).await {
             Ok(0) => Err(io::ErrorKind::UnexpectedEof.into()),
-            Ok(n) => {
-                trace!(parent: self.node().span(), "read {}B from {}", n, addr);
-                let mut left = carry + n;
+            Ok(read_len) => {
+                trace!(parent: self.node().span(), "read {}B from {}", read_len, addr);
+
+                // the number of bytes left to *process* - this includes the initial carried bytes and the read
+                let mut left = carry + read_len;
 
                 // wrap the read buffer in a reader
-                let mut buf_reader = io::Cursor::new(&mut buffer[..left]);
+                let mut buf_reader = io::Cursor::new(&buffer[..left]);
 
                 // several messages could have been read at once; process the contents of the buffer
                 loop {
@@ -137,23 +141,26 @@ where
                     let initial_buf_pos = buf_reader.position() as usize;
 
                     // try to read a single message from the buffer
-                    match self.read_message(addr, &mut buf_reader) {
+                    let read = self.read_message(addr, &mut buf_reader);
+
+                    // the position in the buffer after the read attempt
+                    let post_read_buf_pos = buf_reader.position() as usize;
+
+                    // register the number of bytes that were processed by the Reading::read_message call above
+                    let parse_size = post_read_buf_pos - initial_buf_pos;
+
+                    match read {
                         // a full message was read successfully
                         Ok(Some(msg)) => {
-                            let len = buf_reader.position() as usize - initial_buf_pos;
-                            left -= len;
+                            // subtract the number of successfully processed bytes from the ones left to process
+                            left -= parse_size;
 
-                            trace!(
-                                parent: self.node().span(),
-                                "isolated {}B as a message from {}, {}B left",
-                                len,
-                                addr,
-                                left,
-                            );
+                            trace!(parent: self.node().span(), "isolated a {}B message from {}", parse_size, addr);
+
                             self.node()
                                 .known_peers()
-                                .register_received_message(addr, len);
-                            self.node().stats().register_received_message(len);
+                                .register_received_message(addr, parse_size);
+                            self.node().stats().register_received_message(parse_size);
 
                             // send the message for further processing
                             if let Err(e) = message_sender.try_send(msg) {
@@ -176,17 +183,11 @@ where
                                 return Err(io::ErrorKind::InvalidData.into());
                             }
 
-                            trace!(
-                                parent: self.node().span(),
-                                "a message from {} is incomplete; carrying {}B over",
-                                addr,
-                                left
-                            );
+                            trace!(parent: self.node().span(), "incomplete message from {}; carrying {}B over", addr, left);
 
                             // move the leftover bytes to the beginning of the buffer; the next read will append bytes
                             // starting from where the leftover ones end, allowing the message to be completed
-                            let post_read_buf_pos = buf_reader.position() as usize;
-                            buffer.copy_within(initial_buf_pos..post_read_buf_pos, 0);
+                            buffer.copy_within(initial_buf_pos..initial_buf_pos + left, 0);
                             buffer.truncate(left);
 
                             return Ok(());

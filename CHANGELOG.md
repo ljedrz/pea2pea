@@ -1,3 +1,9 @@
+# 0.26.1
+
+### Fixed
+
+- a one-off in `Reading::read_from_stream` found by fuzzing
+
 # 0.26.0
 
 ### Changed
