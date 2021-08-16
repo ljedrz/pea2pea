@@ -1,3 +1,4 @@
+use circular_queue::CircularQueue;
 use rand::{distributions::Standard, rngs::SmallRng, Rng, SeedableRng};
 use tokio::time::sleep;
 
@@ -40,7 +41,7 @@ async fn fuzzing() {
 
     let mut expected_msg_count: u64 = 0;
     let mut expected_msg_size: u64 = 0;
-    let mut processed_sizes: Vec<usize> = Vec::with_capacity(NUM_MESSAGES);
+    let mut processed_sizes = CircularQueue::with_capacity(256);
 
     for _ in 0..NUM_MESSAGES {
         let random_len: usize = rng.gen_range(1..=MAX_MSG_SIZE - 4); // account for the length prefix
@@ -60,7 +61,8 @@ async fn fuzzing() {
         sleep(Duration::from_millis(5)).await;
 
         if receiver.node().num_connected() == 0 {
-            panic!("the fuzz test failed! message sizes: {:?}", processed_sizes);
+            let last_processed = processed_sizes.asc_iter().collect::<Vec<_>>();
+            panic!("the fuzz test failed! message sizes: {:?}", last_processed);
         }
     }
 

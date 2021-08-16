@@ -27,6 +27,7 @@ tracing = { version = "0.1", default-features = false }
 
 [dev-dependencies]
 bincode = "1"
+circular-queue = "0.2"
 peak_alloc = "0.1"
 rand = { version = "0.8", default-features = false, features = ["getrandom", "small_rng"] }
 serde = { version = "1", default-features = false, features = ["derive"] }
