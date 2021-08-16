@@ -127,10 +127,10 @@ where
         match read_handle.read_buf(buffer).await {
             Ok(0) => Err(io::ErrorKind::UnexpectedEof.into()),
             Ok(read_len) => {
-                trace!(parent: self.node().span(), "read {}B from {}", read_len, addr);
-
                 // the number of bytes left to *process* - this includes the initial carried bytes and the read
                 let mut left = carry + read_len;
+
+                trace!(parent: self.node().span(), "read {}B from {}; {}B left to process", read_len, addr, left);
 
                 // wrap the read buffer in a reader
                 let mut buf_reader = io::Cursor::new(&buffer[..left]);
