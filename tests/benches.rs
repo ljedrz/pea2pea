@@ -120,7 +120,6 @@ async fn run_bench_scenario(sender_count: usize) -> f64 {
         tokio::spawn(async move {
             for _ in 0..NUM_MESSAGES {
                 spammer
-                    .node()
                     .send_direct_message(sink_addr, RANDOM_BYTES.clone())
                     .unwrap();
             }

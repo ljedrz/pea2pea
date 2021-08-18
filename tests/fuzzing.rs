@@ -49,7 +49,6 @@ async fn fuzzing() {
 
         // skip full channel errors
         if sender
-            .node()
             .send_direct_message(receiver_addr, random_payload.into())
             .is_ok()
         {
@@ -108,7 +107,6 @@ async fn problem_combination() {
         let random_payload: Vec<u8> = (&mut rng).sample_iter(Standard).take(*msg_size).collect();
 
         sender
-            .node()
             .send_direct_message(
                 receiver.node().listening_addr().unwrap(),
                 random_payload.into(),

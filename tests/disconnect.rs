@@ -14,9 +14,7 @@ impl Disconnect for common::MessagingNode {
     async fn handle_disconnect(&self, addr: SocketAddr) {
         let disconnect_message = Bytes::from("bye-bye!".as_bytes());
 
-        self.node()
-            .send_direct_message(addr, disconnect_message)
-            .unwrap();
+        self.send_direct_message(addr, disconnect_message).unwrap();
 
         // a small delay so that the connection isn't severed too quickly
         // and the disconnect message can get processed by the recipient

@@ -59,8 +59,7 @@ impl Reading for EchoNode {
         if self.echoed.lock().insert(message) {
             info!(parent: self.node().span(), "it was new! echoing it");
 
-            self.node()
-                .send_direct_message(source, Bytes::copy_from_slice(&[message as u8]))
+            self.send_direct_message(source, Bytes::copy_from_slice(&[message as u8]))
                 .unwrap();
         } else {
             debug!(parent: self.node().span(), "I've already heard {:?}! not echoing", message);
@@ -109,17 +108,13 @@ async fn messaging_example() {
 
     for message in &[Herp, Derp, Herp] {
         let msg = Bytes::copy_from_slice(&[*message as u8]);
-        shouter
-            .node()
-            .send_direct_message(picky_echo_addr, msg)
-            .unwrap();
+        shouter.send_direct_message(picky_echo_addr, msg).unwrap();
     }
 
     // let echo send one message on its own too, for good measure
     let shouter_addr = picky_echo.node().connected_addrs()[0];
 
     picky_echo
-        .node()
         .send_direct_message(shouter_addr, [Herp as u8][..].into())
         .unwrap();
 
@@ -144,7 +139,6 @@ async fn drop_connection_on_invalid_message() {
     let bad_message = Bytes::from(vec![]);
 
     writer
-        .node()
         .send_direct_message(reader_addr, bad_message)
         .unwrap();
 
@@ -175,7 +169,6 @@ async fn drop_connection_on_oversized_message() {
     let max_size_payload = vec![0u8; MSG_SIZE_LIMIT - 4];
 
     writer
-        .node()
         .send_direct_message(reader_addr, max_size_payload.into())
         .unwrap();
 
@@ -186,7 +179,6 @@ async fn drop_connection_on_oversized_message() {
     let oversized_payload = vec![0u8; MSG_SIZE_LIMIT - 3];
 
     writer
-        .node()
         .send_direct_message(reader_addr, oversized_payload.into())
         .unwrap();
 
@@ -227,7 +219,6 @@ async fn no_reading_no_delivery() {
 
     // writer sends a message
     writer
-        .node()
         .send_direct_message(reader_addr, vec![0; 16].into())
         .unwrap();
 
@@ -251,7 +242,6 @@ async fn no_writing_no_delivery() {
 
     // writer tries to send a message
     assert!(writer
-        .node()
         .send_direct_message(reader_addr, vec![0; 16].into())
         .is_err());
 

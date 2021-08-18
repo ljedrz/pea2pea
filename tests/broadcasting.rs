@@ -12,17 +12,17 @@ use std::time::Duration;
 
 impl common::MessagingNode {
     fn send_periodic_broadcasts(&self) {
-        let node = self.node().clone();
+        let self_clone = self.clone();
         tokio::spawn(async move {
             let message = "hello there ( ͡° ͜ʖ ͡°)";
             let bytes = Bytes::from(message.as_bytes());
 
             loop {
-                if node.num_connected() != 0 {
-                    info!(parent: node.span(), "sending \"{}\" to all my frens", message);
-                    node.send_broadcast(bytes.clone());
+                if self_clone.node().num_connected() != 0 {
+                    info!(parent: self_clone.node().span(), "sending \"{}\" to all my frens", message);
+                    self_clone.send_broadcast(bytes.clone());
                 } else {
-                    info!(parent: node.span(), "meh, I have no frens to chat with",);
+                    info!(parent: self_clone.node().span(), "meh, I have no frens to chat with",);
                 }
 
                 sleep(Duration::from_millis(50)).await;

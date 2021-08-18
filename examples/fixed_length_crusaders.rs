@@ -86,8 +86,7 @@ impl Reading for JoJoNode {
             BattleCry::Muda => BattleCry::Ora,
         };
 
-        self.node()
-            .send_direct_message(source, Bytes::copy_from_slice(&[reply as u8]))
+        self.send_direct_message(source, Bytes::copy_from_slice(&[reply as u8]))
     }
 }
 
@@ -144,7 +143,6 @@ async fn main() {
     sleep(Duration::from_secs(3)).await;
 
     jotaro
-        .node()
         .send_direct_message(
             dio.node().listening_addr().unwrap(),
             Bytes::copy_from_slice(&[BattleCry::Ora as u8]),

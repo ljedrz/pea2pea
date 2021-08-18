@@ -1,3 +1,9 @@
+# 0.27.0
+
+### Changed
+
+- moved `Node::{send_broadcast, send_direct_message}` to `Writing`
+
 # 0.26.1
 
 ### Fixed

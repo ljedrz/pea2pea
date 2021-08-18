@@ -78,12 +78,10 @@ async fn check_node_cleanups() {
         let temporary_addr = persistent_node.node().connected_addrs()[0];
 
         persistent_node
-            .node()
             .send_direct_message(temporary_addr, Bytes::from(&b"herp"[..]))
             .unwrap();
 
         temporary_node
-            .node()
             .send_direct_message(persistent_addr, Bytes::from(&b"derp"[..]))
             .unwrap();
         wait_until!(1, temporary_node.node().stats().sent().0 == 1);

@@ -212,7 +212,6 @@ async fn no_handshake_no_messaging() {
     let message = common::prefix_with_len(2, b"this won't get through, as there was no handshake");
 
     initiator
-        .node()
         .send_direct_message(responder.node().listening_addr().unwrap(), message)
         .unwrap();
 

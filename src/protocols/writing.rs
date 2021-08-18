@@ -1,6 +1,7 @@
 use crate::{protocols::ReturnableConnection, Pea2Pea};
 
 use async_trait::async_trait;
+use bytes::Bytes;
 use tokio::{
     io::{AsyncWrite, AsyncWriteExt},
     sync::mpsc,
@@ -106,4 +107,27 @@ where
         payload: &[u8],
         writer: &mut W,
     ) -> io::Result<()>;
+
+    /// Sends the provided message to the specified `SocketAddr`.
+    fn send_direct_message(&self, addr: SocketAddr, message: Bytes) -> io::Result<()> {
+        self.node()
+            .connections()
+            .sender(addr)?
+            .try_send(message)
+            .map_err(|e| {
+                error!(parent: self.node().span(), "can't send a message to {}: {}", addr, e);
+                self.node().stats().register_failure();
+                io::ErrorKind::Other.into()
+            })
+    }
+
+    /// Broadcasts the provided message to all peers.
+    fn send_broadcast(&self, message: Bytes) {
+        for (message_sender, addr) in self.node().connections().senders() {
+            let _ = message_sender.try_send(message.clone()).map_err(|e| {
+                error!(parent: self.node().span(), "can't send a message to {}: {}", addr, e);
+                self.node().stats().register_failure();
+            });
+        }
+    }
 }

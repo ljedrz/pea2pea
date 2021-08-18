@@ -76,8 +76,7 @@ impl Reading for Player {
 
         // there are just a maximum of 2 connections, so this is sufficient
         for addr in connected_addrs.into_iter().filter(|addr| *addr != source) {
-            self.node()
-                .send_direct_message(addr, message_bytes.clone())?;
+            self.send_direct_message(addr, message_bytes.clone())?;
         }
 
         Ok(())
@@ -117,7 +116,6 @@ async fn main() {
 
     info!(parent: players[0].node().span(), "psst, player {}; \"{}\", pass it on!", players[1].node().name(), message);
     players[0]
-        .node()
         .send_direct_message(
             players[1].node().listening_addr().unwrap(),
             message.as_bytes().into(),
