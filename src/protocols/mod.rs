@@ -27,17 +27,6 @@ pub(crate) struct Protocols {
     pub(crate) disconnect_handler: OnceCell<DisconnectHandler>,
 }
 
-/// The basic functionality that every protocol is required to handle - being triggered.
-#[async_trait::async_trait]
-pub trait ProtocolHandler {
-    /// The type of item that gets sent to the protocol handler task.
-    type Item;
-
-    /// Triggers the protocol's behavior for the given subject, usually a `Connection` or
-    /// its `SocketAddr`.
-    async fn trigger(&self, item: Self::Item);
-}
-
 /// An object sent to a protocol handler task; the task assumes control of a protocol-relevant item `T`,
 /// and when it's done with it, it returns it (possibly in a wrapper object) or another relevant object
 /// to the callsite via the counterpart `oneshot::Receiver`.

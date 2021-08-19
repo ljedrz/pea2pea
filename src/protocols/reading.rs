@@ -1,7 +1,4 @@
-use crate::{
-    protocols::{ProtocolHandler, ReturnableConnection},
-    Pea2Pea,
-};
+use crate::{protocols::ReturnableConnection, Pea2Pea};
 
 use async_trait::async_trait;
 use tokio::{
@@ -241,11 +238,8 @@ where
 /// The handler object dedicated to the `Reading` protocol.
 pub struct ReadingHandler(mpsc::Sender<ReturnableConnection>);
 
-#[async_trait::async_trait]
-impl ProtocolHandler for ReadingHandler {
-    type Item = ReturnableConnection;
-
-    async fn trigger(&self, item: ReturnableConnection) {
+impl ReadingHandler {
+    pub(crate) async fn trigger(&self, item: ReturnableConnection) {
         if self.0.send(item).await.is_err() {
             unreachable!(); // protocol's task is down! can't recover
         }

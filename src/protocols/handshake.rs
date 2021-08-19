@@ -1,7 +1,4 @@
-use crate::{
-    protocols::{ProtocolHandler, ReturnableConnection},
-    Connection, Pea2Pea,
-};
+use crate::{protocols::ReturnableConnection, Connection, Pea2Pea};
 
 use tokio::{sync::mpsc, task, time::timeout};
 use tracing::*;
@@ -87,11 +84,8 @@ where
 /// The handler object dedicated to the `Handshake` protocol.
 pub struct HandshakeHandler(mpsc::Sender<ReturnableConnection>);
 
-#[async_trait::async_trait]
-impl ProtocolHandler for HandshakeHandler {
-    type Item = ReturnableConnection;
-
-    async fn trigger(&self, item: ReturnableConnection) {
+impl HandshakeHandler {
+    pub(crate) async fn trigger(&self, item: ReturnableConnection) {
         if self.0.send(item).await.is_err() {
             unreachable!(); // protocol's task is down! can't recover
         }

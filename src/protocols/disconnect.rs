@@ -1,7 +1,4 @@
-use crate::{
-    protocols::{ProtocolHandler, ReturnableItem},
-    Pea2Pea,
-};
+use crate::{protocols::ReturnableItem, Pea2Pea};
 
 use tokio::{
     sync::{mpsc, oneshot},
@@ -71,11 +68,8 @@ where
 /// The handler object dedicated to the `Disconnect` protocol.
 pub struct DisconnectHandler(mpsc::Sender<ReturnableItem<SocketAddr, ()>>);
 
-#[async_trait::async_trait]
-impl ProtocolHandler for DisconnectHandler {
-    type Item = ReturnableItem<SocketAddr, ()>;
-
-    async fn trigger(&self, item: ReturnableItem<SocketAddr, ()>) {
+impl DisconnectHandler {
+    pub(crate) async fn trigger(&self, item: ReturnableItem<SocketAddr, ()>) {
         if self.0.send(item).await.is_err() {
             unreachable!(); // protocol's task is down! can't recover
         }

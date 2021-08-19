@@ -1,7 +1,4 @@
-use crate::{
-    protocols::{ProtocolHandler, ReturnableConnection},
-    Pea2Pea,
-};
+use crate::{protocols::ReturnableConnection, Pea2Pea};
 
 use async_trait::async_trait;
 use parking_lot::RwLock;
@@ -176,11 +173,8 @@ pub struct WritingHandler {
     pub(crate) senders: RwLock<HashMap<SocketAddr, mpsc::Sender<Box<dyn Any + Send>>>>,
 }
 
-#[async_trait::async_trait]
-impl ProtocolHandler for WritingHandler {
-    type Item = ReturnableConnection;
-
-    async fn trigger(&self, item: ReturnableConnection) {
+impl WritingHandler {
+    pub(crate) async fn trigger(&self, item: ReturnableConnection) {
         if self.handler.send(item).await.is_err() {
             unreachable!(); // protocol's task is down! can't recover
         }
