@@ -8,7 +8,7 @@ use tracing::*;
 
 mod common;
 use pea2pea::{
-    protocols::{Handshaking, Reading, Writing},
+    protocols::{Handshake, Reading, Writing},
     Config, Connection, ConnectionSide, Node, Pea2Pea,
 };
 
@@ -98,7 +98,7 @@ macro_rules! send_handshake_message {
 impl_messaging!(SecureishNode);
 
 #[async_trait::async_trait]
-impl Handshaking for SecureishNode {
+impl Handshake for SecureishNode {
     async fn perform_handshake(&self, mut conn: Connection) -> io::Result<Connection> {
         let nonce_pair = match !conn.side {
             ConnectionSide::Initiator => {
@@ -155,11 +155,11 @@ async fn handshake_example() {
     };
 
     // Reading and Writing are not required for the handshake; they are enabled only so that their relationship
-    // with the handshaking protocol can be tested too; they should kick in only after the handshake concludes
+    // with the handshake protocol can be tested too; they should kick in only after the handshake concludes
     for node in &[&initiator, &responder] {
         node.enable_reading();
         node.enable_writing();
-        node.enable_handshaking();
+        node.enable_handshake();
     }
 
     initiator
@@ -200,8 +200,8 @@ async fn no_handshake_no_messaging() {
     initiator.enable_writing();
     responder.enable_reading();
 
-    // the initiator doesn't enable handshaking
-    responder.enable_handshaking();
+    // the initiator doesn't enable handshakes
+    responder.enable_handshake();
 
     initiator
         .node()
@@ -232,7 +232,7 @@ async fn hung_handshake_fails() {
     // a badly implemented handshake protocol; 1B is expected by both the initiator and the responder (no distinction
     // is even made), but it is never provided by either of them
     #[async_trait::async_trait]
-    impl Handshaking for Wrap {
+    impl Handshake for Wrap {
         async fn perform_handshake(&self, mut conn: Connection) -> io::Result<Connection> {
             let _ = conn.reader().read_exact(&mut [0u8; 1]).await;
 
@@ -247,8 +247,8 @@ async fn hung_handshake_fails() {
     let connector = Wrap(Node::new(None).await.unwrap());
     let connectee = Wrap(Node::new(Some(config)).await.unwrap());
 
-    // note: the connector does NOT enable handshaking
-    connectee.enable_handshaking();
+    // note: the connector does NOT enable handshakes
+    connectee.enable_handshake();
 
     // the connection attempt should register just fine for the connector, as it doesn't expect a handshake
     assert!(connector
@@ -282,7 +282,7 @@ async fn timeout_when_spammed_with_connections() {
     }
 
     #[async_trait::async_trait]
-    impl Handshaking for Wrap {
+    impl Handshake for Wrap {
         async fn perform_handshake(&self, mut conn: Connection) -> io::Result<Connection> {
             conn.reader().read_exact(&mut [0u8; 1]).await?;
 
@@ -296,7 +296,7 @@ async fn timeout_when_spammed_with_connections() {
         ..Default::default()
     };
     let victim = Wrap(Node::new(Some(config)).await.unwrap());
-    victim.enable_handshaking();
+    victim.enable_handshake();
     let victim_addr = victim.node().listening_addr().unwrap();
 
     let mut sockets = Vec::with_capacity(NUM_ATTEMPTS as usize);

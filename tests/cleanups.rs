@@ -3,14 +3,14 @@ use peak_alloc::PeakAlloc;
 
 mod common;
 use pea2pea::{
-    protocols::{Disconnect, Handshaking, Reading, Writing},
+    protocols::{Disconnect, Handshake, Reading, Writing},
     Connection, Pea2Pea,
 };
 
 use std::{io, net::SocketAddr};
 
 #[async_trait::async_trait]
-impl Handshaking for common::MessagingNode {
+impl Handshake for common::MessagingNode {
     async fn perform_handshake(&self, conn: Connection) -> io::Result<Connection> {
         // nothing to do here, just using all protocols
         Ok(conn)
@@ -38,7 +38,7 @@ async fn check_node_cleanups() {
     let persistent_addr = persistent_node.node().listening_addr().unwrap();
 
     // enable all the protocols to check for any leaks there too
-    persistent_node.enable_handshaking();
+    persistent_node.enable_handshake();
     persistent_node.enable_reading();
     persistent_node.enable_writing();
     persistent_node.enable_disconnect();
@@ -59,7 +59,7 @@ async fn check_node_cleanups() {
     for i in 0..NUM_CONNS {
         let temporary_node = common::MessagingNode::new("temporary_node").await;
 
-        temporary_node.enable_handshaking();
+        temporary_node.enable_handshake();
         temporary_node.enable_reading();
         temporary_node.enable_writing();
         temporary_node.enable_disconnect();

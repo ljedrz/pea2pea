@@ -4,6 +4,7 @@
 
 - moved `Node::{send_broadcast, send_direct_message}` to `Writing`
 - the way the protocols are structured
+- renamed `Handshaking` to `Handshake`
 
 ### Removed
 

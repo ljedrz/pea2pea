@@ -10,7 +10,7 @@ use tracing::*;
 use tracing_subscriber::filter::LevelFilter;
 
 use pea2pea::{
-    protocols::{Handshaking, Reading, Writing},
+    protocols::{Handshake, Reading, Writing},
     Config, Connection, ConnectionSide, Node, Pea2Pea,
 };
 
@@ -54,7 +54,7 @@ impl SecureNode {
 }
 
 #[async_trait::async_trait]
-impl Handshaking for SecureNode {
+impl Handshake for SecureNode {
     async fn perform_handshake(&self, mut conn: Connection) -> io::Result<Connection> {
         // the noise handshake settings used by snow
         const HANDSHAKE_PATTERN: &str = "Noise_XXpsk3_25519_ChaChaPoly_BLAKE2s";
@@ -196,7 +196,7 @@ async fn main() {
     let responder = SecureNode::new("responder").await.unwrap();
 
     for node in &[&initiator, &responder] {
-        node.enable_handshaking(); // enable the pre-defined handshakes
+        node.enable_handshake(); // enable the pre-defined handshakes
         node.enable_reading(); // enable the reading protocol
         node.enable_writing(); // enable the writing protocol
     }

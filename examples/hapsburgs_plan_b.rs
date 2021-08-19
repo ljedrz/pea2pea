@@ -5,7 +5,7 @@ use tracing::*;
 use tracing_subscriber::filter::LevelFilter;
 
 use pea2pea::{
-    protocols::{Disconnect, Handshaking, Reading, Writing},
+    protocols::{Disconnect, Handshake, Reading, Writing},
     Config, Connection, Node, Pea2Pea,
 };
 
@@ -32,7 +32,7 @@ impl Pea2Pea for NakedNode {
 }
 
 #[async_trait::async_trait]
-impl Handshaking for NakedNode {
+impl Handshake for NakedNode {
     async fn perform_handshake(&self, conn: Connection) -> io::Result<Connection> {
         if self.node().name() == "Drebin" {
             sleep(Duration::from_millis(10)).await;
@@ -112,7 +112,7 @@ async fn main() {
     let drebin = NakedNode::new("Drebin").await;
     let drebin_addr = drebin.node().listening_addr().unwrap();
 
-    drebin.enable_handshaking();
+    drebin.enable_handshake();
     drebin.enable_reading();
     drebin.enable_writing();
     drebin.enable_disconnect();
@@ -122,7 +122,7 @@ async fn main() {
     for i in 0..NUM_THUGS {
         let hapsburgs_thug = NakedNode::new(format!("thug {}", i)).await;
 
-        hapsburgs_thug.enable_handshaking();
+        hapsburgs_thug.enable_handshake();
         hapsburgs_thug.enable_reading();
         hapsburgs_thug.enable_writing();
         hapsburgs_thug.enable_disconnect();

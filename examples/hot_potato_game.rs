@@ -13,7 +13,7 @@ use tracing_subscriber::filter::LevelFilter;
 
 use pea2pea::{
     connect_nodes,
-    protocols::{Handshaking, Reading, Writing},
+    protocols::{Handshake, Reading, Writing},
     Connection, ConnectionSide, Node, Pea2Pea, Topology,
 };
 
@@ -81,7 +81,7 @@ impl Pea2Pea for Player {
 }
 
 #[async_trait::async_trait]
-impl Handshaking for Player {
+impl Handshake for Player {
     async fn perform_handshake(&self, mut conn: Connection) -> io::Result<Connection> {
         let mut buffer = [0u8; 16];
 
@@ -208,7 +208,7 @@ async fn main() {
     }
 
     for player in &players {
-        player.enable_handshaking();
+        player.enable_handshake();
         player.enable_reading();
         player.enable_writing();
     }

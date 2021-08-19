@@ -10,18 +10,18 @@ use tokio::sync::oneshot;
 use std::io;
 
 mod disconnect;
-mod handshaking;
+mod handshake;
 mod reading;
 mod writing;
 
 pub use disconnect::{Disconnect, DisconnectHandler};
-pub use handshaking::{Handshaking, HandshakingHandler};
+pub use handshake::{Handshake, HandshakeHandler};
 pub use reading::{Reading, ReadingHandler};
 pub use writing::{Writing, WritingHandler};
 
 #[derive(Default)]
 pub(crate) struct Protocols {
-    pub(crate) handshake_handler: OnceCell<HandshakingHandler>,
+    pub(crate) handshake_handler: OnceCell<HandshakeHandler>,
     pub(crate) reading_handler: OnceCell<ReadingHandler>,
     pub(crate) writing_handler: OnceCell<WritingHandler>,
     pub(crate) disconnect_handler: OnceCell<DisconnectHandler>,

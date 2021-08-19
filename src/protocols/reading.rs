@@ -14,7 +14,7 @@ use tracing::*;
 use std::{io, net::SocketAddr, time::Duration};
 
 /// Can be used to specify and enable reading, i.e. receiving inbound messages.
-/// If handshaking is enabled too, it goes into force only after the handshake has been concluded.
+/// If handshake is enabled too, it goes into force only after the handshake has been concluded.
 #[async_trait]
 pub trait Reading: Pea2Pea
 where

@@ -12,12 +12,12 @@ use std::{io, time::Duration};
 /// need to adhere to the specified handshake rules in order to finalize the connection and be able to send
 /// or receive any messages.
 #[async_trait::async_trait]
-pub trait Handshaking: Pea2Pea
+pub trait Handshake: Pea2Pea
 where
     Self: Clone + Send + Sync + 'static,
 {
-    /// Sets up the handshake handler, as part of the `Handshaking` protocol.
-    fn set_handshake_handler(&self, handler: HandshakingHandler) {
+    /// Sets up the handshake handler, as part of the `Handshake` protocol.
+    fn set_handshake_handler(&self, handler: HandshakeHandler) {
         if self
             .node()
             .protocols
@@ -30,22 +30,22 @@ where
     }
 
     /// Prepares the node to perform specified network handshakes.
-    fn enable_handshaking(&self) {
+    fn enable_handshake(&self) {
         let (from_node_sender, mut from_node_receiver) = mpsc::channel::<ReturnableConnection>(
             self.node().config().protocol_handler_queue_depth,
         );
 
         // spawn a background task dedicated to handling the handshakes
         let self_clone = self.clone();
-        let handshaking_task = tokio::spawn(async move {
-            trace!(parent: self_clone.node().span(), "spawned the Handshaking handler task");
+        let handshake_task = tokio::spawn(async move {
+            trace!(parent: self_clone.node().span(), "spawned the Handshake handler task");
 
             while let Some((conn, result_sender)) = from_node_receiver.recv().await {
                 let addr = conn.addr;
 
                 let node = self_clone.clone();
                 task::spawn(async move {
-                    debug!(parent: node.node().span(), "handshaking with {} as the {:?}", addr, !conn.side);
+                    debug!(parent: node.node().span(), "handshake with {} as the {:?}", addr, !conn.side);
                     let result = timeout(
                         Duration::from_millis(node.node().config().max_handshake_time_ms),
                         node.perform_handshake(conn),
@@ -74,9 +74,9 @@ where
                 });
             }
         });
-        self.node().tasks.lock().push(handshaking_task);
+        self.node().tasks.lock().push(handshake_task);
 
-        self.set_handshake_handler(HandshakingHandler(from_node_sender));
+        self.set_handshake_handler(HandshakeHandler(from_node_sender));
     }
 
     /// Performs the handshake; temporarily assumes control of the `Connection` and returns it if the handshake is
@@ -84,11 +84,11 @@ where
     async fn perform_handshake(&self, conn: Connection) -> io::Result<Connection>;
 }
 
-/// The handler object dedicated to the `Handshaking` protocol.
-pub struct HandshakingHandler(mpsc::Sender<ReturnableConnection>);
+/// The handler object dedicated to the `Handshake` protocol.
+pub struct HandshakeHandler(mpsc::Sender<ReturnableConnection>);
 
 #[async_trait::async_trait]
-impl ProtocolHandler for HandshakingHandler {
+impl ProtocolHandler for HandshakeHandler {
     type Item = ReturnableConnection;
 
     async fn trigger(&self, item: ReturnableConnection) {

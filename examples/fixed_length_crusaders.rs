@@ -5,7 +5,7 @@ use tracing::*;
 use tracing_subscriber::filter::LevelFilter;
 
 use pea2pea::{
-    protocols::{Handshaking, Reading, Writing},
+    protocols::{Handshake, Reading, Writing},
     Config, Connection, ConnectionSide, Node, Pea2Pea,
 };
 
@@ -21,7 +21,7 @@ impl Pea2Pea for JoJoNode {
 }
 
 #[async_trait::async_trait]
-impl Handshaking for JoJoNode {
+impl Handshake for JoJoNode {
     async fn perform_handshake(&self, conn: Connection) -> io::Result<Connection> {
         // some handshakes are useful, others are menacing ゴゴゴゴ
         match !conn.side {
@@ -130,7 +130,7 @@ async fn main() {
     let dio_addr = dio.node().listening_addr().unwrap();
 
     for node in &[&jotaro, &dio] {
-        node.enable_handshaking();
+        node.enable_handshake();
         node.enable_reading();
         node.enable_writing();
     }
