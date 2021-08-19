@@ -1,6 +1,5 @@
 mod common;
 
-use bytes::Bytes;
 use tokio::time::sleep;
 use tracing::*;
 use tracing_subscriber::filter::LevelFilter;
@@ -75,19 +74,21 @@ impl Reading for NakedNode {
 
         info!(parent: self.node().span(), "{}", reply);
 
-        self.send_direct_message(source, Bytes::from(reply))
+        self.send_direct_message(source, reply.to_string())
     }
 }
 
 impl Writing for NakedNode {
+    type Message = String;
+
     fn write_message<W: io::Write>(
         &self,
         _: SocketAddr,
-        payload: &[u8],
+        payload: &Self::Message,
         buffer: &mut W,
     ) -> io::Result<()> {
         buffer.write_all(&(payload.len() as u16).to_le_bytes())?;
-        buffer.write_all(payload)
+        buffer.write_all(payload.as_bytes())
     }
 }
 
@@ -132,7 +133,7 @@ async fn main() {
         let thug_addr = drebin.node().connected_addrs()[0];
 
         drebin
-            .send_direct_message(thug_addr, Bytes::from(&b"Talk!"[..]))
+            .send_direct_message(thug_addr, "Talk!".to_string())
             .unwrap();
 
         sleep(Duration::from_millis(50)).await;

@@ -1,4 +1,7 @@
-use crate::Pea2Pea;
+use crate::{
+    protocols::{ProtocolHandler, ReturnableItem},
+    Pea2Pea,
+};
 
 use tokio::{
     sync::{mpsc, oneshot},
@@ -17,6 +20,19 @@ pub trait Disconnect: Pea2Pea
 where
     Self: Clone + Send + Sync + 'static,
 {
+    /// Sets up the disconnect handler, as part of enabling the `Disconnect` protocol.
+    fn set_disconnect_handler(&self, handler: DisconnectHandler) {
+        if self
+            .node()
+            .protocols
+            .disconnect_handler
+            .set(handler)
+            .is_err()
+        {
+            panic!("the disconnect_handler field was set more than once!");
+        }
+    }
+
     /// Attaches the behavior specified in `Disconnect::handle_disconnect` to every occurrence of the
     /// node disconnecting from a peer.
     fn enable_disconnect(&self) {
@@ -43,11 +59,25 @@ where
         });
         self.node().tasks.lock().push(disconnect_task);
 
-        self.node().set_disconnect_handler(from_node_sender.into());
+        self.set_disconnect_handler(DisconnectHandler(from_node_sender));
     }
 
     /// The extra actions to be executed during a disconnect; in order to still be able to
     /// communicate with the peer in the usual manner, only its `SocketAddr` (as opposed
     /// to the related `Connection` object) is provided as an argument.
     async fn handle_disconnect(&self, addr: SocketAddr);
+}
+
+/// The handler object dedicated to the `Disconnect` protocol.
+pub struct DisconnectHandler(mpsc::Sender<ReturnableItem<SocketAddr, ()>>);
+
+#[async_trait::async_trait]
+impl ProtocolHandler for DisconnectHandler {
+    type Item = ReturnableItem<SocketAddr, ()>;
+
+    async fn trigger(&self, item: ReturnableItem<SocketAddr, ()>) {
+        if self.0.send(item).await.is_err() {
+            unreachable!(); // protocol's task is down! can't recover
+        }
+    }
 }

@@ -1,14 +1,17 @@
-use crate::{protocols::ReturnableConnection, Pea2Pea};
+use crate::{
+    protocols::{ProtocolHandler, ReturnableConnection},
+    Pea2Pea,
+};
 
 use async_trait::async_trait;
-use bytes::Bytes;
+use parking_lot::RwLock;
 use tokio::{
     io::{AsyncWrite, AsyncWriteExt},
     sync::mpsc,
 };
 use tracing::*;
 
-use std::{io, net::SocketAddr};
+use std::{any::Any, collections::HashMap, io, net::SocketAddr};
 
 /// Can be used to specify and enable writing, i.e. sending outbound messages.
 /// If handshaking is enabled too, it goes into force only after the handshake has been concluded.
@@ -17,6 +20,17 @@ pub trait Writing: Pea2Pea
 where
     Self: Clone + Send + Sync + 'static,
 {
+    /// The type of the outbound messages before serialization (which should ideally happen
+    /// in `Writing::write_message`); the `Clone` constraint is for broadcasting purposes only.
+    type Message: Clone + Send;
+
+    /// Sets up the writing handler, as part of enabling the `Writing` protocol.
+    fn set_writing_handler(&self, handler: WritingHandler) {
+        if self.node().protocols.writing_handler.set(handler).is_err() {
+            panic!("the writing_handler field was set more than once!");
+        }
+    }
+
     /// Prepares the node to send messages.
     fn enable_writing(&self) {
         let (conn_sender, mut conn_receiver) = mpsc::channel::<ReturnableConnection>(
@@ -36,7 +50,15 @@ where
 
                 let (outbound_message_sender, mut outbound_message_receiver) =
                     mpsc::channel(self_clone.node().config().outbound_queue_depth);
-                conn.outbound_message_sender = Some(outbound_message_sender);
+
+                if let Some(handler) = self_clone.node().protocols.writing_handler.get() {
+                    handler
+                        .senders
+                        .write()
+                        .insert(addr, outbound_message_sender);
+                } else {
+                    unreachable!();
+                }
 
                 // the task for writing outbound messages
                 let writer_clone = self_clone.clone();
@@ -47,8 +69,10 @@ where
                     // TODO: when try_recv is available in tokio again (https://github.com/tokio-rs/tokio/issues/3350),
                     // use try_recv() in order to write to the stream less often
                     while let Some(msg) = outbound_message_receiver.recv().await {
+                        let msg = msg.downcast::<Self::Message>().unwrap();
+
                         match writer_clone
-                            .write_to_stream(&msg, addr, &mut buffer, &mut writer)
+                            .write_to_stream(*msg, addr, &mut buffer, &mut writer)
                             .await
                         {
                             Ok(len) => {
@@ -77,20 +101,25 @@ where
         });
         self.node().tasks.lock().push(writing_task);
 
+        let handler = WritingHandler {
+            handler: conn_sender,
+            senders: Default::default(),
+        };
+
         // register the WritingHandler with the Node
-        self.node().set_writing_handler(conn_sender.into());
+        self.set_writing_handler(handler);
     }
 
     /// Writes the given message to the provided writer, using the provided intermediate buffer; returns the number of
     /// bytes written to the writer.
     async fn write_to_stream<W: AsyncWrite + Unpin + Send>(
         &self,
-        message: &[u8],
+        message: Self::Message,
         addr: SocketAddr,
         buffer: &mut Vec<u8>,
         writer: &mut W,
     ) -> io::Result<usize> {
-        self.write_message(addr, message, buffer)?;
+        self.write_message(addr, &message, buffer)?;
         let len = buffer.len();
         writer.write_all(buffer).await?;
         buffer.clear();
@@ -104,30 +133,56 @@ where
     fn write_message<W: io::Write>(
         &self,
         target: SocketAddr,
-        payload: &[u8],
+        message: &Self::Message,
         writer: &mut W,
     ) -> io::Result<()>;
 
     /// Sends the provided message to the specified `SocketAddr`.
-    fn send_direct_message(&self, addr: SocketAddr, message: Bytes) -> io::Result<()> {
-        self.node()
-            .connections()
-            .sender(addr)?
-            .try_send(message)
-            .map_err(|e| {
+    fn send_direct_message(&self, addr: SocketAddr, message: Self::Message) -> io::Result<()> {
+        if let Some(sender) = self
+            .node()
+            .protocols
+            .writing_handler
+            .get()
+            .and_then(|h| h.senders.read().get(&addr).cloned())
+        {
+            sender.try_send(Box::new(message)).map_err(|e| {
                 error!(parent: self.node().span(), "can't send a message to {}: {}", addr, e);
                 self.node().stats().register_failure();
                 io::ErrorKind::Other.into()
             })
+        } else {
+            Err(io::ErrorKind::Unsupported.into())
+        }
     }
 
     /// Broadcasts the provided message to all peers.
-    fn send_broadcast(&self, message: Bytes) {
-        for (message_sender, addr) in self.node().connections().senders() {
-            let _ = message_sender.try_send(message.clone()).map_err(|e| {
-                error!(parent: self.node().span(), "can't send a message to {}: {}", addr, e);
-                self.node().stats().register_failure();
-            });
+    fn send_broadcast(&self, message: Self::Message) {
+        if let Some(handler) = self.node().protocols.writing_handler.get() {
+            let senders = handler.senders.read().clone();
+            for (addr, message_sender) in senders {
+                let _ = message_sender.try_send(Box::new(message.clone())).map_err(|e| {
+                    error!(parent: self.node().span(), "can't send a message to {}: {}", addr, e);
+                    self.node().stats().register_failure();
+                });
+            }
+        }
+    }
+}
+
+/// The handler object dedicated to the `Writing` protocol.
+pub struct WritingHandler {
+    handler: mpsc::Sender<ReturnableConnection>,
+    pub(crate) senders: RwLock<HashMap<SocketAddr, mpsc::Sender<Box<dyn Any + Send>>>>,
+}
+
+#[async_trait::async_trait]
+impl ProtocolHandler for WritingHandler {
+    type Item = ReturnableConnection;
+
+    async fn trigger(&self, item: ReturnableConnection) {
+        if self.handler.send(item).await.is_err() {
+            unreachable!(); // protocol's task is down! can't recover
         }
     }
 }

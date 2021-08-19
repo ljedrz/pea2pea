@@ -1,6 +1,6 @@
 use crate::{
     connections::{Connection, ConnectionSide, Connections},
-    protocols::{ProtocolHandler, Protocols, ReturnableConnection, ReturnableItem},
+    protocols::{ProtocolHandler, Protocols},
     Config, KnownPeers, Stats,
 };
 
@@ -28,7 +28,7 @@ macro_rules! enable_protocol {
         if let Some(handler) = $node.protocols.$handler_type.get() {
             let (conn_returner, conn_retriever) = oneshot::channel();
 
-            handler.send(($conn, conn_returner)).await;
+            handler.trigger(($conn, conn_returner)).await;
 
             match conn_retriever.await {
                 Ok(Ok(conn)) => conn,
@@ -65,7 +65,7 @@ pub struct InnerNode {
     /// The node's listening address.
     listening_addr: Option<SocketAddr>,
     /// Contains objects used by the protocols implemented by the node.
-    protocols: Protocols,
+    pub(crate) protocols: Protocols,
     /// A list of connections that have not been finalized yet.
     connecting: Mutex<HashSet<SocketAddr>>,
     /// Contains objects related to the node's active connections.
@@ -309,7 +309,7 @@ impl Node {
             if self.is_connected(addr) {
                 let (sender, receiver) = oneshot::channel();
 
-                handler.send((addr, sender)).await;
+                handler.trigger((addr, sender)).await;
                 let _ = receiver.await; // can't really fail
             }
         }
@@ -322,6 +322,11 @@ impl Node {
             // shut the associated tasks down
             for task in conn.tasks.iter().rev() {
                 task.abort();
+            }
+
+            // drop the associated outbound message sender if Writing is enabled
+            if let Some(handler) = self.protocols.writing_handler.get() {
+                handler.senders.write().remove(&addr);
             }
 
             // if the (owning) node was not the initiator of the connection, it doesn't know the listening address
@@ -337,11 +342,6 @@ impl Node {
         }
 
         conn.is_some()
-    }
-
-    /// Returns the active connections.
-    pub(crate) fn connections(&self) -> &Connections {
-        &self.connections
     }
 
     /// Returns a list containing addresses of active connections.
@@ -378,34 +378,6 @@ impl Node {
             false
         } else {
             true
-        }
-    }
-
-    /// Sets up the handshake handler, as part of the `Handshaking` protocol.
-    pub fn set_handshake_handler(&self, handler: ProtocolHandler<ReturnableConnection>) {
-        if self.protocols.handshake_handler.set(handler).is_err() {
-            panic!("the handshake_handler field was set more than once!");
-        }
-    }
-
-    /// Sets up the reading handler, as part of enabling the `Reading` protocol.
-    pub fn set_reading_handler(&self, handler: ProtocolHandler<ReturnableConnection>) {
-        if self.protocols.reading_handler.set(handler).is_err() {
-            panic!("the reading_handler field was set more than once!");
-        }
-    }
-
-    /// Sets up the writing handler, as part of enabling the `Writing` protocol.
-    pub fn set_writing_handler(&self, handler: ProtocolHandler<ReturnableConnection>) {
-        if self.protocols.writing_handler.set(handler).is_err() {
-            panic!("the writing_handler field was set more than once!");
-        }
-    }
-
-    /// Sets up the disconnect handler, as part of enabling the `Disconnect` protocol.
-    pub fn set_disconnect_handler(&self, handler: ProtocolHandler<ReturnableItem<SocketAddr, ()>>) {
-        if self.protocols.disconnect_handler.set(handler).is_err() {
-            panic!("the disconnect_handler field was set more than once!");
         }
     }
 

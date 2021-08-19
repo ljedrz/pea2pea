@@ -1,6 +1,5 @@
 mod common;
 
-use bytes::Bytes;
 use tokio::time::sleep;
 use tracing::*;
 use tracing_subscriber::filter::LevelFilter;
@@ -72,11 +71,10 @@ impl Reading for Player {
         );
 
         let connected_addrs = self.node().connected_addrs();
-        let message_bytes = Bytes::from(message.into_bytes());
 
         // there are just a maximum of 2 connections, so this is sufficient
-        for addr in connected_addrs.into_iter().filter(|addr| *addr != source) {
-            self.send_direct_message(addr, message_bytes.clone())?;
+        if let Some(addr) = connected_addrs.into_iter().find(|addr| *addr != source) {
+            self.send_direct_message(addr, message)?;
         }
 
         Ok(())
@@ -84,14 +82,16 @@ impl Reading for Player {
 }
 
 impl Writing for Player {
+    type Message = String;
+
     fn write_message<W: io::Write>(
         &self,
         _: SocketAddr,
-        payload: &[u8],
+        payload: &Self::Message,
         writer: &mut W,
     ) -> io::Result<()> {
         writer.write_all(&(payload.len() as u16).to_le_bytes())?;
-        writer.write_all(payload)
+        writer.write_all(payload.as_bytes())
     }
 }
 
@@ -118,7 +118,7 @@ async fn main() {
     players[0]
         .send_direct_message(
             players[1].node().listening_addr().unwrap(),
-            message.as_bytes().into(),
+            message.to_string(),
         )
         .unwrap();
 

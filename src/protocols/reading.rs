@@ -1,4 +1,7 @@
-use crate::{protocols::ReturnableConnection, Pea2Pea};
+use crate::{
+    protocols::{ProtocolHandler, ReturnableConnection},
+    Pea2Pea,
+};
 
 use async_trait::async_trait;
 use tokio::{
@@ -19,6 +22,13 @@ where
 {
     /// The final (deserialized) type of inbound messages.
     type Message: Send;
+
+    /// Sets up the reading handler, as part of enabling the `Reading` protocol.
+    fn set_reading_handler(&self, handler: ReadingHandler) {
+        if self.node().protocols.reading_handler.set(handler).is_err() {
+            panic!("the reading_handler field was set more than once!");
+        }
+    }
 
     /// Prepares the node to receive messages; failures to read from a connection's stream are penalized by a timeout
     /// defined in `Config`, while broken/unreadable messages result in an immediate disconnect (in order to avoid
@@ -102,7 +112,7 @@ where
         self.node().tasks.lock().push(reading_task);
 
         // register the ReadingHandler with the Node
-        self.node().set_reading_handler(conn_sender.into());
+        self.set_reading_handler(ReadingHandler(conn_sender));
     }
 
     /// Performs a read from the given reader. The default implementation is buffered; it sacrifices a bit of
@@ -225,5 +235,19 @@ where
     async fn process_message(&self, source: SocketAddr, message: Self::Message) -> io::Result<()> {
         // don't do anything by default
         Ok(())
+    }
+}
+
+/// The handler object dedicated to the `Reading` protocol.
+pub struct ReadingHandler(mpsc::Sender<ReturnableConnection>);
+
+#[async_trait::async_trait]
+impl ProtocolHandler for ReadingHandler {
+    type Item = ReturnableConnection;
+
+    async fn trigger(&self, item: ReturnableConnection) {
+        if self.0.send(item).await.is_err() {
+            unreachable!(); // protocol's task is down! can't recover
+        }
     }
 }

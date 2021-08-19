@@ -167,19 +167,20 @@ impl Reading for SecureNode {
 }
 
 impl Writing for SecureNode {
+    type Message = String;
+
     fn write_message<W: io::Write>(
         &self,
         target: SocketAddr,
-        payload: &[u8],
+        payload: &Self::Message,
         writer: &mut W,
     ) -> io::Result<()> {
-        let to_encrypt = str::from_utf8(payload).unwrap();
-        info!(parent: self.node.span(), "sending an encrypted message to {}: \"{}\"", target, to_encrypt);
+        info!(parent: self.node.span(), "sending an encrypted message to {}: \"{}\"", target, payload);
 
         let noise = Arc::clone(self.noise_states.read().get(&target).unwrap());
 
         let NoiseState { state, buffer } = &mut *noise.lock();
-        let len = state.write_message(payload, buffer).unwrap();
+        let len = state.write_message(payload.as_bytes(), buffer).unwrap();
         let encrypted_message = &buffer[..len];
 
         writer.write_all(&(len as u16).to_le_bytes())?;
@@ -211,16 +212,16 @@ async fn main() {
     sleep(Duration::from_millis(10)).await;
 
     // send a message from initiator to responder
-    let msg = b"why hello there, fellow noise protocol user; I'm the initiator";
+    let msg = "why hello there, fellow noise protocol user; I'm the initiator";
     initiator
-        .send_direct_message(responder.node().listening_addr().unwrap(), msg[..].into())
+        .send_direct_message(responder.node().listening_addr().unwrap(), msg.to_string())
         .unwrap();
 
     // send a message from responder to initiator; determine the latter's address first
     let initiator_addr = responder.node().connected_addrs()[0];
-    let msg = b"why hello there, fellow noise protocol user; I'm the responder";
+    let msg = "why hello there, fellow noise protocol user; I'm the responder";
     responder
-        .send_direct_message(initiator_addr, msg[..].into())
+        .send_direct_message(initiator_addr, msg.to_string())
         .unwrap();
 
     sleep(Duration::from_millis(10)).await;

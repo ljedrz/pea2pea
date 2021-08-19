@@ -1,6 +1,5 @@
 mod common;
 
-use bytes::Bytes;
 use tokio::time::sleep;
 use tracing::*;
 use tracing_subscriber::filter::LevelFilter;
@@ -44,9 +43,9 @@ impl Handshaking for JoJoNode {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 enum BattleCry {
-    Ora,
+    Ora = 0,
     Muda,
 }
 
@@ -86,24 +85,25 @@ impl Reading for JoJoNode {
             BattleCry::Muda => BattleCry::Ora,
         };
 
-        self.send_direct_message(source, Bytes::copy_from_slice(&[reply as u8]))
+        self.send_direct_message(source, reply)
     }
 }
 
 impl Writing for JoJoNode {
+    type Message = BattleCry;
+
     fn write_message<W: io::Write>(
         &self,
         _: SocketAddr,
-        payload: &[u8],
+        payload: &Self::Message,
         writer: &mut W,
     ) -> io::Result<()> {
-        writer.write_all(&payload[..1])?;
-        let battle_cry = BattleCry::from(payload[0]);
+        writer.write_all(&[*payload as u8])?;
 
-        if battle_cry == BattleCry::Ora {
-            info!(parent: self.node().span(), "{:?}!", battle_cry);
+        if *payload == BattleCry::Ora {
+            info!(parent: self.node().span(), "{:?}!", payload);
         } else {
-            warn!(parent: self.node().span(), "{:?}!", battle_cry);
+            warn!(parent: self.node().span(), "{:?}!", payload);
         };
 
         Ok(())
@@ -127,6 +127,7 @@ async fn main() {
         ..Default::default()
     };
     let dio = JoJoNode(Node::new(Some(config)).await.unwrap());
+    let dio_addr = dio.node().listening_addr().unwrap();
 
     for node in &[&jotaro, &dio] {
         node.enable_handshaking();
@@ -134,19 +135,12 @@ async fn main() {
         node.enable_writing();
     }
 
-    jotaro
-        .node()
-        .connect(dio.node().listening_addr().unwrap())
-        .await
-        .unwrap();
+    jotaro.node().connect(dio_addr).await.unwrap();
 
     sleep(Duration::from_secs(3)).await;
 
     jotaro
-        .send_direct_message(
-            dio.node().listening_addr().unwrap(),
-            Bytes::copy_from_slice(&[BattleCry::Ora as u8]),
-        )
+        .send_direct_message(dio_addr, BattleCry::Ora)
         .unwrap();
 
     sleep(Duration::from_secs(3)).await;

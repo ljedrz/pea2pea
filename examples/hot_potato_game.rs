@@ -57,8 +57,7 @@ impl Player {
 
     fn throw_potato(&self) {
         let message = Message::IHaveThePotato(self.node().name().into());
-        let message = bincode::serialize(&message).unwrap();
-        self.send_broadcast(message.into());
+        self.send_broadcast(message);
 
         let (new_carrier_name, new_carrier_addr) = self
             .other_players
@@ -70,8 +69,7 @@ impl Player {
 
         info!(parent: self.node().span(), "throwing the potato to player {}!", new_carrier_name);
 
-        let message = bincode::serialize(&Message::HotPotato).unwrap();
-        self.send_direct_message(new_carrier_addr, message.into())
+        self.send_direct_message(new_carrier_addr, Message::HotPotato)
             .unwrap();
     }
 }
@@ -122,7 +120,7 @@ impl Handshaking for Player {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 enum Message {
     HotPotato,
     IHaveThePotato(PlayerName),
@@ -177,14 +175,18 @@ impl Reading for Player {
 }
 
 impl Writing for Player {
+    type Message = Message;
+
     fn write_message<W: io::Write>(
         &self,
         _: SocketAddr,
-        payload: &[u8],
+        payload: &Self::Message,
         writer: &mut W,
     ) -> io::Result<()> {
-        writer.write_all(&(payload.len() as u16).to_le_bytes())?;
-        writer.write_all(payload)
+        let payload_len = bincode::serialized_size(payload).unwrap() as u16;
+        writer.write_all(&payload_len.to_le_bytes())?;
+        bincode::serialize_into(writer, payload)
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
     }
 }
 

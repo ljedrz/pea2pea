@@ -1,4 +1,7 @@
-use crate::{protocols::ReturnableConnection, Connection, Pea2Pea};
+use crate::{
+    protocols::{ProtocolHandler, ReturnableConnection},
+    Connection, Pea2Pea,
+};
 
 use tokio::{sync::mpsc, task, time::timeout};
 use tracing::*;
@@ -13,6 +16,19 @@ pub trait Handshaking: Pea2Pea
 where
     Self: Clone + Send + Sync + 'static,
 {
+    /// Sets up the handshake handler, as part of the `Handshaking` protocol.
+    fn set_handshake_handler(&self, handler: HandshakingHandler) {
+        if self
+            .node()
+            .protocols
+            .handshake_handler
+            .set(handler)
+            .is_err()
+        {
+            panic!("the handshake_handler field was set more than once!");
+        }
+    }
+
     /// Prepares the node to perform specified network handshakes.
     fn enable_handshaking(&self) {
         let (from_node_sender, mut from_node_receiver) = mpsc::channel::<ReturnableConnection>(
@@ -60,10 +76,24 @@ where
         });
         self.node().tasks.lock().push(handshaking_task);
 
-        self.node().set_handshake_handler(from_node_sender.into());
+        self.set_handshake_handler(HandshakingHandler(from_node_sender));
     }
 
     /// Performs the handshake; temporarily assumes control of the `Connection` and returns it if the handshake is
     /// successful.
     async fn perform_handshake(&self, conn: Connection) -> io::Result<Connection>;
+}
+
+/// The handler object dedicated to the `Handshaking` protocol.
+pub struct HandshakingHandler(mpsc::Sender<ReturnableConnection>);
+
+#[async_trait::async_trait]
+impl ProtocolHandler for HandshakingHandler {
+    type Item = ReturnableConnection;
+
+    async fn trigger(&self, item: ReturnableConnection) {
+        if self.0.send(item).await.is_err() {
+            unreachable!(); // protocol's task is down! can't recover
+        }
+    }
 }

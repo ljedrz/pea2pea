@@ -117,12 +117,12 @@ macro_rules! impl_messaging {
     ($target: ty) => {
         #[async_trait::async_trait]
         impl Reading for $target {
-            type Message = Bytes;
+            type Message = bytes::Bytes;
 
             fn read_message<R: io::Read>(&self, _source: SocketAddr, reader: &mut R) -> io::Result<Option<Self::Message>> {
                 let vec = crate::common::read_len_prefixed_message::<R, 4>(reader)?;
 
-                Ok(vec.map(Bytes::from))
+                Ok(vec.map(bytes::Bytes::from))
             }
 
             async fn process_message(&self, source: SocketAddr, _message: Self::Message) -> io::Result<()> {
@@ -133,9 +133,11 @@ macro_rules! impl_messaging {
         }
 
         impl Writing for $target {
-            fn write_message<W: io::Write>(&self, _target: SocketAddr, payload: &[u8], writer: &mut W) -> io::Result<()> {
+            type Message = bytes::Bytes;
+
+            fn write_message<W: io::Write>(&self, _target: SocketAddr, payload: &Self::Message, writer: &mut W) -> io::Result<()> {
                 writer.write_all(&(payload.len() as u32).to_le_bytes())?;
-                writer.write_all(&payload)
+                writer.write_all(payload)
             }
         }
     };

@@ -1,40 +1,22 @@
 //! Objects associated with connection handling.
 
-use bytes::Bytes;
 use parking_lot::RwLock;
 use tokio::{
     net::{
         tcp::{OwnedReadHalf, OwnedWriteHalf},
         TcpStream,
     },
-    sync::mpsc::Sender,
     task::JoinHandle,
 };
 
-use std::{collections::HashMap, io, net::SocketAddr, ops::Not};
+use std::{collections::HashMap, net::SocketAddr, ops::Not};
 
 #[derive(Default)]
 pub(crate) struct Connections(RwLock<HashMap<SocketAddr, Connection>>);
 
 impl Connections {
-    pub(crate) fn sender(&self, addr: SocketAddr) -> io::Result<Sender<Bytes>> {
-        if let Some(conn) = self.0.read().get(&addr) {
-            conn.sender()
-        } else {
-            Err(io::ErrorKind::NotConnected.into())
-        }
-    }
-
     pub(crate) fn add(&self, conn: Connection) {
         self.0.write().insert(conn.addr, conn);
-    }
-
-    pub(crate) fn senders(&self) -> Vec<(Sender<Bytes>, SocketAddr)> {
-        self.0
-            .read()
-            .values()
-            .filter_map(|conn| conn.sender().ok().map(|sender| (sender, conn.addr)))
-            .collect()
     }
 
     pub(crate) fn is_connected(&self, addr: SocketAddr) -> bool {
@@ -85,8 +67,6 @@ pub struct Connection {
     pub writer: Option<OwnedWriteHalf>,
     /// Handles to tasks spawned by the connection.
     pub tasks: Vec<JoinHandle<()>>,
-    /// Used to queue writes to the stream.
-    pub outbound_message_sender: Option<Sender<Bytes>>,
     /// The connection's side in relation to the node.
     pub side: ConnectionSide,
 }
@@ -102,7 +82,6 @@ impl Connection {
             writer: Some(writer),
             side,
             tasks: Default::default(),
-            outbound_message_sender: Default::default(),
         }
     }
 
@@ -118,14 +97,5 @@ impl Connection {
         self.writer
             .as_mut()
             .expect("Connection's writer is not available!")
-    }
-
-    /// Returns a `Sender` for outbound messages, as long as `Writing` is enabled.
-    fn sender(&self) -> io::Result<Sender<Bytes>> {
-        if let Some(ref sender) = self.outbound_message_sender {
-            Ok(sender.clone())
-        } else {
-            Err(io::ErrorKind::Unsupported.into())
-        }
     }
 }

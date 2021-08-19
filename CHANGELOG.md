@@ -3,6 +3,11 @@
 ### Changed
 
 - moved `Node::{send_broadcast, send_direct_message}` to `Writing`
+- the way the protocols are structured
+
+### Removed
+
+- the `bytes` dependency (no longer mandatory)
 
 # 0.26.1
 

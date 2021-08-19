@@ -70,10 +70,12 @@ impl Reading for EchoNode {
 }
 
 impl Writing for EchoNode {
+    type Message = Bytes;
+
     fn write_message<W: io::Write>(
         &self,
         _: SocketAddr,
-        payload: &[u8],
+        payload: &Self::Message,
         writer: &mut W,
     ) -> io::Result<()> {
         writer.write_all(&(payload.len() as u32).to_le_bytes())?;
