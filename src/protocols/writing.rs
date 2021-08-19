@@ -17,8 +17,9 @@ pub trait Writing: Pea2Pea
 where
     Self: Clone + Send + Sync + 'static,
 {
-    /// The type of the outbound messages before serialization (which should ideally happen
-    /// in `Writing::write_message`).
+    /// The type of the outbound messages; unless their serialization is expensive and the message
+    /// is broadcasted (in which case it would get serialized multiple times), serialization should
+    /// be done in `Writing::write_message`.
     type Message: Send;
 
     /// Prepares the node to send messages.
