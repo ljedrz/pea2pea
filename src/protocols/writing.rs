@@ -18,8 +18,8 @@ where
     Self: Clone + Send + Sync + 'static,
 {
     /// The type of the outbound messages before serialization (which should ideally happen
-    /// in `Writing::write_message`); the `Clone` constraint is for broadcasting purposes only.
-    type Message: Clone + Send;
+    /// in `Writing::write_message`).
+    type Message: Send;
 
     /// Prepares the node to send messages.
     fn enable_writing(&self) {
@@ -148,7 +148,10 @@ where
     }
 
     /// Broadcasts the provided message to all peers.
-    fn send_broadcast(&self, message: Self::Message) {
+    fn send_broadcast(&self, message: Self::Message)
+    where
+        Self::Message: Clone,
+    {
         if let Some(handler) = self.node().protocols.writing_handler.get() {
             let senders = handler.senders.read().clone();
             for (addr, message_sender) in senders {
