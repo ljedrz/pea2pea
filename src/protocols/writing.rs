@@ -21,13 +21,6 @@ where
     /// in `Writing::write_message`); the `Clone` constraint is for broadcasting purposes only.
     type Message: Clone + Send;
 
-    /// Sets up the writing handler, as part of enabling the `Writing` protocol.
-    fn set_writing_handler(&self, handler: WritingHandler) {
-        if self.node().protocols.writing_handler.set(handler).is_err() {
-            panic!("the writing_handler field was set more than once!");
-        }
-    }
-
     /// Prepares the node to send messages.
     fn enable_writing(&self) {
         let (conn_sender, mut conn_receiver) = mpsc::channel::<ReturnableConnection>(
@@ -98,13 +91,14 @@ where
         });
         self.node().tasks.lock().push(writing_task);
 
-        let handler = WritingHandler {
+        // register the WritingHandler with the Node
+        let hdl = WritingHandler {
             handler: conn_sender,
             senders: Default::default(),
         };
-
-        // register the WritingHandler with the Node
-        self.set_writing_handler(handler);
+        if self.node().protocols.writing_handler.set(hdl).is_err() {
+            panic!("the Writing protocol was enabled more than once!");
+        }
     }
 
     /// Writes the given message to the provided writer, using the provided intermediate buffer; returns the number of

@@ -20,13 +20,6 @@ where
     /// The final (deserialized) type of inbound messages.
     type Message: Send;
 
-    /// Sets up the reading handler, as part of enabling the `Reading` protocol.
-    fn set_reading_handler(&self, handler: ReadingHandler) {
-        if self.node().protocols.reading_handler.set(handler).is_err() {
-            panic!("the reading_handler field was set more than once!");
-        }
-    }
-
     /// Prepares the node to receive messages; failures to read from a connection's stream are penalized by a timeout
     /// defined in `Config`, while broken/unreadable messages result in an immediate disconnect (in order to avoid
     /// accidentally reading "borked" messages).
@@ -109,7 +102,10 @@ where
         self.node().tasks.lock().push(reading_task);
 
         // register the ReadingHandler with the Node
-        self.set_reading_handler(ReadingHandler(conn_sender));
+        let hdl = ReadingHandler(conn_sender);
+        if self.node().protocols.reading_handler.set(hdl).is_err() {
+            panic!("the Reading protocol was enabled more than once!");
+        }
     }
 
     /// Performs a read from the given reader. The default implementation is buffered; it sacrifices a bit of

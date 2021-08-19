@@ -17,19 +17,6 @@ pub trait Disconnect: Pea2Pea
 where
     Self: Clone + Send + Sync + 'static,
 {
-    /// Sets up the disconnect handler, as part of enabling the `Disconnect` protocol.
-    fn set_disconnect_handler(&self, handler: DisconnectHandler) {
-        if self
-            .node()
-            .protocols
-            .disconnect_handler
-            .set(handler)
-            .is_err()
-        {
-            panic!("the disconnect_handler field was set more than once!");
-        }
-    }
-
     /// Attaches the behavior specified in `Disconnect::handle_disconnect` to every occurrence of the
     /// node disconnecting from a peer.
     fn enable_disconnect(&self) {
@@ -56,7 +43,11 @@ where
         });
         self.node().tasks.lock().push(disconnect_task);
 
-        self.set_disconnect_handler(DisconnectHandler(from_node_sender));
+        // register the DisconnectHandler with the Node
+        let hdl = DisconnectHandler(from_node_sender);
+        if self.node().protocols.disconnect_handler.set(hdl).is_err() {
+            panic!("the Disconnect protocol was enabled more than once!");
+        }
     }
 
     /// The extra actions to be executed during a disconnect; in order to still be able to

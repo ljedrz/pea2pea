@@ -13,19 +13,6 @@ pub trait Handshake: Pea2Pea
 where
     Self: Clone + Send + Sync + 'static,
 {
-    /// Sets up the handshake handler, as part of the `Handshake` protocol.
-    fn set_handshake_handler(&self, handler: HandshakeHandler) {
-        if self
-            .node()
-            .protocols
-            .handshake_handler
-            .set(handler)
-            .is_err()
-        {
-            panic!("the handshake_handler field was set more than once!");
-        }
-    }
-
     /// Prepares the node to perform specified network handshakes.
     fn enable_handshake(&self) {
         let (from_node_sender, mut from_node_receiver) = mpsc::channel::<ReturnableConnection>(
@@ -73,7 +60,11 @@ where
         });
         self.node().tasks.lock().push(handshake_task);
 
-        self.set_handshake_handler(HandshakeHandler(from_node_sender));
+        // register the HandshakeHandler with the Node
+        let hdl = HandshakeHandler(from_node_sender);
+        if self.node().protocols.handshake_handler.set(hdl).is_err() {
+            panic!("the Handshake protocol was enabled more than once!");
+        }
     }
 
     /// Performs the handshake; temporarily assumes control of the `Connection` and returns it if the handshake is
