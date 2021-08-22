@@ -1,6 +1,6 @@
 [package]
 name = "pea2pea"
-version = "0.27.0"
+version = "0.27.1"
 authors = ["ljedrz <ljedrz@gmail.com>"]
 edition = "2018"
 description = "A small library allowing simple and quick creation of custom P2P nodes and networks."

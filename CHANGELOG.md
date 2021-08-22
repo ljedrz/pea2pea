@@ -1,3 +1,9 @@
+# 0.27.1
+
+### Changed
+
+- set the `tokio` version to `1.10` due to the `RUSTSEC-2021-0072` security advisory
+
 # 0.27.0
 
 ### Changed
