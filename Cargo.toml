@@ -21,7 +21,7 @@ test = []
 async-trait = "0.1"
 once_cell = { version = "1", features = ["parking_lot"] }
 parking_lot = "0.11"
-tokio = { version = "1", features = ["io-util", "net", "parking_lot", "rt", "sync", "time"] }
+tokio = { version = "1.10", features = ["io-util", "net", "parking_lot", "rt", "sync", "time"] }
 tracing = { version = "0.1", default-features = false }
 
 [dev-dependencies]
@@ -32,6 +32,6 @@ peak_alloc = "0.1"
 rand = { version = "0.8", default-features = false, features = ["getrandom", "small_rng"] }
 serde = { version = "1", default-features = false, features = ["derive"] }
 snow = "0.8"
-tokio = { version = "1.0", features = ["macros", "rt-multi-thread"] }
+tokio = { version = "1.10", features = ["macros", "rt-multi-thread"] }
 tracing-subscriber = { version = "0.2", default-features = false, features = ["ansi", "env-filter", "fmt", "parking_lot", "smallvec"] }
 pea2pea = { path = ".", features = ["test"] } # a workaround to use the `test` feature in tests by default
