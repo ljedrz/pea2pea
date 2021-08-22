@@ -56,22 +56,6 @@ impl Reading for Sink {
     }
 }
 
-fn display_throughput(bytes: f64) -> String {
-    const GB: f64 = 1_000_000_000.0;
-    const MB: f64 = 1_000_000.0;
-    const KB: f64 = 1_000.0;
-
-    if bytes >= GB {
-        format!("{:.2} GB/s", bytes / GB)
-    } else if bytes >= MB {
-        format!("{:.2} MB/s", bytes / MB)
-    } else if bytes >= KB {
-        format!("{:.2} KB/s", bytes / KB)
-    } else {
-        format!("{:.2} B/s", bytes)
-    }
-}
-
 #[derive(Debug)]
 struct BenchParams {
     spammer_count: usize,
@@ -134,7 +118,7 @@ async fn run_bench_scenario(sender_count: usize) -> f64 {
     let time_elapsed = start.elapsed().as_millis();
     let bytes_received = sink.node().stats().received().1;
 
-    (bytes_received as f64) / (time_elapsed as f64 / 100.0)
+    (bytes_received as f64) / (time_elapsed as f64 / 1000.0)
 }
 
 #[ignore]
@@ -144,13 +128,13 @@ async fn bench_spam_to_one() {
     for sender_count in &[1, 10, 20, 50, 100] {
         let throughput = run_bench_scenario(*sender_count).await;
         println!(
-            "throughput with {:>3} sender(s), 1 receiver: {}",
+            "throughput with {:>3} sender(s), 1 receiver: {}/s",
             sender_count,
-            display_throughput(throughput)
+            common::display_bytes(throughput)
         );
         results.push(throughput);
     }
 
     let avg_throughput = results.iter().sum::<f64>() / results.len() as f64;
-    println!("\naverage: {}", display_throughput(avg_throughput));
+    println!("\naverage: {}/s", common::display_bytes(avg_throughput));
 }
