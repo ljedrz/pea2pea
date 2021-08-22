@@ -109,9 +109,7 @@ where
     }
 
     /// Performs a read from the given reader. The default implementation is buffered; it sacrifices a bit of
-    /// simplicity for better performance. Read messages are sent to a message processing task in order to enable
-    /// faster reads. Returns the number of pending bytes left in the buffer in case of an incomplete read; they
-    /// should be provided to the medthod on the next call as `carry`.
+    /// simplicity for better performance.
     async fn read_from_stream<R: AsyncRead + Unpin + Send>(
         &self,
         addr: SocketAddr,
@@ -126,89 +124,104 @@ where
         let max_read_size = self.node().config().read_buffer_size - carry;
         let mut read_handle = reader.take(max_read_size as u64);
 
-        // perform a read from the stream
-        match read_handle.read_buf(buffer).await {
+        // perform a read from the stream into the provided buffer
+        let read_result = read_handle.read_buf(buffer).await;
+
+        match read_result {
             Ok(0) => Err(io::ErrorKind::UnexpectedEof.into()),
-            Ok(read_len) => {
-                // the number of bytes left to *process* - this includes the initial carried bytes and the read
-                let mut left = carry + read_len;
-
-                trace!(parent: self.node().span(), "read {}B from {}; {}B left to process", read_len, addr, left);
-
-                // wrap the read buffer in a reader
-                let mut buf_reader = io::Cursor::new(&buffer[..left]);
-
-                // several messages could have been read at once; process the contents of the buffer
-                loop {
-                    // the position in the buffer before the message read attempt
-                    let initial_buf_pos = buf_reader.position() as usize;
-
-                    // try to read a single message from the buffer
-                    let read = self.read_message(addr, &mut buf_reader);
-
-                    // the position in the buffer after the read attempt
-                    let post_read_buf_pos = buf_reader.position() as usize;
-
-                    // register the number of bytes that were processed by the Reading::read_message call above
-                    let parse_size = post_read_buf_pos - initial_buf_pos;
-
-                    match read {
-                        // a full message was read successfully
-                        Ok(Some(msg)) => {
-                            // subtract the number of successfully processed bytes from the ones left to process
-                            left -= parse_size;
-
-                            trace!(parent: self.node().span(), "isolated a {}B message from {}", parse_size, addr);
-
-                            self.node()
-                                .known_peers()
-                                .register_received_message(addr, parse_size);
-                            self.node().stats().register_received_message(parse_size);
-
-                            // send the message for further processing
-                            if let Err(e) = message_sender.try_send(msg) {
-                                error!(parent: self.node().span(), "can't process a message from {}: {}", addr, e);
-                                self.node().stats().register_failure();
-                            }
-
-                            // if the read is exhausted, clear the read buffer and return
-                            if left == 0 {
-                                buffer.clear();
-                                return Ok(());
-                            }
-                        }
-                        // the message in the buffer is incomplete
-                        Ok(None) => {
-                            // forbid messages that are larger than the read buffer
-                            if left > self.node().config().read_buffer_size {
-                                error!(parent: self.node().span(), "a message from {} is too large", addr);
-                                buffer.clear();
-                                return Err(io::ErrorKind::InvalidData.into());
-                            }
-
-                            trace!(parent: self.node().span(), "incomplete message from {}; carrying {}B over", addr, left);
-
-                            // move the leftover bytes to the beginning of the buffer; the next read will append bytes
-                            // starting from where the leftover ones end, allowing the message to be completed
-                            buffer.copy_within(initial_buf_pos..initial_buf_pos + left, 0);
-                            buffer.truncate(left);
-
-                            return Ok(());
-                        }
-                        // an erroneous message (e.g. an unexpected zero-length payload)
-                        Err(e) => {
-                            error!(parent: self.node().span(), "a message from {} is invalid", addr);
-                            buffer.clear();
-                            return Err(e);
-                        }
-                    }
-                }
-            }
-            // a stream read error
             Err(e) => {
                 error!(parent: self.node().span(), "can't read from {}: {}", addr, e);
                 buffer.clear();
                 Err(e)
+            }
+            Ok(read_len) => {
+                // the number of bytes left to *process* - this includes the initial carried bytes and the read
+                let left = carry + read_len;
+
+                trace!(parent: self.node().span(), "read {}B from {}; {}B left to process", read_len, addr, left);
+
+                self.process_buffer(addr, buffer, left, message_sender)
+            }
+        }
+    }
+
+    /// Attempts to isolate full messages from the connection's read buffer using `Reading::read_message`. Once
+    /// no more messages can be extracted, it preserves any leftover bytes and moves them to the beginning of the
+    /// buffer, so that further reads from the stream can attempt to re-use them. Read messages are sent to a
+    /// message processing task in order to enable faster reads.
+    fn process_buffer(
+        &self,
+        addr: SocketAddr,
+        buffer: &mut Vec<u8>,
+        mut left: usize,
+        message_sender: &mpsc::Sender<Self::Message>,
+    ) -> io::Result<()> {
+        // wrap the read buffer in a reader
+        let mut buf_reader = io::Cursor::new(&buffer[..left]);
+
+        // several messages could have been read at once; process the contents of the buffer
+        loop {
+            // the position in the buffer before the message read attempt
+            let initial_buf_pos = buf_reader.position() as usize;
+
+            // try to read a single message from the buffer
+            let read = self.read_message(addr, &mut buf_reader);
+
+            // the position in the buffer after the read attempt
+            let post_read_buf_pos = buf_reader.position() as usize;
+
+            // register the number of bytes that were processed by the Reading::read_message call above
+            let parse_size = post_read_buf_pos - initial_buf_pos;
+
+            match read {
+                // a full message was read successfully
+                Ok(Some(msg)) => {
+                    // subtract the number of successfully processed bytes from the ones left to process
+                    left -= parse_size;
+
+                    trace!(parent: self.node().span(), "isolated a {}B message from {}", parse_size, addr);
+
+                    self.node()
+                        .known_peers()
+                        .register_received_message(addr, parse_size);
+                    self.node().stats().register_received_message(parse_size);
+
+                    // send the message for further processing
+                    if let Err(e) = message_sender.try_send(msg) {
+                        error!(parent: self.node().span(), "can't process a message from {}: {}", addr, e);
+                        self.node().stats().register_failure();
+                    }
+
+                    // if the read is exhausted, clear the read buffer and return
+                    if left == 0 {
+                        buffer.clear();
+                        return Ok(());
+                    }
+                }
+                // the message in the buffer is incomplete
+                Ok(None) => {
+                    // forbid messages that are larger than the read buffer
+                    if left > self.node().config().read_buffer_size {
+                        error!(parent: self.node().span(), "a message from {} is too large", addr);
+                        buffer.clear();
+                        return Err(io::ErrorKind::InvalidData.into());
+                    }
+
+                    trace!(parent: self.node().span(), "incomplete message from {}; carrying {}B over", addr, left);
+
+                    // move the leftover bytes to the beginning of the buffer; the next read will append bytes
+                    // starting from where the leftover ones end, allowing the message to be completed
+                    buffer.copy_within(initial_buf_pos..initial_buf_pos + left, 0);
+                    buffer.truncate(left);
+
+                    return Ok(());
+                }
+                // an erroneous message (e.g. an unexpected zero-length payload)
+                Err(e) => {
+                    error!(parent: self.node().span(), "a message from {} is invalid", addr);
+                    buffer.clear();
+                    return Err(e);
+                }
             }
         }
     }
