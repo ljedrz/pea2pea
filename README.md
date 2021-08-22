@@ -17,7 +17,7 @@
 - ease of use: few objects and traits, no "turboeels" or generics/references forcing all parent objects to adapt
 - correctness: no `unsafe` code; there's more code in `tests` than in the actual library
 - interoperability: strives to be as versatile as possible without sacrificing simplicity and ease of use
-- good performance: over 1GB/s in favorable scenarios, small memory footprint
+- good performance: over 10GB/s in favorable scenarios, small memory footprint
 
 ## non-goals
 - `no_std`
