@@ -9,9 +9,9 @@ use tracing::*;
 use std::net::SocketAddr;
 
 /// Can be used to automatically perform some extra actions when the node disconnects from its
-/// peer, which is especially practical if the disconnect itself is triggered automatically,
-/// e.g. due to the peer exceeding the allowed number of failures or severing its connection
-/// with the node on its own.
+/// peer, which is especially practical if the disconnect is triggered automatically, e.g. due
+/// to the peer exceeding the allowed number of failures or severing its connection with the node
+/// on its own.
 #[async_trait::async_trait]
 pub trait Disconnect: Pea2Pea
 where
@@ -50,9 +50,9 @@ where
         }
     }
 
-    /// The extra actions to be executed during a disconnect; in order to still be able to
-    /// communicate with the peer in the usual manner, only its `SocketAddr` (as opposed
-    /// to the related `Connection` object) is provided as an argument.
+    /// Any extra actions to be executed during a disconnect; in order to still be able to
+    /// communicate with the peer in the usual manner (i.e. via `Writing`), only its `SocketAddr`
+    /// (as opposed to the related `Connection` object) is provided as an argument.
     async fn handle_disconnect(&self, addr: SocketAddr);
 }
 

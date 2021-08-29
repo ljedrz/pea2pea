@@ -11,7 +11,7 @@ use tracing::*;
 use std::{io, net::SocketAddr, time::Duration};
 
 /// Can be used to specify and enable reading, i.e. receiving inbound messages.
-/// If handshake is enabled too, it goes into force only after the handshake has been concluded.
+/// If `Handshake` is enabled too, it goes into force only after the handshake has been concluded.
 #[async_trait]
 pub trait Reading: Pea2Pea
 where
@@ -21,7 +21,7 @@ where
     type Message: Send;
 
     /// Prepares the node to receive messages; failures to read from a connection's stream are penalized by a timeout
-    /// defined in `Config`, while broken/unreadable messages result in an immediate disconnect (in order to avoid
+    /// defined in `Config`, while the configured fatal errors result in an immediate disconnect (in order to e.g. avoid
     /// accidentally reading "borked" messages).
     fn enable_reading(&self) {
         let (conn_sender, mut conn_receiver) = mpsc::channel::<ReturnableConnection>(
@@ -147,8 +147,8 @@ where
 
     /// Attempts to isolate full messages from the connection's read buffer using `Reading::read_message`. Once
     /// no more messages can be extracted, it preserves any leftover bytes and moves them to the beginning of the
-    /// buffer, so that further reads from the stream can attempt to re-use them. Read messages are sent to a
-    /// message processing task in order to enable faster reads.
+    /// buffer, and further reads from the stream are appended to them. Read messages are sent to a separate message
+    /// processing task in order not to block further reads.
     fn process_buffer(
         &self,
         addr: SocketAddr,

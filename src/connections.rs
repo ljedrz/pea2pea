@@ -56,8 +56,9 @@ impl Not for ConnectionSide {
     }
 }
 
-/// Keeps track of tasks that have been spawned for the purposes of a connection; it
-/// also contains a sender that communicates with the `Writing` protocol handler.
+/// Created for each active connection; used by the protocols to obtain a handle for
+/// reading and writing, and keeps track of tasks that have been spawned for the purposes
+/// of the connection.
 pub struct Connection {
     /// The address of the connection.
     pub addr: SocketAddr,
@@ -65,7 +66,7 @@ pub struct Connection {
     pub reader: Option<OwnedReadHalf>,
     /// Kept only until the protocols are enabled (`Writing` should `take()` it).
     pub writer: Option<OwnedWriteHalf>,
-    /// Handles to tasks spawned by the connection.
+    /// Handles to tasks spawned for the connection.
     pub tasks: Vec<JoinHandle<()>>,
     /// The connection's side in relation to the node.
     pub side: ConnectionSide,

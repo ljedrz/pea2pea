@@ -1,6 +1,6 @@
 //! Opt-in protocols available to the `Node`; each protocol is expected to spawn its own task that runs throughout the
-//! `Node`'s lifetime and handles a specific functionality. The communication with these tasks is done via
-//! `ProtocolHandler`s.
+//! `Node`'s lifetime and handles a specific functionality. The communication with these tasks is done via dedicated
+//! handler objects.
 
 use crate::connections::Connection;
 

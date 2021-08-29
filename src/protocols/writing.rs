@@ -102,7 +102,7 @@ where
         }
     }
 
-    /// Writes the given message to the provided writer, using the provided intermediate buffer; returns the number of
+    /// Writes the given message to the given writer, using the provided intermediate buffer; returns the number of
     /// bytes written to the writer.
     async fn write_to_stream<W: AsyncWrite + Unpin + Send>(
         &self,
@@ -120,8 +120,7 @@ where
     }
 
     /// Writes the provided payload to the given intermediate writer; the payload can get prepended with a header
-    /// indicating its length, be suffixed with a character indicating that it's complete, etc. Returns the number
-    /// of bytes written to the writer.
+    /// indicating its length, be suffixed with a character indicating that it's complete, etc.
     fn write_message<W: io::Write>(
         &self,
         target: SocketAddr,
