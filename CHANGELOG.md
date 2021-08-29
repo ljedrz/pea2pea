@@ -1,3 +1,9 @@
+# 0.28.0
+
+### Changed
+
+- `Reading::process_message` no longer has a default dummy impl
+
 # 0.27.1
 
 ### Changed

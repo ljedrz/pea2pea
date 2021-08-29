@@ -237,11 +237,7 @@ where
     ) -> io::Result<Option<Self::Message>>;
 
     /// Processes an inbound message. Can be used to update state, send replies etc.
-    #[allow(unused_variables)]
-    async fn process_message(&self, source: SocketAddr, message: Self::Message) -> io::Result<()> {
-        // don't do anything by default
-        Ok(())
-    }
+    async fn process_message(&self, source: SocketAddr, message: Self::Message) -> io::Result<()>;
 }
 
 /// The handler object dedicated to the `Reading` protocol.

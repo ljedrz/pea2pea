@@ -31,6 +31,7 @@ impl Pea2Pea for Sink {
     }
 }
 
+#[async_trait::async_trait]
 impl Reading for Sink {
     type Message = ();
 
@@ -53,6 +54,10 @@ impl Reading for Sink {
         } else {
             Ok(Some(()))
         }
+    }
+
+    async fn process_message(&self, _src: SocketAddr, _msg: Self::Message) -> io::Result<()> {
+        Ok(())
     }
 }
 
