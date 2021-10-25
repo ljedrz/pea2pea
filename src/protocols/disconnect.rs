@@ -45,9 +45,10 @@ where
 
         // register the DisconnectHandler with the Node
         let hdl = DisconnectHandler(from_node_sender);
-        if self.node().protocols.disconnect_handler.set(hdl).is_err() {
-            panic!("the Disconnect protocol was enabled more than once!");
-        }
+        assert!(
+            self.node().protocols.disconnect_handler.set(hdl).is_ok(),
+            "the Disconnect protocol was enabled more than once!"
+        );
     }
 
     /// Any extra actions to be executed during a disconnect; in order to still be able to

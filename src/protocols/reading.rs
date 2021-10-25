@@ -103,9 +103,10 @@ where
 
         // register the ReadingHandler with the Node
         let hdl = ReadingHandler(conn_sender);
-        if self.node().protocols.reading_handler.set(hdl).is_err() {
-            panic!("the Reading protocol was enabled more than once!");
-        }
+        assert!(
+            self.node().protocols.reading_handler.set(hdl).is_ok(),
+            "the Reading protocol was enabled more than once!"
+        );
     }
 
     /// Performs a read from the given reader. The default implementation is buffered; it sacrifices a bit of

@@ -62,9 +62,10 @@ where
 
         // register the HandshakeHandler with the Node
         let hdl = HandshakeHandler(from_node_sender);
-        if self.node().protocols.handshake_handler.set(hdl).is_err() {
-            panic!("the Handshake protocol was enabled more than once!");
-        }
+        assert!(
+            self.node().protocols.handshake_handler.set(hdl).is_ok(),
+            "the Handshake protocol was enabled more than once!"
+        );
     }
 
     /// Performs the handshake; temporarily assumes control of the `Connection` and returns it if the handshake is

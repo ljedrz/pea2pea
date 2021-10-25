@@ -16,7 +16,7 @@ impl KnownPeers {
 
     /// Returns the stats for the given peer.
     pub fn get(&self, addr: SocketAddr) -> Option<Arc<Stats>> {
-        self.0.read().get(&addr).map(|stats| Arc::clone(stats))
+        self.0.read().get(&addr).map(Arc::clone)
     }
 
     /// Removes an address to the list of known peers.

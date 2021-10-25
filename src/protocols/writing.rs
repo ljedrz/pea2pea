@@ -97,9 +97,10 @@ where
             handler: conn_sender,
             senders: Default::default(),
         };
-        if self.node().protocols.writing_handler.set(hdl).is_err() {
-            panic!("the Writing protocol was enabled more than once!");
-        }
+        assert!(
+            self.node().protocols.writing_handler.set(hdl).is_ok(),
+            "the Writing protocol was enabled more than once!"
+        );
     }
 
     /// Writes the given message to the given writer, using the provided intermediate buffer; returns the number of
