@@ -38,7 +38,7 @@ where
 
                     let ret = match result {
                         Ok(Ok(conn)) => {
-                            debug!(parent: node.node().span(), "succeessfully handshaken with {}", addr);
+                            debug!(parent: node.node().span(), "successfully handshaken with {}", addr);
                             Ok(conn)
                         }
                         Ok(Err(e)) => {
