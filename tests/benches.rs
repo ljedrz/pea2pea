@@ -61,13 +61,6 @@ impl Reading for Sink {
     }
 }
 
-#[derive(Debug)]
-struct BenchParams {
-    spammer_count: usize,
-    msg_count: usize,
-    max_msg_size: usize,
-}
-
 async fn run_bench_scenario(sender_count: usize) -> f64 {
     let config = Config {
         outbound_queue_depth: NUM_MESSAGES,

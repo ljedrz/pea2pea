@@ -34,7 +34,6 @@ type PlayerName = String;
 
 #[derive(Debug)]
 struct PlayerInfo {
-    name: PlayerName,
     addr: SocketAddr,
     is_carrier: bool,
 }
@@ -110,7 +109,6 @@ impl Handshake for Player {
         };
 
         let player = PlayerInfo {
-            name: peer_name.clone(),
             addr: conn.addr,
             is_carrier: false,
         };

@@ -127,8 +127,9 @@ async fn problem_combination() {
 
         sleep(Duration::from_millis(5)).await;
 
-        if receiver.node().num_connected() == 0 {
-            panic!("the fuzz test failed!");
-        }
+        assert!(
+            receiver.node().num_connected() != 0,
+            "the fuzz test failed!"
+        );
     }
 }

@@ -170,9 +170,10 @@ macro_rules! wait_until {
                 break;
             }
             tokio::time::sleep(std::time::Duration::from_millis(1)).await;
-            if now.elapsed() > std::time::Duration::from_secs($limit_secs) {
-                panic!("timed out!");
-            }
+            assert!(
+                now.elapsed() <= std::time::Duration::from_secs($limit_secs),
+                "timed out!"
+            );
         }
     };
 }
