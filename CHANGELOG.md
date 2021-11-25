@@ -1,3 +1,14 @@
+# 0.29.0
+
+### Changed
+
+- increased the minimum required version of `tokio` to `1.14`
+- increased the minimum required version of `tracing-subscriber` (dev-dependency) to `0.3`
+
+### Fixed
+
+- some new `clippy` lints
+
 # 0.28.0
 
 ### Changed
