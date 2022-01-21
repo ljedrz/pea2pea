@@ -15,9 +15,7 @@ where
 {
     /// Prepares the node to perform specified network handshakes.
     fn enable_handshake(&self) {
-        let (from_node_sender, mut from_node_receiver) = mpsc::channel::<ReturnableConnection>(
-            self.node().config().protocol_handler_queue_depth,
-        );
+        let (from_node_sender, mut from_node_receiver) = mpsc::unbounded_channel::<ReturnableConnection>();
 
         // spawn a background task dedicated to handling the handshakes
         let self_clone = self.clone();
@@ -74,11 +72,11 @@ where
 }
 
 /// The handler object dedicated to the `Handshake` protocol.
-pub struct HandshakeHandler(mpsc::Sender<ReturnableConnection>);
+pub struct HandshakeHandler(mpsc::UnboundedSender<ReturnableConnection>);
 
 impl HandshakeHandler {
-    pub(crate) async fn trigger(&self, item: ReturnableConnection) {
-        if self.0.send(item).await.is_err() {
+    pub(crate)  fn trigger(&self, item: ReturnableConnection) {
+        if self.0.send(item).is_err() {
             unreachable!(); // protocol's task is down! can't recover
         }
     }

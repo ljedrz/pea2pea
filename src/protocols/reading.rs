@@ -24,9 +24,7 @@ where
     /// defined in `Config`, while the configured fatal errors result in an immediate disconnect (in order to e.g. avoid
     /// accidentally reading "borked" messages).
     fn enable_reading(&self) {
-        let (conn_sender, mut conn_receiver) = mpsc::channel::<ReturnableConnection>(
-            self.node().config().protocol_handler_queue_depth,
-        );
+        let (conn_sender, mut conn_receiver) = mpsc::unbounded_channel::<ReturnableConnection>();
 
         // the main task spawning per-connection tasks reading messages from their streams
         let self_clone = self.clone();
@@ -40,7 +38,7 @@ where
                 let mut buffer = Vec::new();
 
                 let (inbound_message_sender, mut inbound_message_receiver) =
-                    mpsc::channel(self_clone.node().config().inbound_queue_depth);
+                    mpsc::unbounded_channel();
 
                 // the task for processing parsed messages
                 let processing_clone = self_clone.clone();
@@ -116,7 +114,7 @@ where
         addr: SocketAddr,
         buffer: &mut Vec<u8>,
         reader: &mut R,
-        message_sender: &mpsc::Sender<Self::Message>,
+        message_sender: &mpsc::UnboundedSender<Self::Message>,
     ) -> io::Result<()> {
         // register the number of bytes carried over from the previous read (if there were any)
         let carry = buffer.len();
@@ -155,7 +153,7 @@ where
         addr: SocketAddr,
         buffer: &mut Vec<u8>,
         mut left: usize,
-        message_sender: &mpsc::Sender<Self::Message>,
+        message_sender: &mpsc::UnboundedSender<Self::Message>,
     ) -> io::Result<()> {
         // wrap the read buffer in a reader
         let mut buf_reader = io::Cursor::new(&buffer[..left]);
@@ -188,7 +186,7 @@ where
                     self.node().stats().register_received_message(parse_size);
 
                     // send the message for further processing
-                    if let Err(e) = message_sender.try_send(msg) {
+                    if let Err(e) = message_sender.send(msg) {
                         error!(parent: self.node().span(), "can't process a message from {}: {}", addr, e);
                         self.node().stats().register_failure();
                     }
@@ -242,11 +240,11 @@ where
 }
 
 /// The handler object dedicated to the `Reading` protocol.
-pub struct ReadingHandler(mpsc::Sender<ReturnableConnection>);
+pub struct ReadingHandler(mpsc::UnboundedSender<ReturnableConnection>);
 
 impl ReadingHandler {
-    pub(crate) async fn trigger(&self, item: ReturnableConnection) {
-        if self.0.send(item).await.is_err() {
+    pub(crate) fn trigger(&self, item: ReturnableConnection) {
+        if self.0.send(item).is_err() {
             unreachable!(); // protocol's task is down! can't recover
         }
     }

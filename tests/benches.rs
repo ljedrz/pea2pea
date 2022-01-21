@@ -63,7 +63,6 @@ impl Reading for Sink {
 
 async fn run_bench_scenario(sender_count: usize) -> f64 {
     let config = Config {
-        outbound_queue_depth: NUM_MESSAGES,
         ..Default::default()
     };
     let spammers = common::start_nodes(sender_count, Some(config)).await;

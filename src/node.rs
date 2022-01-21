@@ -28,7 +28,7 @@ macro_rules! enable_protocol {
         if let Some(handler) = $node.protocols.$handler_type.get() {
             let (conn_returner, conn_retriever) = oneshot::channel();
 
-            handler.trigger(($conn, conn_returner)).await;
+            handler.trigger(($conn, conn_returner));
 
             match conn_retriever.await {
                 Ok(Ok(conn)) => conn,
@@ -309,7 +309,7 @@ impl Node {
             if self.is_connected(addr) {
                 let (sender, receiver) = oneshot::channel();
 
-                handler.trigger((addr, sender)).await;
+                handler.trigger((addr, sender));
                 let _ = receiver.await; // can't really fail
             }
         }

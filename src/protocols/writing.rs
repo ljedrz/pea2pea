@@ -24,9 +24,7 @@ where
 
     /// Prepares the node to send messages.
     fn enable_writing(&self) {
-        let (conn_sender, mut conn_receiver) = mpsc::channel::<ReturnableConnection>(
-            self.node().config().protocol_handler_queue_depth,
-        );
+        let (conn_sender, mut conn_receiver) = mpsc::unbounded_channel::<ReturnableConnection>();
 
         // the task spawning tasks reading messages from the given stream
         let self_clone = self.clone();
@@ -40,7 +38,7 @@ where
                 let mut buffer = Vec::new();
 
                 let (outbound_message_sender, mut outbound_message_receiver) =
-                    mpsc::channel(self_clone.node().config().outbound_queue_depth);
+                    mpsc::unbounded_channel();
 
                 if let Some(handler) = self_clone.node().protocols.writing_handler.get() {
                     handler
@@ -138,7 +136,7 @@ where
             .get()
             .and_then(|h| h.senders.read().get(&addr).cloned())
         {
-            sender.try_send(Box::new(message)).map_err(|e| {
+            sender.send(Box::new(message)).map_err(|e| {
                 error!(parent: self.node().span(), "can't send a message to {}: {}", addr, e);
                 self.node().stats().register_failure();
                 io::ErrorKind::Other.into()
@@ -156,7 +154,7 @@ where
         if let Some(handler) = self.node().protocols.writing_handler.get() {
             let senders = handler.senders.read().clone();
             for (addr, message_sender) in senders {
-                let _ = message_sender.try_send(Box::new(message.clone())).map_err(|e| {
+                let _ = message_sender.send(Box::new(message.clone())).map_err(|e| {
                     error!(parent: self.node().span(), "can't send a message to {}: {}", addr, e);
                     self.node().stats().register_failure();
                 });
@@ -167,13 +165,13 @@ where
 
 /// The handler object dedicated to the `Writing` protocol.
 pub struct WritingHandler {
-    handler: mpsc::Sender<ReturnableConnection>,
-    pub(crate) senders: RwLock<HashMap<SocketAddr, mpsc::Sender<Box<dyn Any + Send>>>>,
+    handler: mpsc::UnboundedSender<ReturnableConnection>,
+    pub(crate) senders: RwLock<HashMap<SocketAddr, mpsc::UnboundedSender<Box<dyn Any + Send>>>>,
 }
 
 impl WritingHandler {
-    pub(crate) async fn trigger(&self, item: ReturnableConnection) {
-        if self.handler.send(item).await.is_err() {
+    pub(crate) fn trigger(&self, item: ReturnableConnection) {
+        if self.handler.send(item).is_err() {
             unreachable!(); // protocol's task is down! can't recover
         }
     }
