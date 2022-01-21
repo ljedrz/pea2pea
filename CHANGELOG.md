@@ -1,3 +1,9 @@
+# 0.30.0
+
+### Changed
+
+- updated Rust edition to 2021
+
 # 0.29.0
 
 ### Changed
