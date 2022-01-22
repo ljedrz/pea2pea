@@ -65,8 +65,6 @@ where
                     trace!(parent: node.span(), "spawned a task for writing messages to {}", addr);
                     tx_writer.send(()).unwrap(); // safe; the channel was just opened
 
-                    // TODO: when try_recv is available in tokio again (https://github.com/tokio-rs/tokio/issues/3350),
-                    // use try_recv() in order to write to the stream less often
                     while let Some(msg) = outbound_message_receiver.recv().await {
                         let msg = msg.downcast::<Self::Message>().unwrap();
 
