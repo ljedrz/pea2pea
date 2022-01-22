@@ -139,7 +139,7 @@ where
                 // the number of bytes left to *process* - this includes the initial carried bytes and the read
                 let left = carry + read_len;
 
-                trace!(parent: self.node().span(), "read {}B from {}; {}B left to process", read_len, addr, left);
+                trace!(parent: self.node().span(), "read {}B from {}; {}B waiting to be processed", read_len, addr, left);
 
                 self.process_buffer(addr, buffer, left, message_sender)
             }
@@ -180,7 +180,7 @@ where
                     // subtract the number of successfully processed bytes from the ones left to process
                     left -= parse_size;
 
-                    trace!(parent: self.node().span(), "isolated a {}B message from {}", parse_size, addr);
+                    trace!(parent: self.node().span(), "isolated {}B as a message from {}", parse_size, addr);
 
                     self.node()
                         .known_peers()

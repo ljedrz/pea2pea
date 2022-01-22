@@ -29,7 +29,7 @@ where
 
                 let node = self_clone.clone();
                 task::spawn(async move {
-                    debug!(parent: node.node().span(), "handshake with {} as the {:?}", addr, !conn.side);
+                    debug!(parent: node.node().span(), "shaking hands with {} as the {:?}", addr, !conn.side);
                     let result = timeout(
                         Duration::from_millis(node.node().config().max_handshake_time_ms),
                         node.perform_handshake(conn),
