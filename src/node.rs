@@ -123,7 +123,9 @@ impl Node {
         };
 
         let listening_addr = if let Some(ref listener) = listener {
-            Some(listener.local_addr()?)
+            let ip = config.listener_ip.unwrap(); // safe; listener.is_some() => config.listener_ip.is_some()
+            let port = listener.local_addr()?.port(); // discover the port if it was unspecified
+            Some((ip, port).into())
         } else {
             None
         };
