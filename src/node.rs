@@ -143,9 +143,14 @@ impl Node {
         }));
 
         if let Some(listener) = listener {
+            // Use a channel to know when the listening task is ready.
+            let (tx, rx) = oneshot::channel::<()>();
+
             let node_clone = node.clone();
             let listening_task = tokio::spawn(async move {
                 trace!(parent: node_clone.span(), "spawned the listening task");
+                tx.send(()).unwrap(); // safe; the channel was just opened
+
                 loop {
                     match listener.accept().await {
                         Ok((stream, addr)) => {
@@ -177,13 +182,11 @@ impl Node {
                 }
             });
             node.tasks.lock().push(listening_task);
-
-            debug!(parent: node.span(), "the node is ready");
+            let _ = rx.await;
+            debug!(parent: node.span(), "listening on {}", node.listening_addr.unwrap());
         }
 
-        if let Some(listening_addr) = node.listening_addr {
-            debug!(parent: node.span(), "listening on port {}", listening_addr);
-        }
+        debug!(parent: node.span(), "the node is ready");
 
         Ok(node)
     }
