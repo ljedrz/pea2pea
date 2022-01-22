@@ -27,11 +27,11 @@ async fn send_message_before_disconnect() {
     // tracing_subscriber::fmt::init();
 
     let connector = common::MessagingNode::new("connector").await;
-    connector.enable_writing();
-    connector.enable_disconnect();
+    connector.enable_writing().await;
+    connector.enable_disconnect().await;
 
     let connectee = common::MessagingNode::new("connectee").await;
-    connectee.enable_reading();
+    connectee.enable_reading().await;
 
     let connectee_addr = connectee.node().listening_addr().unwrap();
 

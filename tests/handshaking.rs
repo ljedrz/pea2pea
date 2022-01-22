@@ -157,9 +157,9 @@ async fn handshake_example() {
     // Reading and Writing are not required for the handshake; they are enabled only so that their relationship
     // with the handshake protocol can be tested too; they should kick in only after the handshake concludes
     for node in &[&initiator, &responder] {
-        node.enable_reading();
-        node.enable_writing();
-        node.enable_handshake();
+        node.enable_reading().await;
+        node.enable_writing().await;
+        node.enable_handshake().await;
     }
 
     initiator
@@ -197,11 +197,11 @@ async fn no_handshake_no_messaging() {
         handshakes: Default::default(),
     };
 
-    initiator.enable_writing();
-    responder.enable_reading();
+    initiator.enable_writing().await;
+    responder.enable_reading().await;
 
     // the initiator doesn't enable handshakes
-    responder.enable_handshake();
+    responder.enable_handshake().await;
 
     initiator
         .node()
@@ -248,7 +248,7 @@ async fn hung_handshake_fails() {
     let connectee = Wrap(Node::new(Some(config)).await.unwrap());
 
     // note: the connector does NOT enable handshakes
-    connectee.enable_handshake();
+    connectee.enable_handshake().await;
 
     // the connection attempt should register just fine for the connector, as it doesn't expect a handshake
     assert!(connector
@@ -296,7 +296,7 @@ async fn timeout_when_spammed_with_connections() {
         ..Default::default()
     };
     let victim = Wrap(Node::new(Some(config)).await.unwrap());
-    victim.enable_handshake();
+    victim.enable_handshake().await;
     let victim_addr = victim.node().listening_addr().unwrap();
 
     let mut sockets = Vec::with_capacity(NUM_ATTEMPTS as usize);

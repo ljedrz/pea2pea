@@ -107,8 +107,8 @@ async fn main() {
 
     // technically the first node doesn't need `Reading` and the last one doesn't need `Writing`
     for player in &players {
-        player.enable_reading();
-        player.enable_writing();
+        player.enable_reading().await;
+        player.enable_writing().await;
     }
     connect_nodes(&players, Topology::Line).await.unwrap();
 

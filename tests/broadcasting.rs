@@ -41,12 +41,12 @@ async fn broadcast_example() {
         .map(common::MessagingNode)
         .collect::<Vec<_>>();
     for rando in &random_nodes {
-        rando.enable_reading();
+        rando.enable_reading().await;
     }
 
     let broadcaster = common::MessagingNode::new("chatty").await;
 
-    broadcaster.enable_writing();
+    broadcaster.enable_writing().await;
     broadcaster.send_periodic_broadcasts();
 
     for rando in &random_nodes {

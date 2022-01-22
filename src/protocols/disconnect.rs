@@ -19,16 +19,20 @@ where
 {
     /// Attaches the behavior specified in `Disconnect::handle_disconnect` to every occurrence of the
     /// node disconnecting from a peer.
-    fn enable_disconnect(&self) {
+    async fn enable_disconnect(&self) {
         let (from_node_sender, mut from_node_receiver) =
             mpsc::channel::<(SocketAddr, oneshot::Sender<()>)>(
                 self.node().config().protocol_handler_queue_depth,
             );
 
+        // Use a channel to know when the disconnect task is ready.
+        let (tx, rx) = oneshot::channel::<()>();
+
         // spawn a background task dedicated to handling disconnect events
         let self_clone = self.clone();
         let disconnect_task = tokio::spawn(async move {
             trace!(parent: self_clone.node().span(), "spawned the Disconnect handler task");
+            tx.send(()).unwrap(); // safe; the channel was just opened
 
             while let Some((addr, notifier)) = from_node_receiver.recv().await {
                 let self_clone2 = self_clone.clone();
@@ -41,6 +45,7 @@ where
                 });
             }
         });
+        let _ = rx.await;
         self.node().tasks.lock().push(disconnect_task);
 
         // register the DisconnectHandler with the Node

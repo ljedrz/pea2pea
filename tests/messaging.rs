@@ -88,8 +88,8 @@ async fn messaging_example() {
     // tracing_subscriber::fmt::init();
 
     let shouter = common::MessagingNode::new("shout").await;
-    shouter.enable_reading();
-    shouter.enable_writing();
+    shouter.enable_reading().await;
+    shouter.enable_writing().await;
 
     let picky_echo_config = Config {
         name: Some("picky_echo".into()),
@@ -99,8 +99,8 @@ async fn messaging_example() {
         node: Node::new(Some(picky_echo_config)).await.unwrap(),
         echoed: Default::default(),
     };
-    picky_echo.enable_reading();
-    picky_echo.enable_writing();
+    picky_echo.enable_reading().await;
+    picky_echo.enable_writing().await;
 
     let picky_echo_addr = picky_echo.node().listening_addr().unwrap();
 
@@ -128,10 +128,10 @@ async fn messaging_example() {
 async fn drop_connection_on_invalid_message() {
     let reader = common::MessagingNode::new("reader").await;
     let reader_addr = reader.node().listening_addr().unwrap();
-    reader.enable_reading();
+    reader.enable_reading().await;
 
     let writer = common::MessagingNode::new("writer").await;
-    writer.enable_writing();
+    writer.enable_writing().await;
 
     writer.node().connect(reader_addr).await.unwrap();
 
@@ -152,7 +152,7 @@ async fn drop_connection_on_oversized_message() {
     const MSG_SIZE_LIMIT: usize = 10;
 
     let writer = common::MessagingNode::new("writer").await;
-    writer.enable_writing();
+    writer.enable_writing().await;
 
     let config = Config {
         name: Some("reader".into()),
@@ -161,7 +161,7 @@ async fn drop_connection_on_oversized_message() {
     };
     let reader = common::MessagingNode(Node::new(Some(config)).await.unwrap());
     let reader_addr = reader.node().listening_addr().unwrap();
-    reader.enable_reading();
+    reader.enable_reading().await;
 
     writer.node().connect(reader_addr).await.unwrap();
 
@@ -190,7 +190,7 @@ async fn drop_connection_on_oversized_message() {
 #[tokio::test]
 async fn drop_connection_on_zero_read() {
     let reader = common::MessagingNode::new("reader").await;
-    reader.enable_reading();
+    reader.enable_reading().await;
     let peer = common::MessagingNode::new("peer").await;
 
     peer.node()
@@ -213,7 +213,7 @@ async fn no_reading_no_delivery() {
     let reader_addr = reader.node().listening_addr().unwrap();
 
     let writer = common::MessagingNode::new("writer").await;
-    writer.enable_writing();
+    writer.enable_writing().await;
 
     writer.node().connect(reader_addr).await.unwrap();
 
@@ -234,7 +234,7 @@ async fn no_reading_no_delivery() {
 async fn no_writing_no_delivery() {
     let reader = common::MessagingNode::new("reader").await;
     let reader_addr = reader.node().listening_addr().unwrap();
-    reader.enable_reading();
+    reader.enable_reading().await;
 
     let writer = common::MessagingNode::new("defunct writer").await;
 

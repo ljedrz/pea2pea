@@ -3,7 +3,7 @@ use crate::{protocols::ReturnableConnection, Pea2Pea};
 use async_trait::async_trait;
 use tokio::{
     io::{AsyncRead, AsyncReadExt},
-    sync::mpsc,
+    sync::{mpsc, oneshot},
     time::sleep,
 };
 use tracing::*;
@@ -23,15 +23,19 @@ where
     /// Prepares the node to receive messages; failures to read from a connection's stream are penalized by a timeout
     /// defined in `Config`, while the configured fatal errors result in an immediate disconnect (in order to e.g. avoid
     /// accidentally reading "borked" messages).
-    fn enable_reading(&self) {
+    async fn enable_reading(&self) {
         let (conn_sender, mut conn_receiver) = mpsc::channel::<ReturnableConnection>(
             self.node().config().protocol_handler_queue_depth,
         );
+
+        // Use a channel to know when the reading task is ready.
+        let (tx_reading, rx_reading) = oneshot::channel::<()>();
 
         // the main task spawning per-connection tasks reading messages from their streams
         let self_clone = self.clone();
         let reading_task = tokio::spawn(async move {
             trace!(parent: self_clone.node().span(), "spawned the Reading handler task");
+            tx_reading.send(()).unwrap(); // safe; the channel was just opened
 
             // these objects are sent from `Node::adapt_stream`
             while let Some((mut conn, conn_returner)) = conn_receiver.recv().await {
@@ -42,11 +46,15 @@ where
                 let (inbound_message_sender, mut inbound_message_receiver) =
                     mpsc::channel(self_clone.node().config().inbound_queue_depth);
 
+                // Use a channel to know when the processing task is ready.
+                let (tx_processing, rx_processing) = oneshot::channel::<()>();
+
                 // the task for processing parsed messages
                 let processing_clone = self_clone.clone();
                 let inbound_processing_task = tokio::spawn(async move {
                     let node = processing_clone.node();
                     trace!(parent: node.span(), "spawned a task for processing messages from {}", addr);
+                    tx_processing.send(()).unwrap(); // safe; the channel was just opened
 
                     while let Some(msg) = inbound_message_receiver.recv().await {
                         if let Err(e) = processing_clone.process_message(addr, msg).await {
@@ -55,13 +63,18 @@ where
                         }
                     }
                 });
+                let _ = rx_processing.await;
                 conn.tasks.push(inbound_processing_task);
+
+                // Use a channel to know when the reader task is ready.
+                let (tx_reader, rx_reader) = oneshot::channel::<()>();
 
                 // the task for reading messages from a stream
                 let reader_clone = self_clone.clone();
                 let reader_task = tokio::spawn(async move {
                     let node = reader_clone.node();
                     trace!(parent: node.span(), "spawned a task for reading messages from {}", addr);
+                    tx_reader.send(()).unwrap(); // safe; the channel was just opened
 
                     // postpone reads until the connection is fully established; if the process fails,
                     // this task gets aborted, so there is no need for a dedicated timeout
@@ -91,6 +104,7 @@ where
                         }
                     }
                 });
+                let _ = rx_reader.await;
                 conn.tasks.push(reader_task);
 
                 // return the Connection to the Node, resuming Node::adapt_stream
@@ -99,6 +113,7 @@ where
                 }
             }
         });
+        let _ = rx_reading.await;
         self.node().tasks.lock().push(reading_task);
 
         // register the ReadingHandler with the Node

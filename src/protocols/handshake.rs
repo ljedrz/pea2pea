@@ -1,6 +1,10 @@
 use crate::{protocols::ReturnableConnection, Connection, Pea2Pea};
 
-use tokio::{sync::mpsc, task, time::timeout};
+use tokio::{
+    sync::{mpsc, oneshot},
+    task,
+    time::timeout,
+};
 use tracing::*;
 
 use std::{io, time::Duration};
@@ -14,15 +18,19 @@ where
     Self: Clone + Send + Sync + 'static,
 {
     /// Prepares the node to perform specified network handshakes.
-    fn enable_handshake(&self) {
+    async fn enable_handshake(&self) {
         let (from_node_sender, mut from_node_receiver) = mpsc::channel::<ReturnableConnection>(
             self.node().config().protocol_handler_queue_depth,
         );
+
+        // Use a channel to know when the handshake task is ready.
+        let (tx, rx) = oneshot::channel::<()>();
 
         // spawn a background task dedicated to handling the handshakes
         let self_clone = self.clone();
         let handshake_task = tokio::spawn(async move {
             trace!(parent: self_clone.node().span(), "spawned the Handshake handler task");
+            tx.send(()).unwrap(); // safe; the channel was just opened
 
             while let Some((conn, result_sender)) = from_node_receiver.recv().await {
                 let addr = conn.addr;
@@ -58,6 +66,7 @@ where
                 });
             }
         });
+        let _ = rx.await;
         self.node().tasks.lock().push(handshake_task);
 
         // register the HandshakeHandler with the Node

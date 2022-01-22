@@ -130,9 +130,9 @@ async fn main() {
     let dio_addr = dio.node().listening_addr().unwrap();
 
     for node in &[&jotaro, &dio] {
-        node.enable_handshake();
-        node.enable_reading();
-        node.enable_writing();
+        node.enable_handshake().await;
+        node.enable_reading().await;
+        node.enable_writing().await;
     }
 
     jotaro.node().connect(dio_addr).await.unwrap();
