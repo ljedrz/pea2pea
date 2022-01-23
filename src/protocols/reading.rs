@@ -79,7 +79,7 @@ where
                     // postpone reads until the connection is fully established; if the process fails,
                     // this task gets aborted, so there is no need for a dedicated timeout
                     while !node.connected_addrs().contains(&addr) {
-                        sleep(Duration::from_millis(5)).await;
+                        sleep(Duration::from_millis(1)).await;
                     }
 
                     loop {
