@@ -196,9 +196,9 @@ async fn main() {
     let responder = SecureNode::new("responder").await.unwrap();
 
     for node in &[&initiator, &responder] {
-        node.enable_handshake(); // enable the pre-defined handshakes
-        node.enable_reading(); // enable the reading protocol
-        node.enable_writing(); // enable the writing protocol
+        node.enable_handshake().await; // enable the pre-defined handshakes
+        node.enable_reading().await; // enable the reading protocol
+        node.enable_writing().await; // enable the writing protocol
     }
 
     // connect the initiator to the responder

@@ -38,10 +38,10 @@ async fn check_node_cleanups() {
     let persistent_addr = persistent_node.node().listening_addr().unwrap();
 
     // enable all the protocols to check for any leaks there too
-    persistent_node.enable_handshake();
-    persistent_node.enable_reading();
-    persistent_node.enable_writing();
-    persistent_node.enable_disconnect();
+    persistent_node.enable_handshake().await;
+    persistent_node.enable_reading().await;
+    persistent_node.enable_writing().await;
+    persistent_node.enable_disconnect().await;
 
     // register heap use after node setup
     let heap_after_node_setup = PEAK_ALLOC.current_usage();
@@ -59,10 +59,10 @@ async fn check_node_cleanups() {
     for i in 0..NUM_CONNS {
         let temporary_node = common::MessagingNode::new("temporary_node").await;
 
-        temporary_node.enable_handshake();
-        temporary_node.enable_reading();
-        temporary_node.enable_writing();
-        temporary_node.enable_disconnect();
+        temporary_node.enable_handshake().await;
+        temporary_node.enable_reading().await;
+        temporary_node.enable_writing().await;
+        temporary_node.enable_disconnect().await;
 
         // this connection direction allows the collection of `KnownPeers` to remain empty
         temporary_node

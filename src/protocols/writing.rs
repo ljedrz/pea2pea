@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use parking_lot::RwLock;
 use tokio::{
     io::{AsyncWrite, AsyncWriteExt},
-    sync::mpsc,
+    sync::{mpsc, oneshot},
 };
 use tracing::*;
 
@@ -26,10 +26,14 @@ where
     fn enable_writing(&self) {
         let (conn_sender, mut conn_receiver) = mpsc::unbounded_channel::<ReturnableConnection>();
 
+        // Use a channel to know when the writing task is ready.
+        let (tx_writing, rx_writing) = oneshot::channel::<()>();
+
         // the task spawning tasks reading messages from the given stream
         let self_clone = self.clone();
         let writing_task = tokio::spawn(async move {
             trace!(parent: self_clone.node().span(), "spawned the Writing handler task");
+            tx_writing.send(()).unwrap(); // safe; the channel was just opened
 
             // these objects are sent from `Node::adapt_stream`
             while let Some((mut conn, conn_returner)) = conn_receiver.recv().await {
@@ -49,14 +53,16 @@ where
                     unreachable!();
                 }
 
+                // Use a channel to know when the writer task is ready.
+                let (tx_writer, rx_writer) = oneshot::channel::<()>();
+
                 // the task for writing outbound messages
                 let writer_clone = self_clone.clone();
                 let writer_task = tokio::spawn(async move {
                     let node = writer_clone.node();
                     trace!(parent: node.span(), "spawned a task for writing messages to {}", addr);
+                    tx_writer.send(()).unwrap(); // safe; the channel was just opened
 
-                    // TODO: when try_recv is available in tokio again (https://github.com/tokio-rs/tokio/issues/3350),
-                    // use try_recv() in order to write to the stream less often
                     while let Some(msg) = outbound_message_receiver.recv().await {
                         let msg = msg.downcast::<Self::Message>().unwrap();
 
@@ -80,6 +86,7 @@ where
                         }
                     }
                 });
+                let _ = rx_writer.await;
                 conn.tasks.push(writer_task);
 
                 // return the Connection to the Node, resuming Node::adapt_stream
@@ -88,6 +95,7 @@ where
                 }
             }
         });
+        let _ = rx_writing.await;
         self.node().tasks.lock().push(writing_task);
 
         // register the WritingHandler with the Node

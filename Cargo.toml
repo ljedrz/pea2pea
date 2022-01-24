@@ -1,9 +1,9 @@
 [package]
 name = "pea2pea"
-version = "0.29.0"
+version = "0.31.0"
 authors = ["ljedrz <ljedrz@gmail.com>"]
-edition = "2018"
-description = "A small library allowing simple and quick creation of custom P2P nodes and networks."
+edition = "2021"
+description = "A simple, lightweight P2P library."
 license = "CC0-1.0"
 repository = "https://github.com/ljedrz/pea2pea"
 documentation = "https://docs.rs/pea2pea"

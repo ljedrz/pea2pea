@@ -206,9 +206,9 @@ async fn main() {
     }
 
     for player in &players {
-        player.enable_handshake();
-        player.enable_reading();
-        player.enable_writing();
+        player.enable_handshake().await;
+        player.enable_reading().await;
+        player.enable_writing().await;
     }
     connect_nodes(&players, Topology::Mesh).await.unwrap();
 

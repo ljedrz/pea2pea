@@ -1,3 +1,21 @@
+# 0.31.0
+
+### Changed
+
+- improved the clarity of a few logs
+- `Node::new` will now conclude only once the listening task has started (if listening is enabled)
+- made protocol-enabling methods async to have better control over their progress
+
+### Fixed
+
+- made `Node::listening_addr` return the configured IP (instead of always the local one)
+
+# 0.30.0
+
+### Changed
+
+- updated Rust edition to 2021
+
 # 0.29.0
 
 ### Changed

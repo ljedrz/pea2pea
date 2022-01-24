@@ -72,7 +72,7 @@ async fn run_bench_scenario(sender_count: usize) -> f64 {
         .collect::<Vec<_>>();
 
     for spammer in &spammers {
-        spammer.enable_writing();
+        spammer.enable_writing().await;
     }
 
     let config = Config {
@@ -82,7 +82,7 @@ async fn run_bench_scenario(sender_count: usize) -> f64 {
     };
     let sink = Sink(Node::new(Some(config)).await.unwrap());
 
-    sink.enable_reading();
+    sink.enable_reading().await;
 
     for spammer in &spammers {
         spammer

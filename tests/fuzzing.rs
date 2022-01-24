@@ -26,7 +26,7 @@ async fn fuzzing() {
         ..Default::default()
     };
     let receiver = common::MessagingNode(Node::new(Some(config)).await.unwrap());
-    receiver.enable_reading();
+    receiver.enable_reading().await;
     let receiver_addr = receiver.node().listening_addr().unwrap();
 
     let config = Config {
@@ -34,7 +34,7 @@ async fn fuzzing() {
         ..Default::default()
     };
     let sender = common::MessagingNode(Node::new(Some(config)).await.unwrap());
-    sender.enable_writing();
+    sender.enable_writing().await;
 
     sender.node().connect(receiver_addr).await.unwrap();
 
@@ -93,14 +93,14 @@ async fn problem_combination() {
         ..Default::default()
     };
     let receiver = common::MessagingNode(Node::new(Some(config)).await.unwrap());
-    receiver.enable_reading();
+    receiver.enable_reading().await;
 
     let config = Config {
         name: Some("sender".into()),
         ..Default::default()
     };
     let sender = common::MessagingNode(Node::new(Some(config)).await.unwrap());
-    sender.enable_writing();
+    sender.enable_writing().await;
 
     sender
         .node()

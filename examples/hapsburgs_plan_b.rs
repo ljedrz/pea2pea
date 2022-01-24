@@ -112,20 +112,20 @@ async fn main() {
     let drebin = NakedNode::new("Drebin").await;
     let drebin_addr = drebin.node().listening_addr().unwrap();
 
-    drebin.enable_handshake();
-    drebin.enable_reading();
-    drebin.enable_writing();
-    drebin.enable_disconnect();
+    drebin.enable_handshake().await;
+    drebin.enable_reading().await;
+    drebin.enable_writing().await;
+    drebin.enable_disconnect().await;
 
     info!(parent: drebin.node().span(), "Where's Hapsburg?");
 
     for i in 0..NUM_THUGS {
         let hapsburgs_thug = NakedNode::new(format!("thug {}", i)).await;
 
-        hapsburgs_thug.enable_handshake();
-        hapsburgs_thug.enable_reading();
-        hapsburgs_thug.enable_writing();
-        hapsburgs_thug.enable_disconnect();
+        hapsburgs_thug.enable_handshake().await;
+        hapsburgs_thug.enable_reading().await;
+        hapsburgs_thug.enable_writing().await;
+        hapsburgs_thug.enable_disconnect().await;
 
         // Habsburg's thugs alert Drebin of their presence
         hapsburgs_thug.node().connect(drebin_addr).await.unwrap();

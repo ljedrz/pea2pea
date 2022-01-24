@@ -11,10 +11,10 @@ use pea2pea::{
 async fn message_stats() {
     let reader = common::MessagingNode::new("reader").await;
     let reader_addr = reader.node().listening_addr().unwrap();
-    reader.enable_reading();
+    reader.enable_reading().await;
 
     let writer = common::MessagingNode::new("writer").await;
-    writer.enable_writing();
+    writer.enable_writing().await;
 
     writer.node().connect(reader_addr).await.unwrap();
 
