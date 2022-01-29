@@ -20,7 +20,7 @@ test = []
 [dependencies]
 async-trait = "0.1"
 once_cell = { version = "1", features = ["parking_lot"] }
-parking_lot = "0.11"
+parking_lot = "0.12"
 tokio = { version = "1.14", features = ["io-util", "net", "parking_lot", "rt", "sync", "time"] }
 tracing = { version = "0.1", default-features = false }
 

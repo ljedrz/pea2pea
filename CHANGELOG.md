@@ -1,3 +1,9 @@
+# 0.32.0
+
+### Changed
+
+- bumped the `parking_lot` dependency to `0.12`
+
 # 0.31.0
 
 ### Changed
