@@ -122,7 +122,7 @@ pub fn display_bytes(bytes: f64) -> String {
     } else if bytes >= MB {
         format!("{:.2} MB", bytes / MB)
     } else if bytes >= KB {
-        format!("{:.2} KB", bytes / KB)
+        format!("{:.2} kB", bytes / KB)
     } else {
         format!("{:.2} B", bytes)
     }
