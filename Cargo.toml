@@ -31,7 +31,7 @@ circular-queue = "0.2"
 peak_alloc = "0.1"
 rand = { version = "0.8", default-features = false, features = ["getrandom", "small_rng"] }
 serde = { version = "1", default-features = false, features = ["derive"] }
-snow = "0.8"
+snow = "0.9"
 tokio = { version = "1.14", features = ["macros", "rt-multi-thread"] }
 tracing-subscriber = { version = "0.3", default-features = false, features = ["ansi", "env-filter", "fmt", "parking_lot", "smallvec"] }
 pea2pea = { path = ".", features = ["test"] } # a workaround to use the `test` feature in tests by default
