@@ -192,22 +192,26 @@ impl Node {
     }
 
     /// Returns the name assigned to the node.
+    #[inline]
     pub fn name(&self) -> &str {
         // safe; can be set as None in Config, but receives a default value on Node creation
         self.config.name.as_deref().unwrap()
     }
 
     /// Returns a reference to the node's config.
+    #[inline]
     pub fn config(&self) -> &Config {
         &self.config
     }
 
     /// Returns a reference to the node's stats.
+    #[inline]
     pub fn stats(&self) -> &Stats {
         &self.stats
     }
 
     /// Returns the tracing `Span` associated with the node.
+    #[inline]
     pub fn span(&self) -> &Span {
         &self.span
     }
@@ -355,6 +359,7 @@ impl Node {
     }
 
     /// Returns a reference to the collection of statistics of node's known peers.
+    #[inline]
     pub fn known_peers(&self) -> &KnownPeers {
         &self.known_peers
     }
