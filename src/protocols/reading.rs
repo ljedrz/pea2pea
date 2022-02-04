@@ -147,7 +147,6 @@ where
             Ok(0) => Err(io::ErrorKind::UnexpectedEof.into()),
             Err(e) => {
                 error!(parent: self.node().span(), "can't read from {}: {}", addr, e);
-                buffer.clear();
                 Err(e)
             }
             Ok(read_len) => {
@@ -219,7 +218,6 @@ where
                     // forbid messages that are larger than the read buffer
                     if left > self.node().config().read_buffer_size {
                         error!(parent: self.node().span(), "a message from {} is too large", addr);
-                        buffer.clear();
                         return Err(io::ErrorKind::InvalidData.into());
                     }
 
@@ -235,7 +233,6 @@ where
                 // an erroneous message (e.g. an unexpected zero-length payload)
                 Err(e) => {
                     error!(parent: self.node().span(), "a message from {} is invalid", addr);
-                    buffer.clear();
                     return Err(e);
                 }
             }
