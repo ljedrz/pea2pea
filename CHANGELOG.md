@@ -6,6 +6,10 @@
 - marked some obvious inlining targets as `#[inline]`
 - made `Writing::send_broadcast` return an `io::Result`
 
+### Fixed
+
+- made `Writing::send_direct_message` return an `io::ErrorKind::NotConnected` if the given address is not connected
+
 # 0.32.0
 
 ### Changed

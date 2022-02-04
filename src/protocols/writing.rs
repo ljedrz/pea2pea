@@ -139,18 +139,16 @@ where
 
     /// Sends the provided message to the specified `SocketAddr`.
     fn send_direct_message(&self, addr: SocketAddr, message: Self::Message) -> io::Result<()> {
-        if let Some(sender) = self
-            .node()
-            .protocols
-            .writing_handler
-            .get()
-            .and_then(|h| h.senders.read().get(&addr).cloned())
-        {
-            sender.try_send(Box::new(message)).map_err(|e| {
-                error!(parent: self.node().span(), "can't send a message to {}: {}", addr, e);
-                self.node().stats().register_failure();
-                io::ErrorKind::Other.into()
-            })
+        if let Some(handler) = self.node().protocols.writing_handler.get() {
+            if let Some(sender) = handler.senders.read().get(&addr).cloned() {
+                sender.try_send(Box::new(message)).map_err(|e| {
+                    error!(parent: self.node().span(), "can't send a message to {}: {}", addr, e);
+                    self.node().stats().register_failure();
+                    io::ErrorKind::Other.into()
+                })
+            } else {
+                Err(io::ErrorKind::NotConnected.into())
+            }
         } else {
             Err(io::ErrorKind::Unsupported.into())
         }
