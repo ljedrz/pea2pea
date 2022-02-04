@@ -1,3 +1,11 @@
+# 0.33.0
+
+### Changed
+
+- bumped the `snow` dev-dependency to `0.9`
+- marked some obvious inlining targets as `#[inline]`
+- made `Writing::send_broadcast` return an `io::Result`
+
 # 0.32.0
 
 ### Changed

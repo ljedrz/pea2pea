@@ -157,7 +157,7 @@ where
     }
 
     /// Broadcasts the provided message to all peers.
-    fn send_broadcast(&self, message: Self::Message)
+    fn send_broadcast(&self, message: Self::Message) -> io::Result<()>
     where
         Self::Message: Clone,
     {
@@ -169,6 +169,10 @@ where
                     self.node().stats().register_failure();
                 });
             }
+
+            Ok(())
+        } else {
+            Err(io::ErrorKind::Unsupported.into())
         }
     }
 }
