@@ -1,5 +1,5 @@
 use bytes::Bytes;
-use rand::{thread_rng, Rng};
+use rand::{rngs::SmallRng, Rng, SeedableRng};
 
 mod common;
 use pea2pea::{
@@ -9,6 +9,8 @@ use pea2pea::{
 
 #[tokio::test]
 async fn message_stats() {
+    let mut rng = SmallRng::from_entropy();
+
     let reader = common::MessagingNode::new("reader").await;
     let reader_addr = reader.node().listening_addr().unwrap();
     reader.enable_reading().await;
@@ -18,9 +20,9 @@ async fn message_stats() {
 
     writer.node().connect(reader_addr).await.unwrap();
 
-    let sent_msgs_count = thread_rng().gen_range(2..=64); // shouldn't exceed the outbound queue depth
-    let mut msg = vec![0u8; thread_rng().gen_range(1..=4096)];
-    thread_rng().fill(&mut msg[..]);
+    let sent_msgs_count = rng.gen_range(2..=64); // shouldn't exceed the outbound queue depth
+    let mut msg = vec![0u8; rng.gen_range(1..=4096)];
+    rng.fill(&mut msg[..]);
 
     let msg = Bytes::from(msg);
 
