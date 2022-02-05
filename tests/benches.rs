@@ -17,7 +17,7 @@ static RANDOM_BYTES: Lazy<Bytes> = Lazy::new(|| {
     Bytes::from(
         (&mut SmallRng::from_entropy())
             .sample_iter(Standard)
-            .take(MSG_SIZE - 4)
+            .take(MSG_SIZE - 2)
             .collect::<Vec<_>>(),
     )
 });
@@ -43,10 +43,10 @@ impl Reading for Sink {
         let mut buf = [0u8; MSG_SIZE];
 
         let payload_len = {
-            if reader.read_exact(&mut buf[..4]).is_err() {
+            if reader.read_exact(&mut buf[..2]).is_err() {
                 return Ok(None);
             }
-            u32::from_le_bytes(buf[..4].try_into().unwrap()) as usize
+            u16::from_le_bytes(buf[..2].try_into().unwrap()) as usize
         };
 
         if reader.read_exact(&mut buf[..payload_len]).is_err() {

@@ -136,7 +136,7 @@ macro_rules! impl_messaging {
             type Message = bytes::Bytes;
 
             fn read_message<R: io::Read>(&self, _source: SocketAddr, reader: &mut R) -> io::Result<Option<Self::Message>> {
-                let vec = crate::common::read_len_prefixed_message::<R, 4>(reader)?;
+                let vec = crate::common::read_len_prefixed_message::<R, 2>(reader)?;
 
                 Ok(vec.map(bytes::Bytes::from))
             }
@@ -152,7 +152,7 @@ macro_rules! impl_messaging {
             type Message = bytes::Bytes;
 
             fn write_message<W: io::Write>(&self, _target: SocketAddr, payload: &Self::Message, writer: &mut W) -> io::Result<()> {
-                writer.write_all(&(payload.len() as u32).to_le_bytes())?;
+                writer.write_all(&(payload.len() as u16).to_le_bytes())?;
                 writer.write_all(payload)
             }
         }

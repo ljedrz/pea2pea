@@ -48,7 +48,7 @@ async fn fuzzing() {
 
     for _ in 0..ITERATIONS {
         for _ in 0..MSGS_PER_ITERATION {
-            let random_len: usize = rng.gen_range(1..=MAX_MSG_SIZE - 4); // account for the length prefix
+            let random_len: usize = rng.gen_range(1..=MAX_MSG_SIZE - 2); // account for the length prefix
             let random_payload: Vec<u8> =
                 (&mut rng).sample_iter(Standard).take(random_len).collect();
 
@@ -60,7 +60,7 @@ async fn fuzzing() {
 
             processed_sizes.push(random_len);
             expected_msg_count += 1;
-            expected_msg_size += 4 + random_len as u64;
+            expected_msg_size += 2 + random_len as u64;
         }
 
         wait_until!(

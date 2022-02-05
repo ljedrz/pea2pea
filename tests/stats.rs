@@ -35,7 +35,7 @@ async fn message_stats() {
     }
 
     // 4 is the common test length prefix size
-    let expected_msgs_size = sent_msgs_count * (msg.len() as u64 + 4);
+    let expected_msgs_size = sent_msgs_count * (msg.len() as u64 + 2);
 
     assert!(writer.node().stats().sent() == (sent_msgs_count, expected_msgs_size));
     wait_until!(1, {

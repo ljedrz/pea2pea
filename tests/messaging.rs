@@ -49,7 +49,7 @@ impl Reading for EchoNode {
         _source: SocketAddr,
         reader: &mut R,
     ) -> io::Result<Option<Self::Message>> {
-        let byte = common::read_len_prefixed_message::<R, 4>(reader)?;
+        let byte = common::read_len_prefixed_message::<R, 2>(reader)?;
         Ok(byte.map(|byte| TestMessage::from(byte[0])))
     }
 
@@ -78,7 +78,7 @@ impl Writing for EchoNode {
         payload: &Self::Message,
         writer: &mut W,
     ) -> io::Result<()> {
-        writer.write_all(&(payload.len() as u32).to_le_bytes())?;
+        writer.write_all(&(payload.len() as u16).to_le_bytes())?;
         writer.write_all(payload)
     }
 }
@@ -176,7 +176,7 @@ async fn drop_connection_on_oversized_message() {
     wait_until!(1, reader.node().num_connected() == 1);
 
     // when prefixed with length, it'll be equal to MSG_SIZE_LIMIT
-    let max_size_payload = vec![0u8; MSG_SIZE_LIMIT - 4];
+    let max_size_payload = vec![0u8; MSG_SIZE_LIMIT - 2];
 
     writer
         .send_direct_message(reader_addr, max_size_payload.into())
@@ -186,9 +186,9 @@ async fn drop_connection_on_oversized_message() {
 
     wait_until!(1, reader.node().stats().received() == (1, 10));
 
-    // this message exceed MSG_SIZE_LIMIT, i.e. the read buffer size of the reader,
-    // by a single byte
-    let oversized_payload = vec![0u8; MSG_SIZE_LIMIT - 3];
+    // this message exceeds MSG_SIZE_LIMIT, which is also the reader's read
+    // buffer size, by a single byte
+    let oversized_payload = vec![0u8; MSG_SIZE_LIMIT - 1];
 
     writer
         .send_direct_message(reader_addr, oversized_payload.into())
