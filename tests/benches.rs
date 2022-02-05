@@ -11,7 +11,7 @@ use pea2pea::{
 use std::{convert::TryInto, io, net::SocketAddr, time::Instant};
 
 const NUM_MESSAGES: usize = 10_000;
-const MSG_SIZE: usize = 64 * 1024;
+const MSG_SIZE: usize = 32 * 1024;
 
 static RANDOM_BYTES: Lazy<Bytes> = Lazy::new(|| {
     Bytes::from(
@@ -77,7 +77,7 @@ async fn run_bench_scenario(sender_count: usize) -> f64 {
     }
 
     let config = Config {
-        read_buffer_size: MSG_SIZE * 3,
+        read_buffer_size: MSG_SIZE * sender_count,
         max_connections: sender_count as u16,
         ..Default::default()
     };
