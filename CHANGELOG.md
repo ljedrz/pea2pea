@@ -2,7 +2,8 @@
 
 ### Added
 
-- extra docs
+- extended the docs and added links
+- MSRV in the TOML
 
 ### Changed
 
