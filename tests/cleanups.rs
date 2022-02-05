@@ -83,8 +83,9 @@ async fn check_node_cleanups() {
 
         temporary_node
             .send_direct_message(persistent_addr, Bytes::from(&b"derp"[..]))
+            .unwrap()
+            .await
             .unwrap();
-        wait_until!(1, temporary_node.node().stats().sent().0 == 1);
 
         temporary_node.node().shut_down().await;
         wait_until!(1, persistent_node.node().num_connected() == 0);

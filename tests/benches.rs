@@ -103,6 +103,8 @@ async fn run_bench_scenario(sender_count: usize) -> f64 {
             for _ in 0..NUM_MESSAGES {
                 spammer
                     .send_direct_message(sink_addr, RANDOM_BYTES.clone())
+                    .unwrap()
+                    .await
                     .unwrap();
             }
         });

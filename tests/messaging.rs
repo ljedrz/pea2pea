@@ -110,7 +110,11 @@ async fn messaging_example() {
 
     for message in &[Herp, Derp, Herp] {
         let msg = Bytes::copy_from_slice(&[*message as u8]);
-        shouter.send_direct_message(picky_echo_addr, msg).unwrap();
+        shouter
+            .send_direct_message(picky_echo_addr, msg)
+            .unwrap()
+            .await
+            .unwrap();
     }
 
     // let echo send one message on its own too, for good measure
@@ -118,6 +122,8 @@ async fn messaging_example() {
 
     picky_echo
         .send_direct_message(shouter_addr, [Herp as u8][..].into())
+        .unwrap()
+        .await
         .unwrap();
 
     // check if the shouter heard the (non-duplicate) echoes and the last, non-reply one
@@ -142,6 +148,8 @@ async fn drop_connection_on_invalid_message() {
 
     writer
         .send_direct_message(reader_addr, bad_message)
+        .unwrap()
+        .await
         .unwrap();
 
     wait_until!(1, reader.node().num_connected() == 0);
@@ -172,6 +180,8 @@ async fn drop_connection_on_oversized_message() {
 
     writer
         .send_direct_message(reader_addr, max_size_payload.into())
+        .unwrap()
+        .await
         .unwrap();
 
     wait_until!(1, reader.node().stats().received() == (1, 10));
@@ -182,6 +192,8 @@ async fn drop_connection_on_oversized_message() {
 
     writer
         .send_direct_message(reader_addr, oversized_payload.into())
+        .unwrap()
+        .await
         .unwrap();
 
     wait_until!(1, reader.node().num_connected() == 0);
@@ -222,6 +234,8 @@ async fn no_reading_no_delivery() {
     // writer sends a message
     writer
         .send_direct_message(reader_addr, vec![0; 16].into())
+        .unwrap()
+        .await
         .unwrap();
 
     sleep(Duration::from_millis(10)).await;

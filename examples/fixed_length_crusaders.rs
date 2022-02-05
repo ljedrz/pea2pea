@@ -85,7 +85,9 @@ impl Reading for JoJoNode {
             BattleCry::Muda => BattleCry::Ora,
         };
 
-        self.send_direct_message(source, reply)
+        self.send_direct_message(source, reply).unwrap();
+
+        Ok(())
     }
 }
 

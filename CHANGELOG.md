@@ -8,7 +8,8 @@
 
 - bumped the `snow` dev-dependency to `0.9`
 - marked some obvious inlining targets as `#[inline]`
-- made `Writing::send_broadcast` return an `io::Result`
+- made `Writing::send_broadcast` return an `io::Result<()>` instead of nothing
+- made `Writing::send_direct_message` return an `io::Result<oneshot::Receiver<bool>>` instead of `io::Result<()>`
 
 ### Fixed
 

@@ -29,16 +29,15 @@ async fn message_stats() {
     for _ in 0..sent_msgs_count {
         writer
             .send_direct_message(reader_addr, msg.clone())
+            .unwrap()
+            .await
             .unwrap();
     }
 
     // 4 is the common test length prefix size
     let expected_msgs_size = sent_msgs_count * (msg.len() as u64 + 4);
 
-    wait_until!(
-        1,
-        writer.node().stats().sent() == (sent_msgs_count, expected_msgs_size)
-    );
+    assert!(writer.node().stats().sent() == (sent_msgs_count, expected_msgs_size));
     wait_until!(1, {
         if let Some(stats) = writer.node().known_peers().get(reader_addr) {
             let (sent_msgs, sent_bytes) = stats.sent();

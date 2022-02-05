@@ -54,6 +54,8 @@ async fn fuzzing() {
 
             sender
                 .send_direct_message(receiver_addr, random_payload.into())
+                .unwrap()
+                .await
                 .unwrap();
 
             processed_sizes.push(random_len);

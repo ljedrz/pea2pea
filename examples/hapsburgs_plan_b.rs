@@ -74,7 +74,9 @@ impl Reading for NakedNode {
 
         info!(parent: self.node().span(), "{}", reply);
 
-        self.send_direct_message(source, reply.to_string())
+        self.send_direct_message(source, reply.to_string()).unwrap();
+
+        Ok(())
     }
 }
 
