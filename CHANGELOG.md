@@ -1,5 +1,9 @@
 # 0.33.0
 
+### Added
+
+- extra docs
+
 ### Changed
 
 - bumped the `snow` dev-dependency to `0.9`

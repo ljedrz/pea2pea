@@ -129,7 +129,10 @@ where
     }
 
     /// Writes the provided payload to the given intermediate writer; the payload can get prepended with a header
-    /// indicating its length, be suffixed with a character indicating that it's complete, etc.
+    /// indicating its length, be suffixed with a character indicating that it's complete, etc. The `target`
+    /// parameter is provided in case serialization depends on the recipient, e.g. in case of encryption.
+    ///
+    /// Note: the default `writer` is a memory buffer and thus writing to it is infallible.
     fn write_message<W: io::Write>(
         &self,
         target: SocketAddr,
@@ -137,9 +140,22 @@ where
         writer: &mut W,
     ) -> io::Result<()>;
 
-    /// Sends the provided message to the specified `SocketAddr`.
-    fn send_direct_message(&self, addr: SocketAddr, message: Self::Message) -> io::Result<()> {
+    /// Sends the provided message to the specified `SocketAddr`. Returns as soon as the message is queued to
+    /// be sent, without waiting for the actual delivery.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`io::ErrorKind::NotConnected`] if the node is not connected to the provided address.
+    ///
+    /// Returns [`io::ErrorKind::Unsupported`] if [`Writing::enable_writing`] hadn't been called yet.
+    fn send_direct_message(
+        &self,
+        addr: SocketAddr,
+        message: Self::Message,
+    ) -> io::Result<oneshot::Receiver<()>> {
+        // access the protocol handler
         if let Some(handler) = self.node().protocols.writing_handler.get() {
+            // find the message sender for the given address
             if let Some(sender) = handler.senders.read().get(&addr).cloned() {
                 sender.try_send(Box::new(message)).map_err(|e| {
                     error!(parent: self.node().span(), "can't send a message to {}: {}", addr, e);
@@ -154,11 +170,17 @@ where
         }
     }
 
-    /// Broadcasts the provided message to all peers.
+    /// Broadcasts the provided message to all peers. Returns as soon as the message is queued to
+    /// be sent to all the peers, without waiting for the actual delivery.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`io::ErrorKind::Unsupported`] if [`Writing::enable_writing`] hadn't been called yet.
     fn send_broadcast(&self, message: Self::Message) -> io::Result<()>
     where
         Self::Message: Clone,
     {
+        // access the protocol handler
         if let Some(handler) = self.node().protocols.writing_handler.get() {
             let senders = handler.senders.read().clone();
             for (addr, message_sender) in senders {
