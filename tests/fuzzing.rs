@@ -16,8 +16,8 @@ async fn fuzzing() {
 
     let start = Instant::now();
 
-    const MAX_MSG_SIZE: usize = 4096;
-    const ITERATIONS: usize = 1000;
+    const MAX_MSG_SIZE: usize = 1024;
+    const ITERATIONS: usize = 5_000;
     const MSGS_PER_ITERATION: usize = 4;
 
     let config = Config {
