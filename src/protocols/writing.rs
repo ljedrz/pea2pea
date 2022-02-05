@@ -1,7 +1,7 @@
 use crate::{protocols::ReturnableConnection, Pea2Pea};
 
 #[cfg(doc)]
-use crate::{protocols::Handshake, Config};
+use crate::{protocols::Handshake, Config, Node};
 
 use async_trait::async_trait;
 use parking_lot::RwLock;
@@ -137,7 +137,7 @@ where
     /// indicating its length, be suffixed with a character indicating that it's complete, etc. The `target`
     /// parameter is provided in case serialization depends on the recipient, e.g. in case of encryption.
     ///
-    /// Note: the default `writer` is a memory buffer and thus writing to it is infallible.
+    /// note: The default `writer` is a memory buffer and thus writing to it is infallible.
     fn write_message<W: io::Write>(
         &self,
         target: SocketAddr,
@@ -151,9 +151,10 @@ where
     ///
     /// # Errors
     ///
-    /// Returns [`io::ErrorKind::NotConnected`] if the node is not connected to the provided address.
-    ///
-    /// Returns [`io::ErrorKind::Unsupported`] if [`Writing::enable_writing`] hadn't been called yet.
+    /// The following errors can be returned:
+    /// - [`io::ErrorKind::NotConnected`] if the node is not connected to the provided address
+    /// - [`io::ErrorKind::Other`] if the outbound message queue for this address is full
+    /// - [`io::ErrorKind::Unsupported`] if [`Writing::enable_writing`] hadn't been called yet
     fn send_direct_message(
         &self,
         addr: SocketAddr,
@@ -177,8 +178,10 @@ where
         }
     }
 
-    /// Broadcasts the provided message to all peers. Returns as soon as the message is queued to
-    /// be sent to all the peers, without waiting for the actual delivery.
+    /// Broadcasts the provided message to all connected peers. Returns as soon as the message is queued to
+    /// be sent to all the peers, without waiting for the actual delivery. This method doesn't provide the
+    /// means to check when and if the messages actually get delivered; you can achieve that by calling
+    /// [`Writing::send_direct_message`] for each address returned by [`Node::connected_addrs`].
     ///
     /// # Errors
     ///

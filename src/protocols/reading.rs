@@ -246,6 +246,9 @@ where
     /// i.e. further reads from the stream must be performed in order to produce the whole message. An `Err`
     /// returned here indicates an invalid message which, depending on the configured list of fatal errors,
     /// can cause the related connection to be dropped.
+    ///
+    /// note: The maximum size of inbound messages is automatically enforced via [`Config::read_buffer_size`],
+    /// but your implementation is free to impose a limit lower than the size of the buffer.
     fn read_message<R: io::Read>(
         &self,
         source: SocketAddr,
