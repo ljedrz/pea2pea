@@ -79,6 +79,8 @@ async fn check_node_cleanups() {
 
         persistent_node
             .send_direct_message(temporary_addr, Bytes::from(&b"herp"[..]))
+            .unwrap()
+            .await
             .unwrap();
 
         temporary_node

@@ -85,7 +85,10 @@ impl Reading for JoJoNode {
             BattleCry::Muda => BattleCry::Ora,
         };
 
-        self.send_direct_message(source, reply).unwrap();
+        self.send_direct_message(source, reply)
+            .unwrap()
+            .await
+            .unwrap();
 
         Ok(())
     }
@@ -143,6 +146,8 @@ async fn main() {
 
     jotaro
         .send_direct_message(dio_addr, BattleCry::Ora)
+        .unwrap()
+        .await
         .unwrap();
 
     sleep(Duration::from_secs(3)).await;

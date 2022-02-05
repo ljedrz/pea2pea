@@ -125,6 +125,8 @@ async fn problem_combination() {
                 receiver.node().listening_addr().unwrap(),
                 random_payload.into(),
             )
+            .unwrap()
+            .await
             .unwrap();
 
         sleep(Duration::from_millis(5)).await;

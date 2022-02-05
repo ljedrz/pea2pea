@@ -60,6 +60,8 @@ impl Reading for EchoNode {
             info!(parent: self.node().span(), "it was new! echoing it");
 
             self.send_direct_message(source, Bytes::copy_from_slice(&[message as u8]))
+                .unwrap()
+                .await
                 .unwrap();
         } else {
             debug!(parent: self.node().span(), "I've already heard {:?}! not echoing", message);
