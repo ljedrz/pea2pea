@@ -44,7 +44,7 @@ macro_rules! enable_protocol {
 // A seuential numeric identifier assigned to `Node`s that were not provided with a name.
 static SEQUENTIAL_NODE_ID: AtomicUsize = AtomicUsize::new(0);
 
-/// The central object responsible for handling all the connections.
+/// The central object responsible for handling connections.
 #[derive(Clone)]
 pub struct Node(Arc<InnerNode>);
 
@@ -79,7 +79,7 @@ pub struct InnerNode {
 }
 
 impl Node {
-    /// Creates a new `Node` optionally using a given `Config`.
+    /// Creates a new [`Node`] optionally using the given [`Config`].
     pub async fn new(config: Option<Config>) -> io::Result<Self> {
         let mut config = config.unwrap_or_default();
 
@@ -210,7 +210,7 @@ impl Node {
         &self.stats
     }
 
-    /// Returns the tracing `Span` associated with the node.
+    /// Returns the tracing [`Span`] associated with the node.
     #[inline]
     pub fn span(&self) -> &Span {
         &self.span

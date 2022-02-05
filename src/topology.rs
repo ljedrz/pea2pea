@@ -2,12 +2,12 @@ use crate::Pea2Pea;
 
 use std::{collections::HashSet, io};
 
-/// The way in which nodes are connected to each other; used in `connect_nodes`.
+/// The way in which nodes are connected to each other; used in [`connect_nodes`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Topology {
     /// Each node - except the last one - connects to the next one in a linear fashion.
     Line,
-    /// Like the `Line`, but the last node connects to the first one, forming a ring.
+    /// Like [`Topology::Line`], but the last node connects to the first one, forming a ring.
     Ring,
     /// All the nodes become connected to one another, forming a full mesh.
     Mesh,
@@ -15,7 +15,7 @@ pub enum Topology {
     Star,
 }
 
-/// Connects the provided list of nodes in order to form the given `Topology`.
+/// Connects the provided list of nodes in order to form the given [`Topology`].
 pub async fn connect_nodes<T: Pea2Pea>(nodes: &[T], topology: Topology) -> io::Result<()> {
     let count = nodes.len();
     if count < 2 {

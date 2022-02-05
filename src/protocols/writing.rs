@@ -1,5 +1,8 @@
 use crate::{protocols::ReturnableConnection, Pea2Pea};
 
+#[cfg(doc)]
+use crate::{protocols::Handshake, Config};
+
 use async_trait::async_trait;
 use parking_lot::RwLock;
 use tokio::{
@@ -10,7 +13,7 @@ use tracing::*;
 
 use std::{any::Any, collections::HashMap, io, net::SocketAddr};
 
-/// Can be used to specify and enable writing, i.e. sending outbound messages. If the `Handshake`
+/// Can be used to specify and enable writing, i.e. sending outbound messages. If the [`Handshake`]
 /// protocol is enabled too, it goes into force only after the handshake has been concluded.
 #[async_trait]
 pub trait Writing: Pea2Pea
@@ -19,7 +22,7 @@ where
 {
     /// The type of the outbound messages; unless their serialization is expensive and the message
     /// is broadcasted (in which case it would get serialized multiple times), serialization should
-    /// be done in `Writing::write_message`.
+    /// be done in [`Writing::write_message`].
     type Message: Send;
 
     /// Prepares the node to send messages.
@@ -142,7 +145,7 @@ where
         writer: &mut W,
     ) -> io::Result<()>;
 
-    /// Sends the provided message to the specified `SocketAddr`. Returns as soon as the message is queued to
+    /// Sends the provided message to the specified [`SocketAddr`]. Returns as soon as the message is queued to
     /// be sent, without waiting for the actual delivery; instead, the caller is provided with a [`oneshot::Receiver`]
     /// which can be used to determine when and whether the message has been delivered.
     ///
@@ -220,7 +223,7 @@ impl WrappedMessage {
     }
 }
 
-/// The handler object dedicated to the `Writing` protocol.
+/// The handler object dedicated to the [`Writing`] protocol.
 pub struct WritingHandler {
     handler: mpsc::Sender<ReturnableConnection>,
     pub(crate) senders: RwLock<HashMap<SocketAddr, mpsc::Sender<WrappedMessage>>>,

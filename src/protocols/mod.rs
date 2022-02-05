@@ -1,5 +1,5 @@
-//! Opt-in protocols available to the `Node`; each protocol is expected to spawn its own task that runs throughout the
-//! `Node`'s lifetime and handles a specific functionality. The communication with these tasks is done via dedicated
+//! Opt-in protocols available to the node; each protocol is expected to spawn its own task that runs throughout the
+//! node's lifetime and handles a specific functionality. The communication with these tasks is done via dedicated
 //! handler objects.
 
 use crate::connections::Connection;
@@ -29,7 +29,7 @@ pub(crate) struct Protocols {
 
 /// An object sent to a protocol handler task; the task assumes control of a protocol-relevant item `T`,
 /// and when it's done with it, it returns it (possibly in a wrapper object) or another relevant object
-/// to the callsite via the counterpart `oneshot::Receiver`.
+/// to the callsite via the counterpart [`oneshot::Receiver`].
 pub type ReturnableItem<T, U> = (T, oneshot::Sender<U>);
 
 pub(crate) type ReturnableConnection = ReturnableItem<Connection, io::Result<Connection>>;

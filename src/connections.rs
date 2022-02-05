@@ -62,9 +62,9 @@ impl Not for ConnectionSide {
 pub struct Connection {
     /// The address of the connection.
     pub addr: SocketAddr,
-    /// Kept only until the protocols are enabled (`Reading` should `take()` it).
+    /// Kept only until the protocols are enabled (the reading protocol should take it).
     pub reader: Option<OwnedReadHalf>,
-    /// Kept only until the protocols are enabled (`Writing` should `take()` it).
+    /// Kept only until the protocols are enabled (the writing protocol should take it).
     pub writer: Option<OwnedWriteHalf>,
     /// Handles to tasks spawned for the connection.
     pub tasks: Vec<JoinHandle<()>>,
@@ -73,7 +73,7 @@ pub struct Connection {
 }
 
 impl Connection {
-    /// Creates a `Connection` with placeholders for protocol-related objects.
+    /// Creates a [`Connection`] with placeholders for protocol-related objects.
     pub(crate) fn new(addr: SocketAddr, stream: TcpStream, side: ConnectionSide) -> Self {
         let (reader, writer) = stream.into_split();
 

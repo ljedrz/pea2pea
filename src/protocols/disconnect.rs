@@ -1,5 +1,8 @@
 use crate::{protocols::ReturnableItem, Pea2Pea};
 
+#[cfg(doc)]
+use crate::{protocols::Writing, Connection};
+
 use tokio::{
     sync::{mpsc, oneshot},
     task,
@@ -17,7 +20,7 @@ pub trait Disconnect: Pea2Pea
 where
     Self: Clone + Send + Sync + 'static,
 {
-    /// Attaches the behavior specified in `Disconnect::handle_disconnect` to every occurrence of the
+    /// Attaches the behavior specified in [`Disconnect::handle_disconnect`] to every occurrence of the
     /// node disconnecting from a peer.
     async fn enable_disconnect(&self) {
         let (from_node_sender, mut from_node_receiver) =
@@ -57,12 +60,12 @@ where
     }
 
     /// Any extra actions to be executed during a disconnect; in order to still be able to
-    /// communicate with the peer in the usual manner (i.e. via `Writing`), only its `SocketAddr`
-    /// (as opposed to the related `Connection` object) is provided as an argument.
+    /// communicate with the peer in the usual manner (i.e. via [`Writing`]), only its [`SocketAddr`]
+    /// (as opposed to the related [`Connection`] object) is provided as an argument.
     async fn handle_disconnect(&self, addr: SocketAddr);
 }
 
-/// The handler object dedicated to the `Disconnect` protocol.
+/// The handler object dedicated to the [`Disconnect`] protocol.
 pub struct DisconnectHandler(mpsc::Sender<ReturnableItem<SocketAddr, ()>>);
 
 impl DisconnectHandler {

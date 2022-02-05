@@ -1,5 +1,8 @@
 use crate::{protocols::ReturnableConnection, Pea2Pea};
 
+#[cfg(doc)]
+use crate::{protocols::Handshake, Config};
+
 use async_trait::async_trait;
 use tokio::{
     io::{AsyncRead, AsyncReadExt},
@@ -10,8 +13,8 @@ use tracing::*;
 
 use std::{io, net::SocketAddr, time::Duration};
 
-/// Can be used to specify and enable reading, i.e. receiving inbound messages.
-/// If `Handshake` is enabled too, it goes into force only after the handshake has been concluded.
+/// Can be used to specify and enable reading, i.e. receiving inbound messages. If the [`Handshake`]
+/// protocol is enabled too, it goes into force only after the handshake has been concluded.
 #[async_trait]
 pub trait Reading: Pea2Pea
 where
@@ -21,7 +24,7 @@ where
     type Message: Send;
 
     /// Prepares the node to receive messages; failures to read from a connection's stream are penalized by a timeout
-    /// defined in `Config`, while the configured fatal errors result in an immediate disconnect (in order to e.g. avoid
+    /// defined in [`Config`], while the configured fatal errors result in an immediate disconnect (in order to e.g. avoid
     /// accidentally reading "borked" messages).
     async fn enable_reading(&self) {
         let (conn_sender, mut conn_receiver) = mpsc::channel::<ReturnableConnection>(
@@ -160,7 +163,7 @@ where
         }
     }
 
-    /// Attempts to isolate full messages from the connection's read buffer using `Reading::read_message`. Once
+    /// Attempts to isolate full messages from the connection's read buffer using [`Reading::read_message`]. Once
     /// no more messages can be extracted, it preserves any leftover bytes and moves them to the beginning of the
     /// buffer, and further reads from the stream are appended to them. Read messages are sent to a separate message
     /// processing task in order not to block further reads.
@@ -253,7 +256,7 @@ where
     async fn process_message(&self, source: SocketAddr, message: Self::Message) -> io::Result<()>;
 }
 
-/// The handler object dedicated to the `Reading` protocol.
+/// The handler object dedicated to the [`Reading`] protocol.
 pub struct ReadingHandler(mpsc::Sender<ReturnableConnection>);
 
 impl ReadingHandler {

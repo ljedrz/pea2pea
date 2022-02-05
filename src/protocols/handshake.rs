@@ -77,12 +77,12 @@ where
         );
     }
 
-    /// Performs the handshake; temporarily assumes control of the `Connection` and returns it if the handshake is
+    /// Performs the handshake; temporarily assumes control of the [`Connection`] and returns it if the handshake is
     /// successful.
     async fn perform_handshake(&self, conn: Connection) -> io::Result<Connection>;
 }
 
-/// The handler object dedicated to the `Handshake` protocol.
+/// The handler object dedicated to the [`Handshake`] protocol.
 pub struct HandshakeHandler(mpsc::Sender<ReturnableConnection>);
 
 impl HandshakeHandler {
