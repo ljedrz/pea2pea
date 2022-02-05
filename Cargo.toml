@@ -10,6 +10,7 @@ documentation = "https://docs.rs/pea2pea"
 readme = "README.md"
 categories = ["network-programming", "asynchronous"]
 keywords = ["p2p", "peer-to-peer", "networking"]
+rust-version = "1.56"
 
 [lib]
 crate-type = ["lib"]
