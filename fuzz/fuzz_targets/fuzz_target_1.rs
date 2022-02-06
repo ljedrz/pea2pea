@@ -62,8 +62,8 @@ impl Reading for FuzzNode {
 
         // we are deliberately using an `ErrorKind` that does not belong to `Config::fatal_io_errors`
         // in order not to cause a disconnect, which would end the fuzz test prematurely; the `Reading`
-        // protocol already enforces this limit internally, but performing this check here avoids the
-        // aforementioned issue
+        // protocol already enforces a size limit internally (via `Config::read_buffer_size`), but
+        // performing this check here avoids the aforementioned issue
         if payload_len > MAX_MSG_SIZE {
             return Err(ErrorKind::Other.into());
         }
@@ -106,6 +106,7 @@ impl Writing for FuzzNode {
     }
 }
 
+// the fuzzing will be done using `Vec<u8>` messages
 fuzz_target!(|messages: Vec<Vec<u8>>| {
     let rt = tokio::runtime::Runtime::new().unwrap();
 
