@@ -1,6 +1,5 @@
 use circular_queue::CircularQueue;
 use rand::{distributions::Standard, rngs::SmallRng, Rng, SeedableRng};
-use tokio::time::sleep;
 
 mod common;
 use pea2pea::{
@@ -8,8 +7,10 @@ use pea2pea::{
     Config, Node, Pea2Pea,
 };
 
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
+// despite there already being a `cargo-fuzz`-powered test already, this one is much better at
+// testing inbound message buffering logic, as its issues are unlikely to cause any panics
 #[tokio::test(flavor = "multi_thread")]
 async fn fuzzing() {
     // tracing_subscriber::fmt::init();
@@ -17,12 +18,11 @@ async fn fuzzing() {
     let start = Instant::now();
 
     const MAX_MSG_SIZE: usize = 1024;
-    const ITERATIONS: usize = 5_000;
-    const MSGS_PER_ITERATION: usize = 4;
+    const ITERATIONS: usize = 2_500;
 
     let config = Config {
         name: Some("receiver".into()),
-        read_buffer_size: MAX_MSG_SIZE * MSGS_PER_ITERATION,
+        read_buffer_size: MAX_MSG_SIZE,
         ..Default::default()
     };
     let receiver = common::MessagingNode(Node::new(Some(config)).await.unwrap());
@@ -47,21 +47,18 @@ async fn fuzzing() {
     let mut processed_sizes = CircularQueue::with_capacity(256);
 
     for _ in 0..ITERATIONS {
-        for _ in 0..MSGS_PER_ITERATION {
-            let random_len: usize = rng.gen_range(1..=MAX_MSG_SIZE - 2); // account for the length prefix
-            let random_payload: Vec<u8> =
-                (&mut rng).sample_iter(Standard).take(random_len).collect();
+        let random_len: usize = rng.gen_range(1..=MAX_MSG_SIZE - 2); // account for the length prefix
+        let random_payload: Vec<u8> = (&mut rng).sample_iter(Standard).take(random_len).collect();
 
-            sender
-                .send_direct_message(receiver_addr, random_payload.into())
-                .unwrap()
-                .await
-                .unwrap();
+        sender
+            .send_direct_message(receiver_addr, random_payload.into())
+            .unwrap()
+            .await
+            .unwrap();
 
-            processed_sizes.push(random_len);
-            expected_msg_count += 1;
-            expected_msg_size += 2 + random_len as u64;
-        }
+        processed_sizes.push(random_len);
+        expected_msg_count += 1;
+        expected_msg_size += 2 + random_len as u64;
 
         wait_until!(
             1,
@@ -128,8 +125,6 @@ async fn problem_combination() {
             .unwrap()
             .await
             .unwrap();
-
-        sleep(Duration::from_millis(5)).await;
 
         assert!(
             receiver.node().num_connected() != 0,
