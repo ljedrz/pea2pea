@@ -2,6 +2,7 @@
 
 ### Added
 
+- a `cargo-fuzz` powered fuzz test
 - extended the docs and added links
 - MSRV in the TOML
 
