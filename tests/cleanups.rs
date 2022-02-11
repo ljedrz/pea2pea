@@ -49,11 +49,8 @@ async fn check_node_cleanups() {
     // register heap use after node setup
     let heap_after_node_setup = PEAK_ALLOC.current_usage();
 
-    // start keeping track of average heap use
-    let mut heap_sizes = Vec::with_capacity(NUM_CONNS);
-
-    // decrease the heap measurements in the loop by the helper vector's allocation
-    let mem_deduction = PEAK_ALLOC.current_usage() - heap_after_node_setup;
+    // start keeping track of the average heap use
+    let mut avg_heap_use = 0;
 
     // due to tokio channel internals, a small heap bump occurs after 32 calls to `mpsc::Sender::send`
     // if it wasn't for that, heap use after the 1st connection (i == 0) would be registered instead
@@ -98,22 +95,20 @@ async fn check_node_cleanups() {
         // drop the temporary node to fully relinquish its memory
         drop(temporary_node);
 
-        let current_heap_size = PEAK_ALLOC.current_usage() - mem_deduction;
+        // obtain and record current memory use
+        let current_heap_use = PEAK_ALLOC.current_usage();
 
         // register heap use once the 33rd connection is established and dropped
         if i == 32 {
-            heap_after_32_conns = current_heap_size;
+            heap_after_32_conns = current_heap_use;
         }
 
         // save current heap size to calculate average use later on
-        heap_sizes.push(current_heap_size);
+        avg_heap_use += current_heap_use;
     }
 
     // calculate avg heap use
-    let avg_heap_use = heap_sizes.iter().sum::<usize>() / heap_sizes.len();
-
-    // drop the vector of heap sizes so it doesn't affect further measurements
-    drop(heap_sizes);
+    let avg_heap_use = avg_heap_use / NUM_CONNS;
 
     // check final heap use and calculate heap growth
     let final_heap_use = PEAK_ALLOC.current_usage();
