@@ -37,6 +37,9 @@ async fn check_node_cleanups() {
     let persistent_node = common::MessagingNode::new("persistent").await;
     let persistent_addr = persistent_node.node().listening_addr().unwrap();
 
+    // measure the size of a node with no protocols enabled
+    let idle_node_size = (PEAK_ALLOC.current_usage() - initial_heap_use) / 1000;
+
     // enable all the protocols to check for any leaks there too
     persistent_node.enable_handshake().await;
     persistent_node.enable_reading().await;
@@ -116,19 +119,23 @@ async fn check_node_cleanups() {
     let final_heap_use = PEAK_ALLOC.current_usage();
     let heap_growth = final_heap_use - heap_after_32_conns;
 
+    // calculate some helper values
+    let max_heap_use = PEAK_ALLOC.peak_usage() / 1000;
+    let final_heap_use_kb = final_heap_use / 1000;
+    let single_node_size = (heap_after_node_setup - initial_heap_use) / 1000;
+
     println!("---- heap use summary ----\n");
     println!("before node setup:     {}kB", initial_heap_use / 1000);
     println!("after node setup:      {}kB", heap_after_node_setup / 1000);
     println!("after 32 connections:  {}kB", heap_after_32_conns / 1000);
-    println!(
-        "after {} connections: {}kB",
-        NUM_CONNS,
-        final_heap_use / 1000
-    );
+    println!("after {} connections: {}kB", NUM_CONNS, final_heap_use_kb);
+    println!("average memory use:    {}kB", avg_heap_use / 1000);
+    println!("maximum memory use:    {}kB", max_heap_use);
     println!();
-    println!("average use: {}kB", avg_heap_use / 1000);
-    println!("maximum use: {}kB", PEAK_ALLOC.peak_usage() / 1000);
-    println!("growth:      {}B", heap_growth);
+    println!("idle node size: {}kB", idle_node_size);
+    println!("full node size: {}kB", single_node_size);
+    println!("leaked memory:  {}B", heap_growth);
+    println!();
 
     // regardless of the number of connections the node handles, its memory use shouldn't grow at all
     assert_eq!(heap_growth, 0);
