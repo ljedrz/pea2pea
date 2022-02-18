@@ -5,7 +5,6 @@ use crate::{protocols::Handshake, Config};
 
 use async_trait::async_trait;
 use parking_lot::RwLock;
-use rayon::iter::{IntoParallelRefIterator, IntoParallelIterator};
 use tokio::{
     io::{AsyncWrite, AsyncWriteExt},
     sync::{mpsc, oneshot},
