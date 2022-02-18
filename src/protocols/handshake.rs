@@ -9,7 +9,7 @@ use tracing::*;
 
 use std::{io, time::Duration};
 
-/// Can be used to specify and enable network handshakes. Upon establishing a connection, both sides will
+/// Can be used to specify and enable Pea2pea handshakes. Upon establishing a connection, both sides will
 /// need to adhere to the specified handshake rules in order to finalize the connection and be able to send
 /// or receive any messages.
 #[async_trait::async_trait]
@@ -17,11 +17,9 @@ pub trait Handshake: Pea2Pea
 where
     Self: Clone + Send + Sync + 'static,
 {
-    /// Prepares the node to perform specified network handshakes.
+    /// Prepares the node to perform specified Pea2pea handshakes.
     async fn enable_handshake(&self) {
-        let (from_node_sender, mut from_node_receiver) = mpsc::channel::<ReturnableConnection>(
-            self.node().config().protocol_handler_queue_depth,
-        );
+        let (from_node_sender, mut from_node_receiver) = mpsc::unbounded_channel::<ReturnableConnection>();
 
         // Use a channel to know when the handshake task is ready.
         let (tx, rx) = oneshot::channel::<()>();
@@ -83,11 +81,11 @@ where
 }
 
 /// The handler object dedicated to the [`Handshake`] protocol.
-pub struct HandshakeHandler(mpsc::Sender<ReturnableConnection>);
+pub struct HandshakeHandler(mpsc::UnboundedSender<ReturnableConnection>);
 
 impl HandshakeHandler {
-    pub(crate) async fn trigger(&self, item: ReturnableConnection) {
-        if self.0.send(item).await.is_err() {
+    pub(crate) fn trigger(&self, item: ReturnableConnection) {
+        if self.0.send(item).is_err() {
             unreachable!(); // protocol's task is down! can't recover
         }
     }

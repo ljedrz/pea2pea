@@ -1,10 +1,11 @@
 use crate::{protocols::ReturnableConnection, Pea2Pea};
 
 #[cfg(doc)]
-use crate::{protocols::Handshake, Config, Node};
+use crate::{protocols::Handshake, Config};
 
 use async_trait::async_trait;
 use parking_lot::RwLock;
+use rayon::iter::{IntoParallelRefIterator, IntoParallelIterator};
 use tokio::{
     io::{AsyncWrite, AsyncWriteExt},
     sync::{mpsc, oneshot},
@@ -27,9 +28,7 @@ where
 
     /// Prepares the node to send messages.
     async fn enable_writing(&self) {
-        let (conn_sender, mut conn_receiver) = mpsc::channel::<ReturnableConnection>(
-            self.node().config().protocol_handler_queue_depth,
-        );
+        let (conn_sender, mut conn_receiver) = mpsc::unbounded_channel::<ReturnableConnection>();
 
         // Use a channel to know when the writing task is ready.
         let (tx_writing, rx_writing) = oneshot::channel::<()>();
@@ -47,7 +46,7 @@ where
                 let mut buffer = Vec::new();
 
                 let (outbound_message_sender, mut outbound_message_receiver) =
-                    mpsc::channel(self_clone.node().config().outbound_queue_depth);
+                    mpsc::unbounded_channel();
 
                 if let Some(handler) = self_clone.node().protocols.writing_handler.get() {
                     handler
@@ -165,7 +164,7 @@ where
             // find the message sender for the given address
             if let Some(sender) = handler.senders.read().get(&addr).cloned() {
                 let (msg, delivery) = WrappedMessage::new(Box::new(message));
-                sender.try_send(msg).map_err(|e| {
+                sender.send(msg).map_err(|e| {
                     error!(parent: self.node().span(), "can't send a message to {}: {}", addr, e);
                     self.node().stats().register_failure();
                     io::ErrorKind::Other.into()
@@ -195,7 +194,7 @@ where
             let senders = handler.senders.read().clone();
             for (addr, message_sender) in senders {
                 let (msg, _delivery) = WrappedMessage::new(Box::new(message.clone()));
-                let _ = message_sender.try_send(msg).map_err(|e| {
+                let _ = message_sender.send(msg).map_err(|e| {
                     error!(parent: self.node().span(), "can't send a message to {}: {}", addr, e);
                     self.node().stats().register_failure();
                 });
@@ -207,6 +206,8 @@ where
         }
     }
 }
+
+
 
 /// Used to queue messages for delivery.
 pub(crate) struct WrappedMessage {
@@ -228,13 +229,13 @@ impl WrappedMessage {
 
 /// The handler object dedicated to the [`Writing`] protocol.
 pub struct WritingHandler {
-    handler: mpsc::Sender<ReturnableConnection>,
-    pub(crate) senders: RwLock<HashMap<SocketAddr, mpsc::Sender<WrappedMessage>>>,
+    handler: mpsc::UnboundedSender<ReturnableConnection>,
+    pub(crate) senders: RwLock<HashMap<SocketAddr, mpsc::UnboundedSender<WrappedMessage>>>,
 }
 
 impl WritingHandler {
-    pub(crate) async fn trigger(&self, item: ReturnableConnection) {
-        if self.handler.send(item).await.is_err() {
+    pub(crate) fn trigger(&self, item: ReturnableConnection) {
+        if self.handler.send(item).is_err() {
             unreachable!(); // protocol's task is down! can't recover
         }
     }
