@@ -27,9 +27,7 @@ where
 
     /// Prepares the node to send messages.
     async fn enable_writing(&self) {
-        let (conn_sender, mut conn_receiver) = mpsc::channel::<ReturnableConnection>(
-            self.node().config().protocol_handler_queue_depth,
-        );
+        let (conn_sender, mut conn_receiver) = mpsc::unbounded_channel::<ReturnableConnection>();
 
         // Use a channel to know when the writing task is ready.
         let (tx_writing, rx_writing) = oneshot::channel::<()>();
@@ -228,13 +226,13 @@ impl WrappedMessage {
 
 /// The handler object dedicated to the [`Writing`] protocol.
 pub struct WritingHandler {
-    handler: mpsc::Sender<ReturnableConnection>,
+    handler: mpsc::UnboundedSender<ReturnableConnection>,
     pub(crate) senders: RwLock<HashMap<SocketAddr, mpsc::Sender<WrappedMessage>>>,
 }
 
 impl WritingHandler {
-    pub(crate) async fn trigger(&self, item: ReturnableConnection) {
-        if self.handler.send(item).await.is_err() {
+    pub(crate) fn trigger(&self, item: ReturnableConnection) {
+        if self.handler.send(item).is_err() {
             unreachable!(); // protocol's task is down! can't recover
         }
     }

@@ -27,9 +27,7 @@ where
     /// defined in [`Config`], while the configured fatal errors result in an immediate disconnect (in order to e.g. avoid
     /// accidentally reading "borked" messages).
     async fn enable_reading(&self) {
-        let (conn_sender, mut conn_receiver) = mpsc::channel::<ReturnableConnection>(
-            self.node().config().protocol_handler_queue_depth,
-        );
+        let (conn_sender, mut conn_receiver) = mpsc::unbounded_channel::<ReturnableConnection>();
 
         // Use a channel to know when the reading task is ready.
         let (tx_reading, rx_reading) = oneshot::channel::<()>();
@@ -260,11 +258,11 @@ where
 }
 
 /// The handler object dedicated to the [`Reading`] protocol.
-pub struct ReadingHandler(mpsc::Sender<ReturnableConnection>);
+pub struct ReadingHandler(mpsc::UnboundedSender<ReturnableConnection>);
 
 impl ReadingHandler {
-    pub(crate) async fn trigger(&self, item: ReturnableConnection) {
-        if self.0.send(item).await.is_err() {
+    pub(crate) fn trigger(&self, item: ReturnableConnection) {
+        if self.0.send(item).is_err() {
             unreachable!(); // protocol's task is down! can't recover
         }
     }

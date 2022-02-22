@@ -1,3 +1,9 @@
+# 0.34.0
+
+### Changed
+
+- removed `Config::protocol_handler_queue_depth`
+
 # 0.33.0
 
 ### Added

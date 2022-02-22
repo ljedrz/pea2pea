@@ -27,10 +27,6 @@ pub struct Config {
     ///
     /// note: [`Config::listener_ip`] must not be `None` in order for it to have any effect.
     pub allow_random_port: bool,
-    /// The depth of the queues passing connections to protocol handlers.
-    ///
-    /// note: The node needs to implement at least one of the [`protocols`] for it to have any effect.
-    pub protocol_handler_queue_depth: usize,
     /// The delay on the next read attempt from a connection that can't be read from.
     ///
     /// note: The node needs to implement the [`Reading`] protocol in order for it to have any effect.
@@ -86,7 +82,6 @@ impl Default for Config {
             listener_ip: default_ip(),
             desired_listening_port: None,
             allow_random_port: true,
-            protocol_handler_queue_depth: 16,
             invalid_read_delay_secs: 10,
             fatal_io_errors: vec![
                 ConnectionReset,

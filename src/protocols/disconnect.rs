@@ -24,9 +24,7 @@ where
     /// node disconnecting from a peer.
     async fn enable_disconnect(&self) {
         let (from_node_sender, mut from_node_receiver) =
-            mpsc::channel::<(SocketAddr, oneshot::Sender<()>)>(
-                self.node().config().protocol_handler_queue_depth,
-            );
+            mpsc::unbounded_channel::<(SocketAddr, oneshot::Sender<()>)>();
 
         // Use a channel to know when the disconnect task is ready.
         let (tx, rx) = oneshot::channel::<()>();
@@ -66,11 +64,11 @@ where
 }
 
 /// The handler object dedicated to the [`Disconnect`] protocol.
-pub struct DisconnectHandler(mpsc::Sender<ReturnableItem<SocketAddr, ()>>);
+pub struct DisconnectHandler(mpsc::UnboundedSender<ReturnableItem<SocketAddr, ()>>);
 
 impl DisconnectHandler {
-    pub(crate) async fn trigger(&self, item: ReturnableItem<SocketAddr, ()>) {
-        if self.0.send(item).await.is_err() {
+    pub(crate) fn trigger(&self, item: ReturnableItem<SocketAddr, ()>) {
+        if self.0.send(item).is_err() {
             unreachable!(); // protocol's task is down! can't recover
         }
     }
