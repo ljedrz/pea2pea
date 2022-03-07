@@ -369,6 +369,11 @@ impl Node {
         self.connections.is_connected(addr)
     }
 
+    /// Checks if the node is currently setting up a connection with the provided address.
+    pub fn is_connecting(&self, addr: SocketAddr) -> bool {
+        self.connecting.lock().contains(&addr)
+    }
+
     /// Returns the number of active connections.
     pub fn num_connected(&self) -> usize {
         self.connections.num_connected()

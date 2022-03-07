@@ -1,5 +1,9 @@
 # 0.34.0
 
+### Added
+
+- a new method, `Node::is_connecting`
+
 ### Changed
 
 - removed `Config::protocol_handler_queue_depth`
