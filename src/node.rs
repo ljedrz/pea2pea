@@ -241,7 +241,7 @@ impl Node {
         self.known_peers.add(peer_addr);
 
         // register the port seen by the peer
-        if let ConnectionSide::Initiator = own_side {
+        if own_side == ConnectionSide::Initiator {
             if let Ok(addr) = stream.local_addr() {
                 debug!(
                     parent: self.span(), "establishing connection with {}; the peer is connected on port {}",

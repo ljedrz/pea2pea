@@ -1,3 +1,9 @@
+# 0.35.0
+
+### Changed
+
+- added `PartialEq` and `Eq` to `ConnectionSide`
+
 # 0.34.0
 
 ### Added

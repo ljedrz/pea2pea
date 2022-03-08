@@ -37,7 +37,7 @@ impl Connections {
 }
 
 /// Indicates who was the initiator and who was the responder when the connection was established.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ConnectionSide {
     /// The side that initiated the connection.
     Initiator,
