@@ -9,19 +9,16 @@
 //!
 //! Feel free to reuse this code to test your own implementation of `Pea2Pea` protocols.
 
-use bytes::Buf;
+use bytes::{Bytes, BytesMut};
 use libfuzzer_sys::fuzz_target;
 use pea2pea::{
     protocols::{Reading, Writing},
-    Config, Node, Pea2Pea,
+    Node, Pea2Pea,
 };
 use tokio::time::sleep;
+use tokio_util::codec::LengthDelimitedCodec;
 
-use std::{
-    io::{self, ErrorKind, Write},
-    net::SocketAddr,
-    time::Duration,
-};
+use std::{io, net::SocketAddr, time::Duration};
 
 #[derive(Clone)]
 pub struct FuzzNode(pub Node);
@@ -39,68 +36,30 @@ const MAX_MSG_SIZE: usize = 256;
 
 #[async_trait::async_trait]
 impl Reading for FuzzNode {
-    type Message = Vec<u8>;
+    type Message = BytesMut;
+    type Codec = LengthDelimitedCodec;
 
-    fn read_message<R: Buf>(
-        &self,
-        _source: SocketAddr,
-        reader: &mut R,
-    ) -> io::Result<Option<Self::Message>> {
-        // expect a prefix with a u16 LE length of the actual message
-        if reader.remaining() < 2 {
-            return Ok(None);
-        }
-        let payload_len = reader.get_u16_le() as usize;
-
-        // a zero-length payload would normally be treated as an error and possibly trigger
-        // a disconnect, but we'll instead accept those and theat them as empty inbound
-        // messages in order to have as much coverage as possible
-        if payload_len == 0 {
-            return Ok(Some(vec![]));
-        }
-
-        // we are deliberately using an `ErrorKind` that does not belong to `Config::fatal_io_errors`
-        // in order not to cause a disconnect, which would end the fuzz test prematurely; the `Reading`
-        // protocol already enforces a size limit internally (via `Config::read_buffer_size`), but
-        // performing this check here avoids the aforementioned issue
-        if payload_len > MAX_MSG_SIZE {
-            return Err(ErrorKind::Other.into());
-        }
-
-        // account for incomplete messages
-        if reader.remaining() < payload_len {
-            return Ok(None);
-        }
-
-        // this can be done more efficiently by having persistent per-connection buffers, but it's
-        // perfectly good enough for test purposes
-        let mut buffer = vec![0u8; payload_len];
-        reader.take(payload_len).copy_to_slice(&mut buffer);
-
-        Ok(Some(buffer))
+    fn codec(&self, _addr: SocketAddr) -> Self::Codec {
+        LengthDelimitedCodec::builder()
+            .max_frame_length(MAX_MSG_SIZE)
+            .length_field_length(2)
+            .new_codec()
     }
 
-    async fn process_message(
-        &self,
-        _source: SocketAddr,
-        _message: Self::Message,
-    ) -> io::Result<()> {
+    async fn process_message(&self, _src: SocketAddr, _msg: Self::Message) -> io::Result<()> {
         Ok(())
     }
 }
 
 impl Writing for FuzzNode {
-    type Message = Vec<u8>;
+    type Message = Bytes;
+    type Codec = LengthDelimitedCodec;
 
-    fn write_message<W: Write>(
-        &self,
-        _target: SocketAddr,
-        payload: &Self::Message,
-        buffer: &mut B,
-    ) -> io::Result<()> {
-        // prefix the actual message with its length encoded as a u16 LE
-        writer.write_all(&(payload.len() as u16).to_le_bytes())?;
-        writer.write_all(payload)
+    fn codec(&self, _addr: SocketAddr) -> Self::Codec {
+        LengthDelimitedCodec::builder()
+            .max_frame_length(MAX_MSG_SIZE)
+            .length_field_length(2)
+            .new_codec()
     }
 }
 
@@ -108,16 +67,9 @@ impl Writing for FuzzNode {
 fuzz_target!(|messages: Vec<Vec<u8>>| {
     let rt = tokio::runtime::Runtime::new().unwrap();
 
-    // this value could just be equal to `MAX_MSG_SIZE`, but it's greater
-    // for a potential performance boost
-    let config = Config {
-        read_buffer_size: MAX_MSG_SIZE * 2,
-        ..Default::default()
-    };
-
     rt.block_on(async {
         let sender = FuzzNode(Node::new(None).await.unwrap());
-        let receiver = FuzzNode(Node::new(Some(config)).await.unwrap());
+        let receiver = FuzzNode(Node::new(None).await.unwrap());
 
         receiver.enable_reading().await;
         sender.enable_writing().await;

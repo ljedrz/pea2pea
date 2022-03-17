@@ -1,6 +1,5 @@
 mod common;
 
-use bytes::{Buf, BufMut};
 use tokio::time::sleep;
 use tracing::*;
 use tracing_subscriber::filter::LevelFilter;
@@ -27,12 +26,10 @@ const NUM_PLAYERS: usize = 100;
 #[async_trait::async_trait]
 impl Reading for Player {
     type Message = String;
+    type Codec = common::TestCodec<Self::Message>;
 
-    fn read_message<R: Buf>(&self, _src: SocketAddr, reader: &mut R) -> io::Result<Option<String>> {
-        let vec = common::read_len_prefixed_message::<R, 2>(reader)?;
-
-        vec.map(|v| String::from_utf8(v).map_err(|_| io::ErrorKind::InvalidData.into()))
-            .transpose()
+    fn codec(&self, _addr: SocketAddr) -> Self::Codec {
+        Default::default()
     }
 
     async fn process_message(&self, source: SocketAddr, message: String) -> io::Result<()> {
@@ -59,10 +56,10 @@ impl Reading for Player {
 
 impl Writing for Player {
     type Message = String;
+    type Codec = common::TestCodec<Self::Message>;
 
-    fn write_message<B: BufMut>(&self, _: SocketAddr, payload: &Self::Message, buffer: &mut B) {
-        buffer.put_u16_le(payload.len() as u16);
-        buffer.put(payload.as_bytes());
+    fn codec(&self, _addr: SocketAddr) -> Self::Codec {
+        Default::default()
     }
 }
 

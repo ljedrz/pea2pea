@@ -1,11 +1,24 @@
 # 0.35.0
 
+### Added
+
+- `Connection::{return_stream, take_stream}`
+- `Reading::{codec, Codec}`
+- `Writing::{codec, Codec}`
+
 ### Changed
 
 - added `PartialEq` and `Eq` to `ConnectionSide`
-- removed the `Sender` param from `Reading::{process_buffer, read_from_stream}`
-- the `reader` param in `Reading::read_message` is now `bytes::Buf` instead of `io::Read`
-- the `writer` param in `Writing::write_message` is now `buffer: B` where `B: bytes::BufMut`
+- the `Reading` and `Writing` protocols now take advantage of `tokio-util`'s `Decoder` and `Encoder` traits
+- the signature od `Writing::write_to_stream` has changed
+- the protocol handler objects and `ReturnableItem` are no longer `pub` (only `pub(crate)`)
+- `Connection`'s `reader`, `writer` and `tasks` fields are no longer `pub` (only `pub(crate)`)
+
+### Removed
+
+- `Reading::{process_buffer, read_from_stream, read_message}`
+- `Writing::write_message`
+- the `handshaking` test (the `noise_handshake` example is much more comprehensive)
 
 # 0.34.0
 

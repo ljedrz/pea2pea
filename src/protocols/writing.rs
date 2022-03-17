@@ -4,12 +4,13 @@ use crate::{protocols::ReturnableConnection, Pea2Pea};
 use crate::{protocols::Handshake, Config, Node};
 
 use async_trait::async_trait;
-use bytes::BufMut;
+use futures_util::sink::SinkExt;
 use parking_lot::RwLock;
 use tokio::{
-    io::{AsyncWrite, AsyncWriteExt},
+    io::AsyncWrite,
     sync::{mpsc, oneshot},
 };
+use tokio_util::codec::{Encoder, FramedWrite};
 use tracing::*;
 
 use std::{any::Any, collections::HashMap, io, net::SocketAddr};
@@ -23,8 +24,11 @@ where
 {
     /// The type of the outbound messages; unless their serialization is expensive and the message
     /// is broadcasted (in which case it would get serialized multiple times), serialization should
-    /// be done in [`Writing::write_message`].
+    /// be done in the implementation of [`Self::Codec`].
     type Message: Send;
+
+    /// The user-supplied [`Encoder`] used to write the outbound messages to the target stream.
+    type Codec: Encoder<Self::Message, Error = io::Error> + Send;
 
     /// Prepares the node to send messages.
     async fn enable_writing(&self) {
@@ -42,8 +46,9 @@ where
             // these objects are sent from `Node::adapt_stream`
             while let Some((mut conn, conn_returner)) = conn_receiver.recv().await {
                 let addr = conn.addr;
-                let mut writer = conn.writer.take().unwrap(); // safe; it is available at this point
-                let mut buffer = Vec::new();
+                let codec = self_clone.codec(addr);
+                let writer = conn.writer.take().unwrap(); // safe; it is available at this point
+                let mut framed = FramedWrite::new(writer, codec);
 
                 let (outbound_message_sender, mut outbound_message_receiver) =
                     mpsc::channel(self_clone.node().config().outbound_queue_depth);
@@ -70,10 +75,7 @@ where
                     while let Some(wrapped_msg) = outbound_message_receiver.recv().await {
                         let msg = wrapped_msg.msg.downcast::<Self::Message>().unwrap();
 
-                        match writer_clone
-                            .write_to_stream(*msg, addr, &mut buffer, &mut writer)
-                            .await
-                        {
+                        match writer_clone.write_to_stream(*msg, &mut framed).await {
                             Ok(len) => {
                                 let _ = wrapped_msg.delivery_notification.send(true);
                                 node.known_peers().register_sent_message(addr, len);
@@ -115,27 +117,21 @@ where
         );
     }
 
-    /// Writes the given message to the given writer, using the provided intermediate buffer; returns the number of
-    /// bytes written to the writer.
+    /// Creates an [`Encoder`] used to write the outbound messages to the target stream.
+    fn codec(&self, _addr: SocketAddr) -> Self::Codec;
+
+    /// Writes the given message to the network stream and returns the number of written bytes.
     async fn write_to_stream<W: AsyncWrite + Unpin + Send>(
         &self,
         message: Self::Message,
-        addr: SocketAddr,
-        buffer: &mut Vec<u8>,
-        writer: &mut W,
-    ) -> io::Result<usize> {
-        self.write_message(addr, &message, buffer);
-        let len = buffer.len();
-        writer.write_all(buffer).await?;
-        buffer.clear();
+        writer: &mut FramedWrite<W, Self::Codec>,
+    ) -> Result<usize, <Self::Codec as Encoder<Self::Message>>::Error> {
+        writer.feed(message).await?;
+        let len = writer.write_buffer().len();
+        writer.flush().await?;
 
         Ok(len)
     }
-
-    /// Writes the provided payload to the given intermediate buffer; the payload can get prepended with a header
-    /// indicating its length, be suffixed with a character indicating that it's complete, etc. The `target`
-    /// parameter is provided in case serialization depends on the recipient, e.g. in case of encryption.
-    fn write_message<B: BufMut>(&self, target: SocketAddr, message: &Self::Message, buffer: &mut B);
 
     /// Sends the provided message to the specified [`SocketAddr`]. Returns as soon as the message is queued to
     /// be sent, without waiting for the actual delivery; instead, the caller is provided with a [`oneshot::Receiver`]

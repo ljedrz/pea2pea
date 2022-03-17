@@ -14,22 +14,22 @@ mod handshake;
 mod reading;
 mod writing;
 
-pub use disconnect::{Disconnect, DisconnectHandler};
-pub use handshake::{Handshake, HandshakeHandler};
-pub use reading::{Reading, ReadingHandler};
-pub use writing::{Writing, WritingHandler};
+pub use disconnect::Disconnect;
+pub use handshake::Handshake;
+pub use reading::Reading;
+pub use writing::Writing;
 
 #[derive(Default)]
 pub(crate) struct Protocols {
-    pub(crate) handshake_handler: OnceCell<HandshakeHandler>,
-    pub(crate) reading_handler: OnceCell<ReadingHandler>,
-    pub(crate) writing_handler: OnceCell<WritingHandler>,
-    pub(crate) disconnect_handler: OnceCell<DisconnectHandler>,
+    pub(crate) handshake_handler: OnceCell<handshake::HandshakeHandler>,
+    pub(crate) reading_handler: OnceCell<reading::ReadingHandler>,
+    pub(crate) writing_handler: OnceCell<writing::WritingHandler>,
+    pub(crate) disconnect_handler: OnceCell<disconnect::DisconnectHandler>,
 }
 
 /// An object sent to a protocol handler task; the task assumes control of a protocol-relevant item `T`,
 /// and when it's done with it, it returns it (possibly in a wrapper object) or another relevant object
 /// to the callsite via the counterpart [`oneshot::Receiver`].
-pub type ReturnableItem<T, U> = (T, oneshot::Sender<U>);
+pub(crate) type ReturnableItem<T, U> = (T, oneshot::Sender<U>);
 
 pub(crate) type ReturnableConnection = ReturnableItem<Connection, io::Result<Connection>>;

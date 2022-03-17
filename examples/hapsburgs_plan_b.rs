@@ -1,6 +1,5 @@
 mod common;
 
-use bytes::{Buf, BufMut};
 use tokio::time::sleep;
 use tracing::*;
 use tracing_subscriber::filter::LevelFilter;
@@ -48,16 +47,10 @@ impl Handshake for NakedNode {
 #[async_trait::async_trait]
 impl Reading for NakedNode {
     type Message = String;
+    type Codec = common::TestCodec<Self::Message>;
 
-    fn read_message<R: Buf>(
-        &self,
-        _source: SocketAddr,
-        reader: &mut R,
-    ) -> io::Result<Option<Self::Message>> {
-        let vec = common::read_len_prefixed_message::<R, 2>(reader)?;
-
-        vec.map(|v| String::from_utf8(v).map_err(|_| io::ErrorKind::InvalidData.into()))
-            .transpose()
+    fn codec(&self, _addr: SocketAddr) -> Self::Codec {
+        Default::default()
     }
 
     async fn process_message(&self, source: SocketAddr, message: Self::Message) -> io::Result<()> {
@@ -86,10 +79,10 @@ impl Reading for NakedNode {
 
 impl Writing for NakedNode {
     type Message = String;
+    type Codec = common::TestCodec<Self::Message>;
 
-    fn write_message<B: BufMut>(&self, _: SocketAddr, payload: &Self::Message, buffer: &mut B) {
-        buffer.put_u16_le(payload.len() as u16);
-        buffer.put(payload.as_bytes());
+    fn codec(&self, _addr: SocketAddr) -> Self::Codec {
+        Default::default()
     }
 }
 

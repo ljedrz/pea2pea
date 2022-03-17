@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
-use bytes::{Buf, Bytes};
+use bytes::{Bytes, BytesMut};
+use tokio_util::codec::{Decoder, Encoder, LengthDelimitedCodec};
 use tracing::*;
 
 use pea2pea::{
@@ -8,7 +9,7 @@ use pea2pea::{
     Config, Node, Pea2Pea,
 };
 
-use std::{io, net::SocketAddr};
+use std::{io, marker::PhantomData, net::SocketAddr, ops::Deref};
 
 pub async fn start_nodes(count: usize, config: Option<Config>) -> Vec<Node> {
     let mut nodes = Vec::with_capacity(count);
@@ -30,7 +31,7 @@ impl Pea2Pea for InertNode {
     }
 }
 
-impl std::ops::Deref for InertNode {
+impl Deref for InertNode {
     type Target = Node;
 
     fn deref(&self) -> &Self::Target {
@@ -53,6 +54,7 @@ impl MessagingNode {
     pub async fn new<T: Into<String>>(name: T) -> Self {
         let config = Config {
             name: Some(name.into()),
+            initial_read_buffer_size: 256,
             ..Default::default()
         };
         Self(Node::new(Some(config)).await.unwrap())
@@ -65,45 +67,41 @@ impl Pea2Pea for MessagingNode {
     }
 }
 
-pub fn read_len_prefixed_message<R: Buf, const N: usize>(
-    reader: &mut R,
-) -> io::Result<Option<Vec<u8>>> {
-    if reader.remaining() < N {
-        return Ok(None);
+pub struct TestCodec<M>(pub LengthDelimitedCodec, PhantomData<M>);
+
+impl Decoder for TestCodec<BytesMut> {
+    type Item = BytesMut;
+    type Error = io::Error;
+
+    fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
+        let ret = self.0.decode(src)?;
+
+        if let Some(ref msg) = ret {
+            if msg.is_empty() {
+                return Err(io::ErrorKind::InvalidData.into());
+            }
+        }
+
+        Ok(ret)
     }
-
-    let payload_len = match N {
-        2 => reader.get_u16_le() as usize,
-        4 => reader.get_u32_le() as usize,
-        _ => unreachable!(),
-    };
-
-    if payload_len == 0 {
-        return Err(io::ErrorKind::InvalidData.into());
-    }
-
-    if reader.remaining() < payload_len {
-        return Ok(None);
-    }
-
-    let mut buffer = vec![0u8; payload_len];
-    reader.take(payload_len).copy_to_slice(&mut buffer);
-
-    Ok(Some(buffer))
 }
 
-pub fn prefix_with_len(len_size: usize, message: &[u8]) -> Bytes {
-    let mut vec = Vec::with_capacity(len_size + message.len());
+impl<M> Encoder<Bytes> for TestCodec<M> {
+    type Error = io::Error;
 
-    match len_size {
-        2 => vec.extend_from_slice(&(message.len() as u16).to_le_bytes()),
-        4 => vec.extend_from_slice(&(message.len() as u32).to_le_bytes()),
-        _ => unreachable!(),
+    fn encode(&mut self, item: Bytes, dst: &mut BytesMut) -> Result<(), Self::Error> {
+        self.0.encode(item, dst)
     }
+}
 
-    vec.extend_from_slice(message);
-
-    vec.into()
+impl<M> Default for TestCodec<M> {
+    fn default() -> Self {
+        let inner = LengthDelimitedCodec::builder()
+            .length_field_length(2)
+            .little_endian()
+            .new_codec();
+        Self(inner, PhantomData)
+    }
 }
 
 pub fn display_bytes(bytes: f64) -> String {
@@ -127,12 +125,11 @@ macro_rules! impl_messaging {
     ($target: ty) => {
         #[async_trait::async_trait]
         impl Reading for $target {
-            type Message = bytes::Bytes;
+            type Message = bytes::BytesMut;
+            type Codec = crate::common::TestCodec<Self::Message>;
 
-            fn read_message<R: bytes::Buf>(&self, _source: SocketAddr, reader: &mut R) -> io::Result<Option<Self::Message>> {
-                let vec = crate::common::read_len_prefixed_message::<R, 2>(reader)?;
-
-                Ok(vec.map(bytes::Bytes::from))
+            fn codec(&self, _addr: SocketAddr) -> Self::Codec {
+                Default::default()
             }
 
             async fn process_message(&self, source: SocketAddr, _message: Self::Message) -> io::Result<()> {
@@ -144,10 +141,10 @@ macro_rules! impl_messaging {
 
         impl Writing for $target {
             type Message = bytes::Bytes;
+            type Codec = crate::common::TestCodec<Self::Message>;
 
-            fn write_message<B: bytes::BufMut>(&self, _target: SocketAddr, payload: &Self::Message, buffer: &mut B) {
-                buffer.put_u16_le(payload.len() as u16);
-                buffer.put_slice(payload);
+            fn codec(&self, _addr: SocketAddr) -> Self::Codec {
+                Default::default()
             }
         }
     };
