@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use bytes::Bytes;
+use bytes::{Buf, Bytes};
 use tracing::*;
 
 use pea2pea::{
@@ -8,11 +8,7 @@ use pea2pea::{
     Config, Node, Pea2Pea,
 };
 
-use std::{
-    convert::TryInto,
-    io::{self, Read},
-    net::SocketAddr,
-};
+use std::{io, net::SocketAddr};
 
 pub async fn start_nodes(count: usize, config: Option<Config>) -> Vec<Node> {
     let mut nodes = Vec::with_capacity(count);
@@ -69,16 +65,16 @@ impl Pea2Pea for MessagingNode {
     }
 }
 
-pub fn read_len_prefixed_message<R: io::Read, const N: usize>(
+pub fn read_len_prefixed_message<R: Buf, const N: usize>(
     reader: &mut R,
 ) -> io::Result<Option<Vec<u8>>> {
-    let mut len_arr = [0u8; N];
-    if reader.read_exact(&mut len_arr).is_err() {
+    if reader.remaining() < N {
         return Ok(None);
     }
+
     let payload_len = match N {
-        2 => u16::from_le_bytes(len_arr[..].try_into().unwrap()) as usize,
-        4 => u32::from_le_bytes(len_arr[..].try_into().unwrap()) as usize,
+        2 => reader.get_u16_le() as usize,
+        4 => reader.get_u32_le() as usize,
         _ => unreachable!(),
     };
 
@@ -86,16 +82,14 @@ pub fn read_len_prefixed_message<R: io::Read, const N: usize>(
         return Err(io::ErrorKind::InvalidData.into());
     }
 
-    let mut buffer = vec![0u8; payload_len];
-    if reader
-        .take(payload_len as u64)
-        .read_exact(&mut buffer)
-        .is_err()
-    {
-        Ok(None)
-    } else {
-        Ok(Some(buffer))
+    if reader.remaining() < payload_len {
+        return Ok(None);
     }
+
+    let mut buffer = vec![0u8; payload_len];
+    reader.take(payload_len).copy_to_slice(&mut buffer);
+
+    Ok(Some(buffer))
 }
 
 pub fn prefix_with_len(len_size: usize, message: &[u8]) -> Bytes {
@@ -135,7 +129,7 @@ macro_rules! impl_messaging {
         impl Reading for $target {
             type Message = bytes::Bytes;
 
-            fn read_message<R: io::Read>(&self, _source: SocketAddr, reader: &mut R) -> io::Result<Option<Self::Message>> {
+            fn read_message<R: bytes::Buf>(&self, _source: SocketAddr, reader: &mut R) -> io::Result<Option<Self::Message>> {
                 let vec = crate::common::read_len_prefixed_message::<R, 2>(reader)?;
 
                 Ok(vec.map(bytes::Bytes::from))
@@ -151,9 +145,9 @@ macro_rules! impl_messaging {
         impl Writing for $target {
             type Message = bytes::Bytes;
 
-            fn write_message<W: io::Write>(&self, _target: SocketAddr, payload: &Self::Message, writer: &mut W) -> io::Result<()> {
-                writer.write_all(&(payload.len() as u16).to_le_bytes())?;
-                writer.write_all(payload)
+            fn write_message<B: bytes::BufMut>(&self, _target: SocketAddr, payload: &Self::Message, buffer: &mut B) {
+                buffer.put_u16_le(payload.len() as u16);
+                buffer.put_slice(payload);
             }
         }
     };

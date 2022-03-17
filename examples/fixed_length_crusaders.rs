@@ -1,5 +1,6 @@
 mod common;
 
+use bytes::{Buf, BufMut};
 use tokio::time::sleep;
 use tracing::*;
 use tracing_subscriber::filter::LevelFilter;
@@ -63,14 +64,16 @@ impl From<u8> for BattleCry {
 impl Reading for JoJoNode {
     type Message = BattleCry;
 
-    fn read_message<R: io::Read>(
+    fn read_message<R: Buf>(
         &self,
         _source: SocketAddr,
         reader: &mut R,
     ) -> io::Result<Option<Self::Message>> {
-        let mut arr = [0u8; 1];
-        reader.read_exact(&mut arr)?;
-        let battle_cry = BattleCry::from(arr[0]);
+        if reader.remaining() == 0 {
+            return Ok(None);
+        }
+
+        let battle_cry = BattleCry::from(reader.get_u8());
 
         Ok(Some(battle_cry))
     }
@@ -97,21 +100,14 @@ impl Reading for JoJoNode {
 impl Writing for JoJoNode {
     type Message = BattleCry;
 
-    fn write_message<W: io::Write>(
-        &self,
-        _: SocketAddr,
-        payload: &Self::Message,
-        writer: &mut W,
-    ) -> io::Result<()> {
-        writer.write_all(&[*payload as u8])?;
+    fn write_message<B: BufMut>(&self, _: SocketAddr, payload: &Self::Message, buffer: &mut B) {
+        buffer.put_u8(*payload as u8);
 
         if *payload == BattleCry::Ora {
             info!(parent: self.node().span(), "{:?}!", payload);
         } else {
             warn!(parent: self.node().span(), "{:?}!", payload);
         };
-
-        Ok(())
     }
 }
 

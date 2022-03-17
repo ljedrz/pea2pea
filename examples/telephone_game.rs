@@ -1,5 +1,6 @@
 mod common;
 
+use bytes::{Buf, BufMut};
 use tokio::time::sleep;
 use tracing::*;
 use tracing_subscriber::filter::LevelFilter;
@@ -10,11 +11,7 @@ use pea2pea::{
     Node, Pea2Pea, Topology,
 };
 
-use std::{
-    io::{self, Read},
-    net::SocketAddr,
-    time::Duration,
-};
+use std::{io, net::SocketAddr, time::Duration};
 
 #[derive(Clone)]
 struct Player(Node);
@@ -31,32 +28,11 @@ const NUM_PLAYERS: usize = 100;
 impl Reading for Player {
     type Message = String;
 
-    fn read_message<R: io::Read>(
-        &self,
-        _src: SocketAddr,
-        reader: &mut R,
-    ) -> io::Result<Option<String>> {
-        let mut len_arr = [0u8; 2];
-        if reader.read_exact(&mut len_arr).is_err() {
-            return Ok(None);
-        }
-        let payload_len = u16::from_le_bytes(len_arr) as usize;
+    fn read_message<R: Buf>(&self, _src: SocketAddr, reader: &mut R) -> io::Result<Option<String>> {
+        let vec = common::read_len_prefixed_message::<R, 2>(reader)?;
 
-        if payload_len == 0 {
-            return Err(io::ErrorKind::InvalidData.into());
-        }
-
-        let mut buffer = vec![0u8; payload_len];
-        if reader
-            .take(payload_len as u64)
-            .read_exact(&mut buffer)
-            .is_err()
-        {
-            Ok(None)
-        } else {
-            let str = String::from_utf8(buffer).map_err(|_| io::ErrorKind::InvalidData)?;
-            Ok(Some(str))
-        }
+        vec.map(|v| String::from_utf8(v).map_err(|_| io::ErrorKind::InvalidData.into()))
+            .transpose()
     }
 
     async fn process_message(&self, source: SocketAddr, message: String) -> io::Result<()> {
@@ -84,14 +60,9 @@ impl Reading for Player {
 impl Writing for Player {
     type Message = String;
 
-    fn write_message<W: io::Write>(
-        &self,
-        _: SocketAddr,
-        payload: &Self::Message,
-        writer: &mut W,
-    ) -> io::Result<()> {
-        writer.write_all(&(payload.len() as u16).to_le_bytes())?;
-        writer.write_all(payload.as_bytes())
+    fn write_message<B: BufMut>(&self, _: SocketAddr, payload: &Self::Message, buffer: &mut B) {
+        buffer.put_u16_le(payload.len() as u16);
+        buffer.put(payload.as_bytes());
     }
 }
 
