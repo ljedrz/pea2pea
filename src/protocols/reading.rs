@@ -83,24 +83,39 @@ where
                         sleep(Duration::from_millis(1)).await;
                     }
 
-                    loop {
+                    'reading_loop: loop {
                         if let Err(e) = reader_clone
-                            .read_from_stream(
-                                addr,
-                                &mut buffer,
-                                &mut reader,
-                                &inbound_message_sender,
-                            )
+                            .read_from_stream(addr, &mut buffer, &mut reader)
                             .await
                         {
                             node.known_peers().register_failure(addr);
-                            buffer.clear();
                             if node.config().fatal_io_errors.contains(&e.kind()) {
                                 node.disconnect(addr).await;
                                 break;
                             } else {
                                 sleep(Duration::from_secs(node.config().invalid_read_delay_secs))
                                     .await;
+                            }
+                        } else {
+                            while !buffer.is_empty() {
+                                match reader_clone.process_buffer(addr, &mut buffer) {
+                                    Ok(Some(msg)) => {
+                                        // send the message for further processing
+                                        if let Err(e) = inbound_message_sender.try_send(msg) {
+                                            error!(parent: node.span(), "can't process a message from {}: {}", addr, e);
+                                            node.stats().register_failure();
+                                        }
+                                    }
+                                    Ok(None) => break,
+                                    Err(e) => {
+                                        node.known_peers().register_failure(addr);
+                                        if node.config().fatal_io_errors.contains(&e.kind()) {
+                                            node.disconnect(addr).await;
+                                            break 'reading_loop;
+                                        }
+                                        buffer.clear();
+                                    }
+                                }
                             }
                         }
                     }
@@ -132,17 +147,21 @@ where
         addr: SocketAddr,
         buffer: &mut Vec<u8>,
         reader: &mut R,
-        message_sender: &mpsc::Sender<Self::Message>,
     ) -> io::Result<()> {
         // register the number of bytes carried over from the previous read (if there were any)
         let carry = buffer.len();
 
         // limit the maximum number of bytes that can be read
         let max_read_size = self.node().config().read_buffer_size - carry;
-        let mut read_handle = reader.take(max_read_size as u64);
 
-        // perform a read from the stream into the provided buffer
-        let read_result = read_handle.read_buf(buffer).await;
+        // forbid messages that are larger than the read buffer
+        if max_read_size == 0 {
+            error!(parent: self.node().span(), "a message from {} is too large", addr);
+            return Err(io::ErrorKind::InvalidData.into());
+        }
+
+        // perform a bounded read from the stream into the provided buffer
+        let read_result = reader.take(max_read_size as u64).read_buf(buffer).await;
 
         match read_result {
             Ok(0) => Err(io::ErrorKind::UnexpectedEof.into()),
@@ -151,91 +170,65 @@ where
                 Err(e)
             }
             Ok(read_len) => {
-                // the number of bytes left to *process* - this includes the initial carried bytes and the read
                 let left = carry + read_len;
-
                 trace!(parent: self.node().span(), "read {}B from {}; {}B waiting to be processed", read_len, addr, left);
-
-                self.process_buffer(addr, buffer, left, message_sender)
+                Ok(())
             }
         }
     }
 
-    /// Attempts to isolate full messages from the connection's read buffer using [`Reading::read_message`]. Once
-    /// no more messages can be extracted, it preserves any leftover bytes and moves them to the beginning of the
-    /// buffer, and further reads from the stream are appended to them. Read messages are sent to a separate message
-    /// processing task in order not to block further reads.
+    /// Attempts to isolate a full message from the connection's read buffer using [`Reading::read_message`].
+    /// It preserves any leftover bytes and moves them to the beginning of the buffer, and further reads from
+    /// the stream are appended to them.
     fn process_buffer(
         &self,
         addr: SocketAddr,
         buffer: &mut Vec<u8>,
-        mut left: usize,
-        message_sender: &mpsc::Sender<Self::Message>,
-    ) -> io::Result<()> {
+    ) -> io::Result<Option<Self::Message>> {
         // wrap the read buffer in a reader
-        let mut buf_reader = io::Cursor::new(&buffer[..left]);
+        let mut buf_reader = io::Cursor::new(&buffer);
 
-        // several messages could have been read at once; process the contents of the buffer
-        loop {
-            // the position in the buffer before the message read attempt
-            let initial_buf_pos = buf_reader.position() as usize;
+        // the position in the buffer before the message read attempt
+        let initial_buf_pos = buf_reader.position() as usize;
 
-            // try to read a single message from the buffer
-            let read = self.read_message(addr, &mut buf_reader);
+        // try to read a single message from the buffer
+        let read = self.read_message(addr, &mut buf_reader);
 
-            // the position in the buffer after the read attempt
-            let post_read_buf_pos = buf_reader.position() as usize;
+        // the position in the buffer after the read attempt
+        let post_read_buf_pos = buf_reader.position() as usize;
 
-            // register the number of bytes that were processed by the Reading::read_message call above
-            let parse_size = post_read_buf_pos - initial_buf_pos;
+        // register the number of bytes that were processed by the Reading::read_message call above
+        let parse_size = post_read_buf_pos - initial_buf_pos;
 
-            match read {
-                // a full message was read successfully
-                Ok(Some(msg)) => {
-                    // subtract the number of successfully processed bytes from the ones left to process
-                    left -= parse_size;
+        match read {
+            // a full message was read successfully
+            Ok(Some(msg)) => {
+                trace!(parent: self.node().span(), "isolated {}B as a message from {}", parse_size, addr);
 
-                    trace!(parent: self.node().span(), "isolated {}B as a message from {}", parse_size, addr);
+                self.node()
+                    .known_peers()
+                    .register_received_message(addr, parse_size);
+                self.node().stats().register_received_message(parse_size);
 
-                    self.node()
-                        .known_peers()
-                        .register_received_message(addr, parse_size);
-                    self.node().stats().register_received_message(parse_size);
-
-                    // send the message for further processing
-                    if let Err(e) = message_sender.try_send(msg) {
-                        error!(parent: self.node().span(), "can't process a message from {}: {}", addr, e);
-                        self.node().stats().register_failure();
-                    }
-
-                    // if the read is exhausted, clear the read buffer and return
-                    if left == 0 {
-                        buffer.clear();
-                        return Ok(());
-                    }
+                // if the read is exhausted, clear the read buffer and return
+                if parse_size == buffer.len() {
+                    buffer.clear();
+                } else {
+                    buffer.copy_within(post_read_buf_pos.., 0);
+                    buffer.truncate(buffer.len() - parse_size);
                 }
-                // the message in the buffer is incomplete
-                Ok(None) => {
-                    // forbid messages that are larger than the read buffer
-                    if left > self.node().config().read_buffer_size {
-                        error!(parent: self.node().span(), "a message from {} is too large", addr);
-                        return Err(io::ErrorKind::InvalidData.into());
-                    }
 
-                    trace!(parent: self.node().span(), "incomplete message from {}; carrying {}B over", addr, left);
-
-                    // move the leftover bytes to the beginning of the buffer; the next read will append bytes
-                    // starting from where the leftover ones end, allowing the message to be completed
-                    buffer.copy_within(initial_buf_pos..initial_buf_pos + left, 0);
-                    buffer.truncate(left);
-
-                    return Ok(());
-                }
-                // an erroneous message (e.g. an unexpected zero-length payload)
-                Err(e) => {
-                    error!(parent: self.node().span(), "a message from {} is invalid", addr);
-                    return Err(e);
-                }
+                Ok(Some(msg))
+            }
+            // the message in the buffer is incomplete
+            Ok(None) => {
+                trace!(parent: self.node().span(), "incomplete message from {}; carrying {}B over", addr, buffer.len());
+                Ok(None)
+            }
+            // an erroneous message (e.g. an unexpected zero-length payload)
+            Err(e) => {
+                error!(parent: self.node().span(), "a message from {} is invalid", addr);
+                Err(e)
             }
         }
     }

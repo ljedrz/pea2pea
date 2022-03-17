@@ -3,6 +3,7 @@
 ### Changed
 
 - added `PartialEq` and `Eq` to `ConnectionSide`
+- removed the `Sender` param from `Reading::{process_buffer, read_from_stream}`
 
 # 0.34.0
 
