@@ -4,6 +4,7 @@ use crate::{protocols::ReturnableConnection, Pea2Pea};
 use crate::{protocols::Handshake, Config};
 
 use async_trait::async_trait;
+use bytes::Buf;
 use tokio::{
     io::{AsyncRead, AsyncReadExt},
     sync::{mpsc, oneshot},
@@ -240,7 +241,7 @@ where
     ///
     /// note: The maximum size of inbound messages is automatically enforced via [`Config::read_buffer_size`],
     /// but your implementation is free to impose a limit lower than the size of the buffer.
-    fn read_message<R: io::Read>(
+    fn read_message<R: Buf>(
         &self,
         source: SocketAddr,
         reader: &mut R,

@@ -1,4 +1,4 @@
-use bytes::Bytes;
+use bytes::{Buf, BufMut, Bytes};
 use parking_lot::Mutex;
 use tokio::time::sleep;
 use tracing::*;
@@ -44,7 +44,7 @@ impl Pea2Pea for EchoNode {
 impl Reading for EchoNode {
     type Message = TestMessage;
 
-    fn read_message<R: io::Read>(
+    fn read_message<R: Buf>(
         &self,
         _source: SocketAddr,
         reader: &mut R,
@@ -74,14 +74,9 @@ impl Reading for EchoNode {
 impl Writing for EchoNode {
     type Message = Bytes;
 
-    fn write_message<W: io::Write>(
-        &self,
-        _: SocketAddr,
-        payload: &Self::Message,
-        writer: &mut W,
-    ) -> io::Result<()> {
-        writer.write_all(&(payload.len() as u16).to_le_bytes())?;
-        writer.write_all(payload)
+    fn write_message<B: BufMut>(&self, _: SocketAddr, payload: &Self::Message, buffer: &mut B) {
+        buffer.put_u16_le(payload.len() as u16);
+        buffer.put_slice(payload);
     }
 }
 

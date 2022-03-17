@@ -1,11 +1,9 @@
 #![allow(dead_code)]
 
+use bytes::Buf;
 use tracing_subscriber::filter::{EnvFilter, LevelFilter};
 
-use std::{
-    convert::TryInto,
-    io::{self, Read},
-};
+use std::io;
 
 pub fn start_logger(default_level: LevelFilter) {
     let filter = match EnvFilter::try_from_default_env() {
@@ -22,16 +20,16 @@ pub fn start_logger(default_level: LevelFilter) {
         .init();
 }
 
-pub fn read_len_prefixed_message<R: io::Read, const N: usize>(
+pub fn read_len_prefixed_message<R: Buf, const N: usize>(
     reader: &mut R,
 ) -> io::Result<Option<Vec<u8>>> {
-    let mut len_arr = [0u8; N];
-    if reader.read_exact(&mut len_arr).is_err() {
+    if reader.remaining() < N {
         return Ok(None);
     }
+
     let payload_len = match N {
-        2 => u16::from_le_bytes(len_arr[..].try_into().unwrap()) as usize,
-        4 => u32::from_le_bytes(len_arr[..].try_into().unwrap()) as usize,
+        2 => reader.get_u16_le() as usize,
+        4 => reader.get_u32_le() as usize,
         _ => unreachable!(),
     };
 
@@ -39,16 +37,14 @@ pub fn read_len_prefixed_message<R: io::Read, const N: usize>(
         return Err(io::ErrorKind::InvalidData.into());
     }
 
-    let mut buffer = vec![0u8; payload_len];
-    if reader
-        .take(payload_len as u64)
-        .read_exact(&mut buffer)
-        .is_err()
-    {
-        Ok(None)
-    } else {
-        Ok(Some(buffer))
+    if reader.remaining() < payload_len {
+        return Ok(None);
     }
+
+    let mut buffer = vec![0u8; payload_len];
+    reader.take(payload_len).copy_to_slice(&mut buffer);
+
+    Ok(Some(buffer))
 }
 
 pub fn prefix_with_len(len_size: usize, message: &[u8]) -> Vec<u8> {

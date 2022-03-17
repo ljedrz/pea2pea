@@ -1,4 +1,4 @@
-use bytes::Bytes;
+use bytes::{Buf, Bytes};
 use once_cell::sync::Lazy;
 use rand::{distributions::Standard, rngs::SmallRng, Rng, SeedableRng};
 
@@ -8,7 +8,7 @@ use pea2pea::{
     Config, Node, Pea2Pea,
 };
 
-use std::{convert::TryInto, io, net::SocketAddr, time::Instant};
+use std::{io, net::SocketAddr, time::Instant};
 
 const NUM_MESSAGES: usize = 10_000;
 const MSG_SIZE: usize = 32 * 1024;
@@ -35,25 +35,24 @@ impl Pea2Pea for Sink {
 impl Reading for Sink {
     type Message = ();
 
-    fn read_message<R: io::Read>(
+    fn read_message<R: Buf>(
         &self,
         _source: SocketAddr,
         reader: &mut R,
     ) -> io::Result<Option<Self::Message>> {
-        let mut buf = [0u8; MSG_SIZE];
-
-        let payload_len = {
-            if reader.read_exact(&mut buf[..2]).is_err() {
-                return Ok(None);
-            }
-            u16::from_le_bytes(buf[..2].try_into().unwrap()) as usize
-        };
-
-        if reader.read_exact(&mut buf[..payload_len]).is_err() {
-            Ok(None)
-        } else {
-            Ok(Some(()))
+        if reader.remaining() < 2 {
+            return Ok(None);
         }
+
+        let payload_len = reader.get_u16_le() as usize;
+
+        if reader.remaining() < payload_len {
+            return Ok(None);
+        }
+
+        reader.advance(payload_len);
+
+        Ok(Some(()))
     }
 
     async fn process_message(&self, _src: SocketAddr, _msg: Self::Message) -> io::Result<()> {

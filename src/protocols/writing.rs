@@ -4,6 +4,7 @@ use crate::{protocols::ReturnableConnection, Pea2Pea};
 use crate::{protocols::Handshake, Config, Node};
 
 use async_trait::async_trait;
+use bytes::BufMut;
 use parking_lot::RwLock;
 use tokio::{
     io::{AsyncWrite, AsyncWriteExt},
@@ -123,7 +124,7 @@ where
         buffer: &mut Vec<u8>,
         writer: &mut W,
     ) -> io::Result<usize> {
-        self.write_message(addr, &message, buffer)?;
+        self.write_message(addr, &message, buffer);
         let len = buffer.len();
         writer.write_all(buffer).await?;
         buffer.clear();
@@ -131,17 +132,10 @@ where
         Ok(len)
     }
 
-    /// Writes the provided payload to the given intermediate writer; the payload can get prepended with a header
+    /// Writes the provided payload to the given intermediate buffer; the payload can get prepended with a header
     /// indicating its length, be suffixed with a character indicating that it's complete, etc. The `target`
     /// parameter is provided in case serialization depends on the recipient, e.g. in case of encryption.
-    ///
-    /// note: The default `writer` is a memory buffer and thus writing to it is infallible.
-    fn write_message<W: io::Write>(
-        &self,
-        target: SocketAddr,
-        message: &Self::Message,
-        writer: &mut W,
-    ) -> io::Result<()>;
+    fn write_message<B: BufMut>(&self, target: SocketAddr, message: &Self::Message, buffer: &mut B);
 
     /// Sends the provided message to the specified [`SocketAddr`]. Returns as soon as the message is queued to
     /// be sent, without waiting for the actual delivery; instead, the caller is provided with a [`oneshot::Receiver`]

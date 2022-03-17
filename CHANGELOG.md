@@ -4,6 +4,8 @@
 
 - added `PartialEq` and `Eq` to `ConnectionSide`
 - removed the `Sender` param from `Reading::{process_buffer, read_from_stream}`
+- the `reader` param in `Reading::read_message` is now `bytes::Buf` instead of `io::Read`
+- the `writer` param in `Writing::write_message` is now `buffer: B` where `B: bytes::BufMut`
 
 # 0.34.0
 

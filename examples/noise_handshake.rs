@@ -1,6 +1,7 @@
 mod common;
 use common::{prefix_with_len, read_len_prefixed_message};
 
+use bytes::{Buf, BufMut};
 use parking_lot::{Mutex, RwLock};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
@@ -139,7 +140,7 @@ impl Handshake for SecureNode {
 impl Reading for SecureNode {
     type Message = String;
 
-    fn read_message<R: io::Read>(
+    fn read_message<R: Buf>(
         &self,
         source: SocketAddr,
         reader: &mut R,
@@ -169,12 +170,7 @@ impl Reading for SecureNode {
 impl Writing for SecureNode {
     type Message = String;
 
-    fn write_message<W: io::Write>(
-        &self,
-        target: SocketAddr,
-        payload: &Self::Message,
-        writer: &mut W,
-    ) -> io::Result<()> {
+    fn write_message<B: BufMut>(&self, target: SocketAddr, payload: &Self::Message, buf: &mut B) {
         info!(parent: self.node.span(), "sending an encrypted message to {}: \"{}\"", target, payload);
 
         let noise = Arc::clone(self.noise_states.read().get(&target).unwrap());
@@ -183,8 +179,8 @@ impl Writing for SecureNode {
         let len = state.write_message(payload.as_bytes(), buffer).unwrap();
         let encrypted_message = &buffer[..len];
 
-        writer.write_all(&(len as u16).to_le_bytes())?;
-        writer.write_all(encrypted_message)
+        buf.put_u16_le(encrypted_message.len() as u16);
+        buf.put(encrypted_message);
     }
 }
 

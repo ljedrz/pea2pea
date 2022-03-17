@@ -9,6 +9,7 @@
 //!
 //! Feel free to reuse this code to test your own implementation of `Pea2Pea` protocols.
 
+use bytes::Buf;
 use libfuzzer_sys::fuzz_target;
 use pea2pea::{
     protocols::{Reading, Writing},
@@ -17,8 +18,7 @@ use pea2pea::{
 use tokio::time::sleep;
 
 use std::{
-    convert::TryInto,
-    io::{self, ErrorKind, Read, Write},
+    io::{self, ErrorKind, Write},
     net::SocketAddr,
     time::Duration,
 };
@@ -41,17 +41,16 @@ const MAX_MSG_SIZE: usize = 256;
 impl Reading for FuzzNode {
     type Message = Vec<u8>;
 
-    fn read_message<R: Read>(
+    fn read_message<R: Buf>(
         &self,
         _source: SocketAddr,
         reader: &mut R,
     ) -> io::Result<Option<Self::Message>> {
         // expect a prefix with a u16 LE length of the actual message
-        let mut len_arr = [0u8; 2];
-        if reader.read_exact(&mut len_arr).is_err() {
+        if reader.remaining() < 2 {
             return Ok(None);
         }
-        let payload_len = u16::from_le_bytes(len_arr[..].try_into().unwrap()) as usize;
+        let payload_len = reader.get_u16_le() as usize;
 
         // a zero-length payload would normally be treated as an error and possibly trigger
         // a disconnect, but we'll instead accept those and theat them as empty inbound
@@ -68,18 +67,17 @@ impl Reading for FuzzNode {
             return Err(ErrorKind::Other.into());
         }
 
+        // account for incomplete messages
+        if reader.remaining() < payload_len {
+            return Ok(None);
+        }
+
         // this can be done more efficiently by having persistent per-connection buffers, but it's
         // perfectly good enough for test purposes
         let mut buffer = vec![0u8; payload_len];
-        if reader
-            .take(payload_len as u64)
-            .read_exact(&mut buffer)
-            .is_err()
-        {
-            Ok(None)
-        } else {
-            Ok(Some(buffer))
-        }
+        reader.take(payload_len).copy_to_slice(&mut buffer);
+
+        Ok(Some(buffer))
     }
 
     async fn process_message(
@@ -98,7 +96,7 @@ impl Writing for FuzzNode {
         &self,
         _target: SocketAddr,
         payload: &Self::Message,
-        writer: &mut W,
+        buffer: &mut B,
     ) -> io::Result<()> {
         // prefix the actual message with its length encoded as a u16 LE
         writer.write_all(&(payload.len() as u16).to_le_bytes())?;

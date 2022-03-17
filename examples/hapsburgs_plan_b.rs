@@ -1,5 +1,6 @@
 mod common;
 
+use bytes::{Buf, BufMut};
 use tokio::time::sleep;
 use tracing::*;
 use tracing_subscriber::filter::LevelFilter;
@@ -48,7 +49,7 @@ impl Handshake for NakedNode {
 impl Reading for NakedNode {
     type Message = String;
 
-    fn read_message<R: io::Read>(
+    fn read_message<R: Buf>(
         &self,
         _source: SocketAddr,
         reader: &mut R,
@@ -86,14 +87,9 @@ impl Reading for NakedNode {
 impl Writing for NakedNode {
     type Message = String;
 
-    fn write_message<W: io::Write>(
-        &self,
-        _: SocketAddr,
-        payload: &Self::Message,
-        buffer: &mut W,
-    ) -> io::Result<()> {
-        buffer.write_all(&(payload.len() as u16).to_le_bytes())?;
-        buffer.write_all(payload.as_bytes())
+    fn write_message<B: BufMut>(&self, _: SocketAddr, payload: &Self::Message, buffer: &mut B) {
+        buffer.put_u16_le(payload.len() as u16);
+        buffer.put(payload.as_bytes());
     }
 }
 

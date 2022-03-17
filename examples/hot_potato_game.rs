@@ -1,5 +1,6 @@
 mod common;
 
+use bytes::{Buf, BufMut};
 use once_cell::sync::Lazy;
 use parking_lot::Mutex;
 use rand::{rngs::SmallRng, seq::IteratorRandom, Rng, SeedableRng};
@@ -130,7 +131,7 @@ enum Message {
 impl Reading for Player {
     type Message = Message;
 
-    fn read_message<R: io::Read>(
+    fn read_message<R: Buf>(
         &self,
         _source: SocketAddr,
         reader: &mut R,
@@ -177,16 +178,10 @@ impl Reading for Player {
 impl Writing for Player {
     type Message = Message;
 
-    fn write_message<W: io::Write>(
-        &self,
-        _: SocketAddr,
-        payload: &Self::Message,
-        writer: &mut W,
-    ) -> io::Result<()> {
-        let payload_len = bincode::serialized_size(payload).unwrap() as u16;
-        writer.write_all(&payload_len.to_le_bytes())?;
-        bincode::serialize_into(writer, payload)
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
+    fn write_message<B: BufMut>(&self, _: SocketAddr, payload: &Self::Message, buffer: &mut B) {
+        let payload_len = bincode::serialized_size(payload).unwrap();
+        buffer.put_u16_le(payload_len as u16);
+        bincode::serialize_into(buffer.writer(), payload).unwrap();
     }
 }
 
