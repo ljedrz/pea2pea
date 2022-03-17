@@ -4,36 +4,26 @@ use rand::{distributions::Standard, rngs::SmallRng, Rng, SeedableRng};
 mod common;
 use pea2pea::{
     protocols::{Reading, Writing},
-    Config, Node, Pea2Pea,
+    Pea2Pea,
 };
 
 use std::time::Instant;
 
 // despite there already being a `cargo-fuzz`-powered test already, this one is much better at
-// testing inbound message buffering logic, as its issues are unlikely to cause any panics
+// testing inbound message buffering logic, as its issues are unlikely to cause any panics; the
+// test will probably not find issues with the default codecs, but it won't hurt to keep it around
 #[tokio::test(flavor = "multi_thread")]
 async fn fuzzing() {
-    // tracing_subscriber::fmt::init();
-
     let start = Instant::now();
 
     const MAX_MSG_SIZE: usize = 1024;
-    const ITERATIONS: usize = 2_500;
+    const ITERATIONS: usize = 1000;
 
-    let config = Config {
-        name: Some("receiver".into()),
-        read_buffer_size: MAX_MSG_SIZE,
-        ..Default::default()
-    };
-    let receiver = common::MessagingNode(Node::new(Some(config)).await.unwrap());
+    let receiver = common::MessagingNode::new("receiver").await;
     receiver.enable_reading().await;
     let receiver_addr = receiver.node().listening_addr().unwrap();
 
-    let config = Config {
-        name: Some("sender".into()),
-        ..Default::default()
-    };
-    let sender = common::MessagingNode(Node::new(Some(config)).await.unwrap());
+    let sender = common::MessagingNode::new("sender").await;
     sender.enable_writing().await;
 
     sender.node().connect(receiver_addr).await.unwrap();
@@ -80,55 +70,4 @@ async fn fuzzing() {
         elapsed_secs,
         common::display_bytes(bytes_per_s),
     );
-}
-
-#[tokio::test]
-async fn problem_combination() {
-    const MAX_MSG_SIZE: usize = 1024;
-
-    let config = Config {
-        name: Some("receiver".into()),
-        read_buffer_size: MAX_MSG_SIZE,
-        ..Default::default()
-    };
-    let receiver = common::MessagingNode(Node::new(Some(config)).await.unwrap());
-    receiver.enable_reading().await;
-
-    let config = Config {
-        name: Some("sender".into()),
-        ..Default::default()
-    };
-    let sender = common::MessagingNode(Node::new(Some(config)).await.unwrap());
-    sender.enable_writing().await;
-
-    sender
-        .node()
-        .connect(receiver.node().listening_addr().unwrap())
-        .await
-        .unwrap();
-
-    wait_until!(1, receiver.node().num_connected() == 1);
-
-    let mut rng = SmallRng::from_entropy();
-
-    for msg_size in &[
-        706, 688, 738, 613, 542, 683, 765, 688, 837, 640, 842, 677, 990, 1011, 706, 877, 877, 718,
-        674, 566, 1019, 588, 606, 910, 999, 846, 735, 688, 754, 554, 584,
-    ] {
-        let random_payload: Vec<u8> = (&mut rng).sample_iter(Standard).take(*msg_size).collect();
-
-        sender
-            .send_direct_message(
-                receiver.node().listening_addr().unwrap(),
-                random_payload.into(),
-            )
-            .unwrap()
-            .await
-            .unwrap();
-
-        assert!(
-            receiver.node().num_connected() != 0,
-            "the fuzz test failed!"
-        );
-    }
 }

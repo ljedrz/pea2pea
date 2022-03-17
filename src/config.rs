@@ -41,12 +41,11 @@ pub struct Config {
     /// breached by outbound connection attempts, though.
     pub max_connections: u16,
 
-    /// The size of a per-connection buffer for reading inbound messages. It should be at least as large as the
-    /// maximum message size permitted by the network. Any inbound message larger than this value will be rejected
-    /// and cause a disconnect (unless [`Config::fatal_io_errors`] is altered to exclude [`InvalidData`]).
+    /// The initial size of a per-connection buffer for reading inbound messages. Can be set to the maximum expected size
+    /// of the inbound message in order to only allocate it once.
     ///
     /// note: The node needs to implement the [`Reading`] protocol in order for it to have any effect.
-    pub read_buffer_size: usize,
+    pub initial_read_buffer_size: usize,
     /// The depth of per-connection queues used to process inbound messages; the greater it is, the more inbound
     /// messages the node can enqueue, but setting it to a large value can make the node more susceptible to DoS
     /// attacks.
@@ -92,7 +91,7 @@ impl Default for Config {
             ],
             max_connections: 100,
 
-            read_buffer_size: 64 * 1024,
+            initial_read_buffer_size: 64 * 1024,
             inbound_queue_depth: 64,
             outbound_queue_depth: 64,
             max_handshake_time_ms: 3_000,

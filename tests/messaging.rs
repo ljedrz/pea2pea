@@ -1,6 +1,7 @@
-use bytes::{Buf, BufMut, Bytes};
+use bytes::{Buf, Bytes, BytesMut};
 use parking_lot::Mutex;
 use tokio::time::sleep;
+use tokio_util::codec::Decoder;
 use tracing::*;
 
 mod common;
@@ -28,6 +29,15 @@ impl From<u8> for TestMessage {
     }
 }
 
+impl Decoder for common::TestCodec<TestMessage> {
+    type Item = TestMessage;
+    type Error = io::Error;
+
+    fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
+        Ok(self.0.decode(src)?.map(|mut bytes| bytes.get_u8().into()))
+    }
+}
+
 #[derive(Clone)]
 struct EchoNode {
     node: Node,
@@ -43,14 +53,10 @@ impl Pea2Pea for EchoNode {
 #[async_trait::async_trait]
 impl Reading for EchoNode {
     type Message = TestMessage;
+    type Codec = common::TestCodec<Self::Message>;
 
-    fn read_message<R: Buf>(
-        &self,
-        _source: SocketAddr,
-        reader: &mut R,
-    ) -> io::Result<Option<Self::Message>> {
-        let byte = common::read_len_prefixed_message::<R, 2>(reader)?;
-        Ok(byte.map(|byte| TestMessage::from(byte[0])))
+    fn codec(&self, _addr: SocketAddr) -> Self::Codec {
+        Default::default()
     }
 
     async fn process_message(&self, source: SocketAddr, message: Self::Message) -> io::Result<()> {
@@ -73,17 +79,15 @@ impl Reading for EchoNode {
 
 impl Writing for EchoNode {
     type Message = Bytes;
+    type Codec = common::TestCodec<Self::Message>;
 
-    fn write_message<B: BufMut>(&self, _: SocketAddr, payload: &Self::Message, buffer: &mut B) {
-        buffer.put_u16_le(payload.len() as u16);
-        buffer.put_slice(payload);
+    fn codec(&self, _addr: SocketAddr) -> Self::Codec {
+        Default::default()
     }
 }
 
 #[tokio::test]
 async fn messaging_example() {
-    // tracing_subscriber::fmt::init();
-
     let shouter = common::MessagingNode::new("shout").await;
     shouter.enable_reading().await;
     shouter.enable_writing().await;
@@ -145,50 +149,6 @@ async fn drop_connection_on_invalid_message() {
 
     writer
         .send_direct_message(reader_addr, bad_message)
-        .unwrap()
-        .await
-        .unwrap();
-
-    wait_until!(1, reader.node().num_connected() == 0);
-}
-
-#[tokio::test]
-async fn drop_connection_on_oversized_message() {
-    const MSG_SIZE_LIMIT: usize = 10;
-
-    let writer = common::MessagingNode::new("writer").await;
-    writer.enable_writing().await;
-
-    let config = Config {
-        name: Some("reader".into()),
-        read_buffer_size: MSG_SIZE_LIMIT,
-        ..Default::default()
-    };
-    let reader = common::MessagingNode(Node::new(Some(config)).await.unwrap());
-    let reader_addr = reader.node().listening_addr().unwrap();
-    reader.enable_reading().await;
-
-    writer.node().connect(reader_addr).await.unwrap();
-
-    wait_until!(1, reader.node().num_connected() == 1);
-
-    // when prefixed with length, it'll be equal to MSG_SIZE_LIMIT
-    let max_size_payload = vec![0u8; MSG_SIZE_LIMIT - 2];
-
-    writer
-        .send_direct_message(reader_addr, max_size_payload.into())
-        .unwrap()
-        .await
-        .unwrap();
-
-    wait_until!(1, reader.node().stats().received() == (1, 10));
-
-    // this message exceeds MSG_SIZE_LIMIT, which is also the reader's read
-    // buffer size, by a single byte
-    let oversized_payload = vec![0u8; MSG_SIZE_LIMIT - 1];
-
-    writer
-        .send_direct_message(reader_addr, oversized_payload.into())
         .unwrap()
         .await
         .unwrap();

@@ -33,8 +33,6 @@ impl common::MessagingNode {
 
 #[tokio::test]
 async fn broadcast_example() {
-    // tracing_subscriber::fmt::init();
-
     let random_nodes = common::start_nodes(4, None)
         .await
         .into_iter()

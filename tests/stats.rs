@@ -34,10 +34,13 @@ async fn message_stats() {
             .unwrap();
     }
 
-    // 4 is the common test length prefix size
-    let expected_msgs_size = sent_msgs_count * (msg.len() as u64 + 2);
+    // 2 is the common test length prefix size
+    let expected_msgs_size = sent_msgs_count * (2 + msg.len() as u64);
 
-    assert!(writer.node().stats().sent() == (sent_msgs_count, expected_msgs_size));
+    assert_eq!(
+        writer.node().stats().sent(),
+        (sent_msgs_count, expected_msgs_size)
+    );
     wait_until!(1, {
         if let Some(stats) = writer.node().known_peers().get(reader_addr) {
             let (sent_msgs, sent_bytes) = stats.sent();
@@ -46,7 +49,6 @@ async fn message_stats() {
             false
         }
     });
-
     wait_until!(
         1,
         reader.node().stats().received() == (sent_msgs_count, expected_msgs_size)

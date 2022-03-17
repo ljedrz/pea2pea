@@ -38,8 +38,6 @@ impl common::MessagingNode {
 
 #[tokio::test]
 async fn maintenance_example() {
-    // tracing_subscriber::fmt::init();
-
     let tidy = common::MessagingNode::new("tidyboi").await;
     let rando = common::MessagingNode::new("rando").await;
 

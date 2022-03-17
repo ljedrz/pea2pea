@@ -1,9 +1,10 @@
 #![allow(dead_code)]
 
-use bytes::Buf;
-use tracing_subscriber::filter::{EnvFilter, LevelFilter};
+use std::{io, marker::PhantomData};
 
-use std::io;
+use bytes::{Bytes, BytesMut};
+use tokio_util::codec::{Decoder, Encoder, LengthDelimitedCodec};
+use tracing_subscriber::filter::{EnvFilter, LevelFilter};
 
 pub fn start_logger(default_level: LevelFilter) {
     let filter = match EnvFilter::try_from_default_env() {
@@ -20,43 +21,42 @@ pub fn start_logger(default_level: LevelFilter) {
         .init();
 }
 
-pub fn read_len_prefixed_message<R: Buf, const N: usize>(
-    reader: &mut R,
-) -> io::Result<Option<Vec<u8>>> {
-    if reader.remaining() < N {
-        return Ok(None);
+pub struct TestCodec<M>(pub LengthDelimitedCodec, PhantomData<M>);
+
+impl Decoder for TestCodec<BytesMut> {
+    type Item = BytesMut;
+    type Error = io::Error;
+
+    fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
+        self.0.decode(src)
     }
-
-    let payload_len = match N {
-        2 => reader.get_u16_le() as usize,
-        4 => reader.get_u32_le() as usize,
-        _ => unreachable!(),
-    };
-
-    if payload_len == 0 {
-        return Err(io::ErrorKind::InvalidData.into());
-    }
-
-    if reader.remaining() < payload_len {
-        return Ok(None);
-    }
-
-    let mut buffer = vec![0u8; payload_len];
-    reader.take(payload_len).copy_to_slice(&mut buffer);
-
-    Ok(Some(buffer))
 }
 
-pub fn prefix_with_len(len_size: usize, message: &[u8]) -> Vec<u8> {
-    let mut vec = Vec::with_capacity(len_size + message.len());
+impl Decoder for TestCodec<String> {
+    type Item = String;
+    type Error = io::Error;
 
-    match len_size {
-        2 => vec.extend_from_slice(&(message.len() as u16).to_le_bytes()),
-        4 => vec.extend_from_slice(&(message.len() as u32).to_le_bytes()),
-        _ => unreachable!(),
+    fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
+        self.0
+            .decode(src)?
+            .map(|bs| String::from_utf8(bs.to_vec()).map_err(|_| io::ErrorKind::InvalidData.into()))
+            .transpose()
     }
+}
 
-    vec.extend_from_slice(message);
+impl<M, T: Into<Bytes>> Encoder<T> for TestCodec<M> {
+    type Error = io::Error;
 
-    vec
+    fn encode(&mut self, item: T, dst: &mut BytesMut) -> Result<(), Self::Error> {
+        self.0.encode(item.into(), dst)
+    }
+}
+
+impl<M> Default for TestCodec<M> {
+    fn default() -> Self {
+        let inner = LengthDelimitedCodec::builder()
+            .length_field_length(2)
+            .new_codec();
+        Self(inner, PhantomData)
+    }
 }

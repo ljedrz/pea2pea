@@ -1,15 +1,17 @@
-use crate::{protocols::ReturnableConnection, Pea2Pea};
+use crate::{protocols::ReturnableConnection, Node, Pea2Pea};
 
 #[cfg(doc)]
 use crate::{protocols::Handshake, Config};
 
 use async_trait::async_trait;
-use bytes::Buf;
+use bytes::BytesMut;
+use futures_util::StreamExt;
 use tokio::{
-    io::{AsyncRead, AsyncReadExt},
+    net::tcp::OwnedReadHalf,
     sync::{mpsc, oneshot},
     time::sleep,
 };
+use tokio_util::codec::{Decoder, FramedRead};
 use tracing::*;
 
 use std::{io, net::SocketAddr, time::Duration};
@@ -23,6 +25,9 @@ where
 {
     /// The final (deserialized) type of inbound messages.
     type Message: Send;
+
+    /// The user-supplied [`Decoder`] used to interpret the inbound messages.
+    type Codec: Decoder<Item = Self::Message, Error = io::Error> + Send;
 
     /// Prepares the node to receive messages; failures to read from a connection's stream are penalized by a timeout
     /// defined in [`Config`], while the configured fatal errors result in an immediate disconnect (in order to e.g. avoid
@@ -42,8 +47,15 @@ where
             // these objects are sent from `Node::adapt_stream`
             while let Some((mut conn, conn_returner)) = conn_receiver.recv().await {
                 let addr = conn.addr;
-                let mut reader = conn.reader.take().unwrap(); // safe; it is available at this point
-                let mut buffer = Vec::new();
+                let codec = self_clone.codec(addr);
+                let reader = conn.reader.take().unwrap(); // safe; it is available at this point
+                let framed = FramedRead::new(reader, codec);
+                let mut framed = self_clone.map_codec(framed, addr);
+
+                let initial_read_buffer_size = self_clone.node().config().initial_read_buffer_size;
+                if initial_read_buffer_size != 0 {
+                    framed.read_buffer_mut().reserve(initial_read_buffer_size);
+                }
 
                 let (inbound_message_sender, mut inbound_message_receiver) =
                     mpsc::channel(self_clone.node().config().inbound_queue_depth);
@@ -84,42 +96,32 @@ where
                         sleep(Duration::from_millis(1)).await;
                     }
 
-                    'reading_loop: loop {
-                        if let Err(e) = reader_clone
-                            .read_from_stream(addr, &mut buffer, &mut reader)
-                            .await
-                        {
-                            node.known_peers().register_failure(addr);
-                            if node.config().fatal_io_errors.contains(&e.kind()) {
-                                node.disconnect(addr).await;
-                                break;
-                            } else {
-                                sleep(Duration::from_secs(node.config().invalid_read_delay_secs))
-                                    .await;
+                    while let Some(bytes) = framed.next().await {
+                        match bytes {
+                            Ok(msg) => {
+                                // send the message for further processing
+                                if let Err(e) = inbound_message_sender.try_send(msg) {
+                                    error!(parent: node.span(), "can't process a message from {}: {}", addr, e);
+                                    node.stats().register_failure();
+                                }
                             }
-                        } else {
-                            while !buffer.is_empty() {
-                                match reader_clone.process_buffer(addr, &mut buffer) {
-                                    Ok(Some(msg)) => {
-                                        // send the message for further processing
-                                        if let Err(e) = inbound_message_sender.try_send(msg) {
-                                            error!(parent: node.span(), "can't process a message from {}: {}", addr, e);
-                                            node.stats().register_failure();
-                                        }
-                                    }
-                                    Ok(None) => break,
-                                    Err(e) => {
-                                        node.known_peers().register_failure(addr);
-                                        if node.config().fatal_io_errors.contains(&e.kind()) {
-                                            node.disconnect(addr).await;
-                                            break 'reading_loop;
-                                        }
-                                        buffer.clear();
-                                    }
+                            Err(e) => {
+                                error!(parent: node.span(), "can't read from {}: {}", addr, e);
+                                node.known_peers().register_failure(addr);
+                                if node.config().fatal_io_errors.contains(&e.kind()) {
+                                    node.disconnect(addr).await;
+                                    break;
+                                } else {
+                                    sleep(Duration::from_secs(
+                                        node.config().invalid_read_delay_secs,
+                                    ))
+                                    .await;
                                 }
                             }
                         }
                     }
+
+                    let _ = node.disconnect(addr).await;
                 });
                 let _ = rx_reader.await;
                 conn.tasks.push(reader_task);
@@ -141,118 +143,67 @@ where
         );
     }
 
-    /// Performs a read from the given reader. The default implementation is buffered; it sacrifices a bit of
-    /// simplicity for better performance.
-    async fn read_from_stream<R: AsyncRead + Unpin + Send>(
+    /// Wraps the user-supplied [`Decoder`] in another one used for message accounting.
+    #[doc(hidden)]
+    fn map_codec(
         &self,
+        framed: FramedRead<OwnedReadHalf, Self::Codec>,
         addr: SocketAddr,
-        buffer: &mut Vec<u8>,
-        reader: &mut R,
-    ) -> io::Result<()> {
-        // register the number of bytes carried over from the previous read (if there were any)
-        let carry = buffer.len();
-
-        // limit the maximum number of bytes that can be read
-        let max_read_size = self.node().config().read_buffer_size - carry;
-
-        // forbid messages that are larger than the read buffer
-        if max_read_size == 0 {
-            error!(parent: self.node().span(), "a message from {} is too large", addr);
-            return Err(io::ErrorKind::InvalidData.into());
-        }
-
-        // perform a bounded read from the stream into the provided buffer
-        let read_result = reader.take(max_read_size as u64).read_buf(buffer).await;
-
-        match read_result {
-            Ok(0) => Err(io::ErrorKind::UnexpectedEof.into()),
-            Err(e) => {
-                error!(parent: self.node().span(), "can't read from {}: {}", addr, e);
-                Err(e)
-            }
-            Ok(read_len) => {
-                let left = carry + read_len;
-                trace!(parent: self.node().span(), "read {}B from {}; {}B waiting to be processed", read_len, addr, left);
-                Ok(())
-            }
-        }
+    ) -> FramedRead<OwnedReadHalf, CountingCodec<Self::Codec>> {
+        framed.map_decoder(|codec| CountingCodec {
+            codec,
+            node: self.node().clone(),
+            addr,
+            acc: 0,
+        })
     }
 
-    /// Attempts to isolate a full message from the connection's read buffer using [`Reading::read_message`].
-    /// It preserves any leftover bytes and moves them to the beginning of the buffer, and further reads from
-    /// the stream are appended to them.
-    fn process_buffer(
-        &self,
-        addr: SocketAddr,
-        buffer: &mut Vec<u8>,
-    ) -> io::Result<Option<Self::Message>> {
-        // wrap the read buffer in a reader
-        let mut buf_reader = io::Cursor::new(&buffer);
-
-        // the position in the buffer before the message read attempt
-        let initial_buf_pos = buf_reader.position() as usize;
-
-        // try to read a single message from the buffer
-        let read = self.read_message(addr, &mut buf_reader);
-
-        // the position in the buffer after the read attempt
-        let post_read_buf_pos = buf_reader.position() as usize;
-
-        // register the number of bytes that were processed by the Reading::read_message call above
-        let parse_size = post_read_buf_pos - initial_buf_pos;
-
-        match read {
-            // a full message was read successfully
-            Ok(Some(msg)) => {
-                trace!(parent: self.node().span(), "isolated {}B as a message from {}", parse_size, addr);
-
-                self.node()
-                    .known_peers()
-                    .register_received_message(addr, parse_size);
-                self.node().stats().register_received_message(parse_size);
-
-                // if the read is exhausted, clear the read buffer and return
-                if parse_size == buffer.len() {
-                    buffer.clear();
-                } else {
-                    buffer.copy_within(post_read_buf_pos.., 0);
-                    buffer.truncate(buffer.len() - parse_size);
-                }
-
-                Ok(Some(msg))
-            }
-            // the message in the buffer is incomplete
-            Ok(None) => {
-                trace!(parent: self.node().span(), "incomplete message from {}; carrying {}B over", addr, buffer.len());
-                Ok(None)
-            }
-            // an erroneous message (e.g. an unexpected zero-length payload)
-            Err(e) => {
-                error!(parent: self.node().span(), "a message from {} is invalid", addr);
-                Err(e)
-            }
-        }
-    }
-
-    /// Reads a single message from the given in-memory reader; `Ok(None)` indicates that the message ,
-    /// is incomplete i.e. further reads from the stream must be performed in order to produce the whole
-    /// message. An `Err`returned here indicates an invalid message which, depending on the configured
-    /// list of fatal errors, can cause the related connection to be dropped.
-    ///
-    /// note: The maximum size of inbound messages is automatically enforced via [`Config::read_buffer_size`],
-    /// but your implementation is free to impose a limit lower than the size of the buffer.
-    fn read_message<R: Buf>(
-        &self,
-        source: SocketAddr,
-        reader: &mut R,
-    ) -> io::Result<Option<Self::Message>>;
+    /// Creates a [`Decoder`] used to interpret messages from the network.
+    fn codec(&self, _addr: SocketAddr) -> Self::Codec;
 
     /// Processes an inbound message. Can be used to update state, send replies etc.
     async fn process_message(&self, source: SocketAddr, message: Self::Message) -> io::Result<()>;
 }
 
+/// A wrapper [`Decoder`] that also counts the inbound messages.
+#[doc(hidden)]
+pub struct CountingCodec<D: Decoder> {
+    codec: D,
+    node: Node,
+    addr: SocketAddr,
+    acc: usize,
+}
+
+impl<D: Decoder> Decoder for CountingCodec<D> {
+    type Item = D::Item;
+    type Error = D::Error;
+
+    fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
+        let initial_buf_len = src.len();
+        let ret = self.codec.decode(src)?;
+        let final_buf_len = src.len();
+        let read_len = initial_buf_len - final_buf_len + self.acc;
+
+        if read_len != 0 {
+            trace!(parent: self.node.span(), "read {}B from {}", read_len, self.addr);
+
+            if ret.is_some() {
+                self.acc = 0;
+                self.node
+                    .known_peers()
+                    .register_received_message(self.addr, read_len);
+                self.node.stats().register_received_message(read_len);
+            } else {
+                self.acc = read_len;
+            }
+        }
+
+        Ok(ret)
+    }
+}
+
 /// The handler object dedicated to the [`Reading`] protocol.
-pub struct ReadingHandler(mpsc::UnboundedSender<ReturnableConnection>);
+pub(crate) struct ReadingHandler(mpsc::UnboundedSender<ReturnableConnection>);
 
 impl ReadingHandler {
     pub(crate) fn trigger(&self, item: ReturnableConnection) {

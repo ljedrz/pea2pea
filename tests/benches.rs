@@ -1,6 +1,7 @@
-use bytes::{Buf, Bytes};
+use bytes::{Bytes, BytesMut};
 use once_cell::sync::Lazy;
 use rand::{distributions::Standard, rngs::SmallRng, Rng, SeedableRng};
+use tokio_util::codec::Decoder;
 
 mod common;
 use pea2pea::{
@@ -22,6 +23,15 @@ static RANDOM_BYTES: Lazy<Bytes> = Lazy::new(|| {
     )
 });
 
+impl Decoder for common::TestCodec<()> {
+    type Item = ();
+    type Error = io::Error;
+
+    fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
+        Ok(self.0.decode(src)?.map(|_| ()))
+    }
+}
+
 #[derive(Clone)]
 struct Sink(Node);
 
@@ -34,25 +44,10 @@ impl Pea2Pea for Sink {
 #[async_trait::async_trait]
 impl Reading for Sink {
     type Message = ();
+    type Codec = common::TestCodec<Self::Message>;
 
-    fn read_message<R: Buf>(
-        &self,
-        _source: SocketAddr,
-        reader: &mut R,
-    ) -> io::Result<Option<Self::Message>> {
-        if reader.remaining() < 2 {
-            return Ok(None);
-        }
-
-        let payload_len = reader.get_u16_le() as usize;
-
-        if reader.remaining() < payload_len {
-            return Ok(None);
-        }
-
-        reader.advance(payload_len);
-
-        Ok(Some(()))
+    fn codec(&self, _addr: SocketAddr) -> Self::Codec {
+        Default::default()
     }
 
     async fn process_message(&self, _src: SocketAddr, _msg: Self::Message) -> io::Result<()> {
@@ -76,7 +71,6 @@ async fn run_bench_scenario(sender_count: usize) -> f64 {
     }
 
     let config = Config {
-        read_buffer_size: MSG_SIZE * sender_count,
         max_connections: sender_count as u16,
         ..Default::default()
     };

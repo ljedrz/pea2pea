@@ -1,7 +1,8 @@
 mod common;
 
-use bytes::{Buf, BufMut};
+use bytes::{Buf, BufMut, BytesMut};
 use tokio::time::sleep;
+use tokio_util::codec::{Decoder, Encoder};
 use tracing::*;
 use tracing_subscriber::filter::LevelFilter;
 
@@ -60,22 +61,36 @@ impl From<u8> for BattleCry {
     }
 }
 
+struct SingleByteCodec;
+
+impl Decoder for SingleByteCodec {
+    type Item = BattleCry;
+    type Error = io::Error;
+
+    fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
+        if src.is_empty() {
+            return Ok(None);
+        }
+        Ok(Some(src.get_u8().into()))
+    }
+}
+
+impl Encoder<BattleCry> for SingleByteCodec {
+    type Error = io::Error;
+
+    fn encode(&mut self, item: BattleCry, dst: &mut BytesMut) -> Result<(), Self::Error> {
+        dst.put_u8(item as u8);
+        Ok(())
+    }
+}
+
 #[async_trait::async_trait]
 impl Reading for JoJoNode {
     type Message = BattleCry;
+    type Codec = SingleByteCodec;
 
-    fn read_message<R: Buf>(
-        &self,
-        _source: SocketAddr,
-        reader: &mut R,
-    ) -> io::Result<Option<Self::Message>> {
-        if reader.remaining() == 0 {
-            return Ok(None);
-        }
-
-        let battle_cry = BattleCry::from(reader.get_u8());
-
-        Ok(Some(battle_cry))
+    fn codec(&self, _addr: SocketAddr) -> Self::Codec {
+        SingleByteCodec
     }
 
     async fn process_message(
@@ -86,6 +101,12 @@ impl Reading for JoJoNode {
         let reply = match battle_cry {
             BattleCry::Ora => BattleCry::Muda,
             BattleCry::Muda => BattleCry::Ora,
+        };
+
+        if reply == BattleCry::Ora {
+            info!(parent: self.node().span(), "{:?}!", reply);
+        } else {
+            warn!(parent: self.node().span(), "{:?}!", reply);
         };
 
         self.send_direct_message(source, reply)
@@ -99,15 +120,10 @@ impl Reading for JoJoNode {
 
 impl Writing for JoJoNode {
     type Message = BattleCry;
+    type Codec = SingleByteCodec;
 
-    fn write_message<B: BufMut>(&self, _: SocketAddr, payload: &Self::Message, buffer: &mut B) {
-        buffer.put_u8(*payload as u8);
-
-        if *payload == BattleCry::Ora {
-            info!(parent: self.node().span(), "{:?}!", payload);
-        } else {
-            warn!(parent: self.node().span(), "{:?}!", payload);
-        };
+    fn codec(&self, _addr: SocketAddr) -> Self::Codec {
+        SingleByteCodec
     }
 }
 

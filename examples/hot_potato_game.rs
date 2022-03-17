@@ -1,6 +1,6 @@
 mod common;
 
-use bytes::{Buf, BufMut};
+use bytes::BytesMut;
 use once_cell::sync::Lazy;
 use parking_lot::Mutex;
 use rand::{rngs::SmallRng, seq::IteratorRandom, Rng, SeedableRng};
@@ -9,6 +9,7 @@ use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     time::sleep,
 };
+use tokio_util::codec::{Decoder, Encoder};
 use tracing::*;
 use tracing_subscriber::filter::LevelFilter;
 
@@ -127,20 +128,25 @@ enum Message {
     IHaveThePotato(PlayerName),
 }
 
+impl Decoder for common::TestCodec<Message> {
+    type Item = Message;
+    type Error = io::Error;
+
+    fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
+        self.0
+            .decode(src)?
+            .map(|b| bincode::deserialize(&b).map_err(|_| io::ErrorKind::InvalidData.into()))
+            .transpose()
+    }
+}
+
 #[async_trait::async_trait]
 impl Reading for Player {
     type Message = Message;
+    type Codec = common::TestCodec<Self::Message>;
 
-    fn read_message<R: Buf>(
-        &self,
-        _source: SocketAddr,
-        reader: &mut R,
-    ) -> io::Result<Option<Self::Message>> {
-        // expecting inbound messages to be prefixed with their length encoded as a LE u16
-        let vec = common::read_len_prefixed_message::<R, 2>(reader)?;
-
-        vec.map(|v| bincode::deserialize(&v).map_err(|_| io::ErrorKind::InvalidData.into()))
-            .transpose()
+    fn codec(&self, _addr: SocketAddr) -> Self::Codec {
+        Default::default()
     }
 
     async fn process_message(&self, _source: SocketAddr, message: Self::Message) -> io::Result<()> {
@@ -175,13 +181,21 @@ impl Reading for Player {
     }
 }
 
+impl<M> Encoder<Message> for common::TestCodec<M> {
+    type Error = io::Error;
+
+    fn encode(&mut self, item: Message, dst: &mut BytesMut) -> Result<(), Self::Error> {
+        let bytes = bincode::serialize(&item).unwrap().into();
+        self.0.encode(bytes, dst)
+    }
+}
+
 impl Writing for Player {
     type Message = Message;
+    type Codec = common::TestCodec<Self::Message>;
 
-    fn write_message<B: BufMut>(&self, _: SocketAddr, payload: &Self::Message, buffer: &mut B) {
-        let payload_len = bincode::serialized_size(payload).unwrap();
-        buffer.put_u16_le(payload_len as u16);
-        bincode::serialize_into(buffer.writer(), payload).unwrap();
+    fn codec(&self, _addr: SocketAddr) -> Self::Codec {
+        Default::default()
     }
 }
 

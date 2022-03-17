@@ -1,5 +1,8 @@
 //! Objects associated with connection handling.
 
+#[cfg(doc)]
+use crate::protocols::Handshake;
+
 use parking_lot::RwLock;
 use tokio::{
     net::{
@@ -63,11 +66,11 @@ pub struct Connection {
     /// The address of the connection.
     pub addr: SocketAddr,
     /// Kept only until the protocols are enabled (the reading protocol should take it).
-    pub reader: Option<OwnedReadHalf>,
+    pub(crate) reader: Option<OwnedReadHalf>,
     /// Kept only until the protocols are enabled (the writing protocol should take it).
-    pub writer: Option<OwnedWriteHalf>,
+    pub(crate) writer: Option<OwnedWriteHalf>,
     /// Handles to tasks spawned for the connection.
-    pub tasks: Vec<JoinHandle<()>>,
+    pub(crate) tasks: Vec<JoinHandle<()>>,
     /// The connection's side in relation to the node.
     pub side: ConnectionSide,
 }
@@ -84,6 +87,27 @@ impl Connection {
             side,
             tasks: Default::default(),
         }
+    }
+
+    /// Obtains the full underlying stream; can be useful for handshake purposes. The stream must
+    /// be returned with [`Connection::return_stream`] before the end of [`Handshake::perform_handshake`].
+    pub fn take_stream(&mut self) -> TcpStream {
+        self.reader
+            .take()
+            .expect("Connection's reader is not available!")
+            .reunite(
+                self.writer
+                    .take()
+                    .expect("Connection's writer is not available!"),
+            )
+            .unwrap()
+    }
+
+    /// Restores the stream obtained via [`Connection::take_stream`].
+    pub fn return_stream(&mut self, stream: TcpStream) {
+        let (reader, writer) = stream.into_split();
+        self.reader = Some(reader);
+        self.writer = Some(writer);
     }
 
     /// Provides mutable access to the underlying reader; it should only be used in protocol definitions.
