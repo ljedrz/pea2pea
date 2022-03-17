@@ -233,10 +233,10 @@ where
         }
     }
 
-    /// Reads a single message from the given reader; `Ok(None)` indicates that the message is incomplete,
-    /// i.e. further reads from the stream must be performed in order to produce the whole message. An `Err`
-    /// returned here indicates an invalid message which, depending on the configured list of fatal errors,
-    /// can cause the related connection to be dropped.
+    /// Reads a single message from the given in-memory reader; `Ok(None)` indicates that the message ,
+    /// is incomplete i.e. further reads from the stream must be performed in order to produce the whole
+    /// message. An `Err`returned here indicates an invalid message which, depending on the configured
+    /// list of fatal errors, can cause the related connection to be dropped.
     ///
     /// note: The maximum size of inbound messages is automatically enforced via [`Config::read_buffer_size`],
     /// but your implementation is free to impose a limit lower than the size of the buffer.
