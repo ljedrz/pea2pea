@@ -10,7 +10,7 @@ use pea2pea::{
 
 use std::time::Duration;
 
-impl common::MessagingNode {
+impl common::TestNode {
     fn send_periodic_broadcasts(&self) {
         let self_clone = self.clone();
         tokio::spawn(async move {
@@ -33,16 +33,12 @@ impl common::MessagingNode {
 
 #[tokio::test]
 async fn broadcast_example() {
-    let random_nodes = common::start_nodes(4, None)
-        .await
-        .into_iter()
-        .map(common::MessagingNode)
-        .collect::<Vec<_>>();
+    let random_nodes = common::start_test_nodes(4).await;
     for rando in &random_nodes {
         rando.enable_reading().await;
     }
 
-    let broadcaster = common::MessagingNode::new("chatty").await;
+    let broadcaster = crate::test_node!("chatty");
 
     broadcaster.enable_writing().await;
     broadcaster.send_periodic_broadcasts();

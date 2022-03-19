@@ -88,7 +88,7 @@ impl Writing for EchoNode {
 
 #[tokio::test]
 async fn messaging_example() {
-    let shouter = common::MessagingNode::new("shout").await;
+    let shouter = crate::test_node!("shout");
     shouter.enable_reading().await;
     shouter.enable_writing().await;
 
@@ -133,11 +133,11 @@ async fn messaging_example() {
 
 #[tokio::test]
 async fn drop_connection_on_invalid_message() {
-    let reader = common::MessagingNode::new("reader").await;
+    let reader = crate::test_node!("reader");
     let reader_addr = reader.node().listening_addr().unwrap();
     reader.enable_reading().await;
 
-    let writer = common::MessagingNode::new("writer").await;
+    let writer = crate::test_node!("writer");
     writer.enable_writing().await;
 
     writer.node().connect(reader_addr).await.unwrap();
@@ -158,9 +158,9 @@ async fn drop_connection_on_invalid_message() {
 
 #[tokio::test]
 async fn drop_connection_on_zero_read() {
-    let reader = common::MessagingNode::new("reader").await;
+    let reader = crate::test_node!("reader");
     reader.enable_reading().await;
-    let peer = common::MessagingNode::new("peer").await;
+    let peer = crate::test_node!("peer");
 
     peer.node()
         .connect(reader.node().listening_addr().unwrap())
@@ -178,10 +178,10 @@ async fn drop_connection_on_zero_read() {
 
 #[tokio::test]
 async fn no_reading_no_delivery() {
-    let reader = common::MessagingNode::new("defunct reader").await;
+    let reader = crate::test_node!("defunct reader");
     let reader_addr = reader.node().listening_addr().unwrap();
 
-    let writer = common::MessagingNode::new("writer").await;
+    let writer = crate::test_node!("writer");
     writer.enable_writing().await;
 
     writer.node().connect(reader_addr).await.unwrap();
@@ -203,11 +203,11 @@ async fn no_reading_no_delivery() {
 
 #[tokio::test]
 async fn no_writing_no_delivery() {
-    let reader = common::MessagingNode::new("reader").await;
+    let reader = crate::test_node!("reader");
     let reader_addr = reader.node().listening_addr().unwrap();
     reader.enable_reading().await;
 
-    let writer = common::MessagingNode::new("defunct writer").await;
+    let writer = crate::test_node!("defunct writer");
 
     writer.node().connect(reader_addr).await.unwrap();
 

@@ -11,11 +11,11 @@ use pea2pea::{
 async fn message_stats() {
     let mut rng = SmallRng::from_entropy();
 
-    let reader = common::MessagingNode::new("reader").await;
+    let reader = crate::test_node!("reader");
     let reader_addr = reader.node().listening_addr().unwrap();
     reader.enable_reading().await;
 
-    let writer = common::MessagingNode::new("writer").await;
+    let writer = crate::test_node!("writer");
     writer.enable_writing().await;
 
     writer.node().connect(reader_addr).await.unwrap();

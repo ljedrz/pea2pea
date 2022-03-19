@@ -1,7 +1,7 @@
 use tokio::{net::TcpListener, time::sleep};
 
 mod common;
-use pea2pea::{connect_nodes, Config, Node, Topology};
+use pea2pea::{connect_nodes, Config, Node, Pea2Pea, Topology};
 
 use std::{
     net::Ipv4Addr,
@@ -39,24 +39,25 @@ async fn node_creation_used_port_fails() {
 
 #[tokio::test]
 async fn node_connect_and_disconnect() {
-    let nodes = common::start_inert_nodes(2, None).await;
+    let nodes = common::start_test_nodes(2).await;
     connect_nodes(&nodes, Topology::Line).await.unwrap();
 
-    wait_until!(1, nodes.iter().all(|node| node.num_connected() == 1));
+    wait_until!(1, nodes.iter().all(|n| n.node().num_connected() == 1));
 
-    assert!(nodes.iter().all(|node| node.num_connecting() == 0));
+    assert!(nodes.iter().all(|n| n.node().num_connecting() == 0));
 
     assert!(
         nodes[0]
-            .disconnect(nodes[1].listening_addr().unwrap())
+            .node()
+            .disconnect(nodes[1].node().listening_addr().unwrap())
             .await
     );
 
-    wait_until!(1, nodes[0].num_connected() == 0);
+    wait_until!(1, nodes[0].node().num_connected() == 0);
 
     // node[1] didn't enable reading, so it has no way of knowing
     // that the connection has been broken by node[0]
-    assert_eq!(nodes[1].num_connected(), 1);
+    assert_eq!(nodes[1].node().num_connected(), 1);
 }
 
 #[tokio::test]
@@ -67,14 +68,14 @@ async fn node_self_connection_fails() {
 
 #[tokio::test]
 async fn node_duplicate_connection_fails() {
-    let nodes = common::start_inert_nodes(2, None).await;
+    let nodes = common::start_test_nodes(2).await;
     assert!(connect_nodes(&nodes, Topology::Line).await.is_ok());
     assert!(connect_nodes(&nodes, Topology::Line).await.is_err());
 }
 
 #[tokio::test]
 async fn node_two_way_connection_works() {
-    let mut nodes = common::start_inert_nodes(2, None).await;
+    let mut nodes = common::start_test_nodes(2).await;
     assert!(connect_nodes(&nodes, Topology::Line).await.is_ok());
     nodes.reverse();
     assert!(connect_nodes(&nodes, Topology::Line).await.is_ok());

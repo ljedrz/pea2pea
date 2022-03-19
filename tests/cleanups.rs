@@ -10,7 +10,7 @@ use pea2pea::{
 use std::{io, net::SocketAddr};
 
 #[async_trait::async_trait]
-impl Handshake for common::MessagingNode {
+impl Handshake for common::TestNode {
     async fn perform_handshake(&self, conn: Connection) -> io::Result<Connection> {
         // nothing to do here, just using all protocols
         Ok(conn)
@@ -18,7 +18,7 @@ impl Handshake for common::MessagingNode {
 }
 
 #[async_trait::async_trait]
-impl Disconnect for common::MessagingNode {
+impl Disconnect for common::TestNode {
     async fn handle_disconnect(&self, _addr: SocketAddr) {
         // nothing to do here, just using all protocols
     }
@@ -34,7 +34,7 @@ async fn check_node_cleanups() {
     // register heap use before node setup
     let initial_heap_use = PEAK_ALLOC.current_usage();
 
-    let persistent_node = common::MessagingNode::new("persistent").await;
+    let persistent_node = crate::test_node!("persistent");
     let persistent_addr = persistent_node.node().listening_addr().unwrap();
 
     // measure the size of a node with no protocols enabled
@@ -57,23 +57,18 @@ async fn check_node_cleanups() {
     let mut heap_after_32_conns = 0;
 
     for i in 0..NUM_CONNS {
-        let temporary_node = common::MessagingNode::new("temporary_node").await;
+        let temp_node = crate::test_node!("temp_node");
 
-        temporary_node.enable_handshake().await;
-        temporary_node.enable_reading().await;
-        temporary_node.enable_writing().await;
-        temporary_node.enable_disconnect().await;
+        temp_node.enable_handshake().await;
+        temp_node.enable_reading().await;
+        temp_node.enable_writing().await;
+        temp_node.enable_disconnect().await;
 
         // this connection direction allows the collection of `KnownPeers` to remain empty
-        temporary_node
-            .node()
-            .connect(persistent_addr)
-            .await
-            .unwrap();
+        temp_node.node().connect(persistent_addr).await.unwrap();
         wait_until!(
             1,
-            persistent_node.node().num_connected() == 1
-                && temporary_node.node().num_connected() == 1
+            persistent_node.node().num_connected() == 1 && temp_node.node().num_connected() == 1
         );
         let temporary_addr = persistent_node.node().connected_addrs()[0];
 
@@ -83,17 +78,17 @@ async fn check_node_cleanups() {
             .await
             .unwrap();
 
-        temporary_node
+        temp_node
             .send_direct_message(persistent_addr, Bytes::from(&b"derp"[..]))
             .unwrap()
             .await
             .unwrap();
 
-        temporary_node.node().shut_down().await;
+        temp_node.node().shut_down().await;
         wait_until!(1, persistent_node.node().num_connected() == 0);
 
         // drop the temporary node to fully relinquish its memory
-        drop(temporary_node);
+        drop(temp_node);
 
         // obtain and record current memory use
         let current_heap_use = PEAK_ALLOC.current_usage();
@@ -125,7 +120,7 @@ async fn check_node_cleanups() {
     println!("after 32 connections:  {}kB", heap_after_32_conns / 1000);
     println!("after {} connections: {}kB", NUM_CONNS, final_heap_use_kb);
     println!("average memory use:    {}kB", avg_heap_use / 1000);
-    println!("maximum memory use:    {}kB", max_heap_use);
+    println!("maximum memory use:    {}kB", max_heap_use); // note: heavily affected by Config::initial_read_buffer_size
     println!();
     println!("idle node size: {}kB", idle_node_size);
     println!("full node size: {}kB", single_node_size);
