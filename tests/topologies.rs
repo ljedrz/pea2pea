@@ -1,23 +1,23 @@
 #![allow(clippy::blocks_in_if_conditions)]
 
 mod common;
-use pea2pea::{connect_nodes, Topology};
+use pea2pea::{connect_nodes, Pea2Pea, Topology};
 
 // the number of nodes spawned for each topology test
 const N: usize = 10;
 
 #[tokio::test]
 async fn topology_line_conn_counts() {
-    let nodes = common::start_inert_nodes(N, None).await;
+    let nodes = common::start_test_nodes(N).await;
     connect_nodes(&nodes, Topology::Line).await.unwrap();
 
     wait_until!(
         1,
         nodes.iter().enumerate().all(|(i, node)| {
             if i == 0 || i == N - 1 {
-                node.num_connected() == 1
+                node.node().num_connected() == 1
             } else {
-                node.num_connected() == 2
+                node.node().num_connected() == 2
             }
         })
     );
@@ -25,32 +25,32 @@ async fn topology_line_conn_counts() {
 
 #[tokio::test]
 async fn topology_ring_conn_counts() {
-    let nodes = common::start_inert_nodes(N, None).await;
+    let nodes = common::start_test_nodes(N).await;
     connect_nodes(&nodes, Topology::Ring).await.unwrap();
 
-    wait_until!(1, nodes.iter().all(|node| node.num_connected() == 2));
+    wait_until!(1, nodes.iter().all(|node| node.node().num_connected() == 2));
 }
 
 #[tokio::test]
 async fn topology_mesh_conn_counts() {
-    let nodes = common::start_inert_nodes(N, None).await;
+    let nodes = common::start_test_nodes(N).await;
     connect_nodes(&nodes, Topology::Mesh).await.unwrap();
 
-    wait_until!(1, nodes.iter().all(|node| node.num_connected() == N - 1));
+    wait_until!(1, nodes.iter().all(|n| n.node().num_connected() == N - 1));
 }
 
 #[tokio::test]
 async fn topology_star_conn_counts() {
-    let nodes = common::start_inert_nodes(N, None).await;
+    let nodes = common::start_test_nodes(N).await;
     connect_nodes(&nodes, Topology::Star).await.unwrap();
 
     wait_until!(
         1,
         nodes.iter().enumerate().all(|(i, node)| {
             if i == 0 {
-                node.num_connected() == N - 1
+                node.node().num_connected() == N - 1
             } else {
-                node.num_connected() == 1
+                node.node().num_connected() == 1
             }
         })
     );

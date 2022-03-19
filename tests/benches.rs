@@ -6,7 +6,7 @@ use tokio_util::codec::Decoder;
 mod common;
 use pea2pea::{
     protocols::{Reading, Writing},
-    Config, Node, Pea2Pea,
+    Node, Pea2Pea,
 };
 
 use std::{io, net::SocketAddr, time::Instant};
@@ -33,16 +33,16 @@ impl Decoder for common::TestCodec<()> {
 }
 
 #[derive(Clone)]
-struct Sink(Node);
+struct BenchNode(Node);
 
-impl Pea2Pea for Sink {
+impl Pea2Pea for BenchNode {
     fn node(&self) -> &Node {
         &self.0
     }
 }
 
 #[async_trait::async_trait]
-impl Reading for Sink {
+impl Reading for BenchNode {
     type Message = ();
     type Codec = common::TestCodec<Self::Message>;
 
@@ -56,46 +56,33 @@ impl Reading for Sink {
 }
 
 async fn run_bench_scenario(sender_count: usize) -> f64 {
-    let config = Config {
-        outbound_queue_depth: NUM_MESSAGES,
-        ..Default::default()
-    };
-    let spammers = common::start_nodes(sender_count, Some(config)).await;
-    let spammers = spammers
-        .into_iter()
-        .map(common::MessagingNode)
-        .collect::<Vec<_>>();
+    let senders = common::start_test_nodes(sender_count).await;
 
-    for spammer in &spammers {
-        spammer.enable_writing().await;
+    for sender in &senders {
+        sender.enable_writing().await;
     }
 
-    let config = Config {
-        max_connections: sender_count as u16,
-        ..Default::default()
-    };
-    let sink = Sink(Node::new(Some(config)).await.unwrap());
+    let receiver = BenchNode(Node::new(None).await.unwrap());
+    receiver.enable_reading().await;
 
-    sink.enable_reading().await;
-
-    for spammer in &spammers {
-        spammer
+    for sender in &senders {
+        sender
             .node()
-            .connect(sink.node().listening_addr().unwrap())
+            .connect(receiver.node().listening_addr().unwrap())
             .await
             .unwrap();
     }
 
-    wait_until!(10, sink.node().num_connected() == sender_count);
+    wait_until!(10, receiver.node().num_connected() == sender_count);
 
-    let sink_addr = sink.node().listening_addr().unwrap();
+    let receiver_addr = receiver.node().listening_addr().unwrap();
 
     let start = Instant::now();
-    for spammer in spammers {
+    for sender in senders {
         tokio::spawn(async move {
             for _ in 0..NUM_MESSAGES {
-                spammer
-                    .send_direct_message(sink_addr, RANDOM_BYTES.clone())
+                sender
+                    .send_direct_message(receiver_addr, RANDOM_BYTES.clone())
                     .unwrap()
                     .await
                     .unwrap();
@@ -105,11 +92,11 @@ async fn run_bench_scenario(sender_count: usize) -> f64 {
 
     wait_until!(
         10,
-        sink.node().stats().received().0 as usize == sender_count * NUM_MESSAGES
+        receiver.node().stats().received().0 as usize == sender_count * NUM_MESSAGES
     );
 
     let time_elapsed = start.elapsed().as_millis();
-    let bytes_received = sink.node().stats().received().1;
+    let bytes_received = receiver.node().stats().received().1;
 
     (bytes_received as f64) / (time_elapsed as f64 / 1000.0)
 }

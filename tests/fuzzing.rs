@@ -19,11 +19,11 @@ async fn fuzzing() {
     const MAX_MSG_SIZE: usize = 1024;
     const ITERATIONS: usize = 1000;
 
-    let receiver = common::MessagingNode::new("receiver").await;
+    let receiver = crate::test_node!("receiver");
     receiver.enable_reading().await;
     let receiver_addr = receiver.node().listening_addr().unwrap();
 
-    let sender = common::MessagingNode::new("sender").await;
+    let sender = crate::test_node!("sender");
     sender.enable_writing().await;
 
     sender.node().connect(receiver_addr).await.unwrap();

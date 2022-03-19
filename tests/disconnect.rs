@@ -9,7 +9,7 @@ use pea2pea::{
 use std::net::SocketAddr;
 
 #[async_trait::async_trait]
-impl Disconnect for common::MessagingNode {
+impl Disconnect for common::TestNode {
     async fn handle_disconnect(&self, addr: SocketAddr) {
         let disconnect_message = Bytes::from("bye-bye!".as_bytes());
 
@@ -22,11 +22,11 @@ impl Disconnect for common::MessagingNode {
 
 #[tokio::test]
 async fn send_message_before_disconnect() {
-    let connector = common::MessagingNode::new("connector").await;
+    let connector = crate::test_node!("connector");
     connector.enable_writing().await;
     connector.enable_disconnect().await;
 
-    let connectee = common::MessagingNode::new("connectee").await;
+    let connectee = crate::test_node!("connectee");
     connectee.enable_reading().await;
 
     let connectee_addr = connectee.node().listening_addr().unwrap();

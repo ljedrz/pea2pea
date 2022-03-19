@@ -6,7 +6,7 @@ use pea2pea::Pea2Pea;
 
 use std::time::Duration;
 
-impl common::MessagingNode {
+impl common::TestNode {
     fn perform_periodic_maintenance(&self) {
         let node = self.node().clone();
         tokio::spawn(async move {
@@ -38,8 +38,8 @@ impl common::MessagingNode {
 
 #[tokio::test]
 async fn maintenance_example() {
-    let tidy = common::MessagingNode::new("tidyboi").await;
-    let rando = common::MessagingNode::new("rando").await;
+    let tidy = crate::test_node!("tidyboi");
+    let rando = crate::test_node!("rando");
 
     tidy.node()
         .connect(rando.node().listening_addr().unwrap())
