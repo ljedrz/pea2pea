@@ -1,4 +1,4 @@
-use crate::{protocols::ReturnableConnection, Node, Pea2Pea};
+use crate::{protocols::ReturnableConnection, Connection, Node, Pea2Pea};
 
 #[cfg(doc)]
 use crate::{protocols::Handshake, Config};
@@ -46,9 +46,9 @@ where
 
             // these objects are sent from `Node::adapt_stream`
             while let Some((mut conn, conn_returner)) = conn_receiver.recv().await {
-                let addr = conn.addr;
+                let addr = conn.addr();
                 let codec = self_clone.codec(addr);
-                let reader = conn.reader.take().unwrap(); // safe; it is available at this point
+                let reader = self_clone.take_reader(&mut conn);
                 let framed = FramedRead::new(reader, codec);
                 let mut framed = self_clone.map_codec(framed, addr);
 
@@ -163,6 +163,13 @@ where
 
     /// Processes an inbound message. Can be used to update state, send replies etc.
     async fn process_message(&self, source: SocketAddr, message: Self::Message) -> io::Result<()>;
+
+    /// Obtains the read half of the connection to be used in [`Reading::enable_reading`].
+    fn take_reader(&self, conn: &mut Connection) -> OwnedReadHalf {
+        conn.reader
+            .take()
+            .expect("Connection's reader is not available!")
+    }
 }
 
 /// A wrapper [`Decoder`] that also counts the inbound messages.

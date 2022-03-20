@@ -1,6 +1,7 @@
 use crate::{protocols::ReturnableConnection, Connection, Pea2Pea};
 
 use tokio::{
+    net::TcpStream,
     sync::{mpsc, oneshot},
     task,
     time::timeout,
@@ -32,11 +33,11 @@ where
             tx.send(()).unwrap(); // safe; the channel was just opened
 
             while let Some((conn, result_sender)) = from_node_receiver.recv().await {
-                let addr = conn.addr;
+                let addr = conn.addr();
 
                 let node = self_clone.clone();
                 task::spawn(async move {
-                    debug!(parent: node.node().span(), "shaking hands with {} as the {:?}", addr, !conn.side);
+                    debug!(parent: node.node().span(), "shaking hands with {} as the {:?}", addr, !conn.side());
                     let result = timeout(
                         Duration::from_millis(node.node().config().max_handshake_time_ms),
                         node.perform_handshake(conn),
@@ -79,6 +80,13 @@ where
     /// Performs the handshake; temporarily assumes control of the [`Connection`] and returns it if the handshake is
     /// successful.
     async fn perform_handshake(&self, conn: Connection) -> io::Result<Connection>;
+
+    /// Borrows the full connection stream to be used in the implementation of [`Handshake::perform_handshake`].
+    fn borrow_stream<'a>(&self, conn: &'a mut Connection) -> &'a mut TcpStream {
+        conn.stream
+            .as_mut()
+            .expect("Connection's stream is not available!")
+    }
 }
 
 /// The handler object dedicated to the [`Handshake`] protocol.
