@@ -2,9 +2,10 @@
 
 ### Added
 
-- `Connection::{return_stream, take_stream}`
-- `Reading::{codec, Codec}`
-- `Writing::{codec, Codec}`
+- `Connection::{addr, side}`
+- `Handshake::{borrow_stream}`
+- `Reading::{codec, take_reader, Codec}`
+- `Writing::{codec, take_writer, Codec}`
 
 ### Changed
 
@@ -12,10 +13,11 @@
 - the `Reading` and `Writing` protocols now take advantage of `tokio-util`'s `Decoder` and `Encoder` traits
 - the signature od `Writing::write_to_stream` has changed
 - the protocol handler objects and `ReturnableItem` are no longer `pub` (only `pub(crate)`)
-- `Connection`'s `reader`, `writer` and `tasks` fields are no longer `pub` (only `pub(crate)`)
+- `Connection`'s fields are no longer `pub`
 
 ### Removed
 
+- `Connection::{reader, writer}`
 - `Reading::{process_buffer, read_from_stream, read_message}`
 - `Writing::write_message`
 - the `handshaking` test (the `noise_handshake` example is much more comprehensive)

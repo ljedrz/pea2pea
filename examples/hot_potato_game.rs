@@ -88,32 +88,35 @@ impl Handshake for Player {
     async fn perform_handshake(&self, mut conn: Connection) -> io::Result<Connection> {
         let mut buffer = [0u8; 16];
 
-        let peer_name = match !conn.side {
+        let node_conn_side = !conn.side();
+        let stream = self.borrow_stream(&mut conn);
+
+        let peer_name = match node_conn_side {
             ConnectionSide::Initiator => {
                 // send own PlayerName
                 let own_name = self.node().name().as_bytes().to_vec();
-                conn.writer().write_all(&own_name).await?;
+                stream.write_all(&own_name).await?;
 
                 // receive the peer's PlayerName
-                let len = conn.reader().read(&mut buffer).await?;
+                let len = stream.read(&mut buffer).await?;
 
                 String::from_utf8_lossy(&buffer[..len]).into_owned()
             }
             ConnectionSide::Responder => {
                 // receive the peer's PlayerName
-                let len = conn.reader().read(&mut buffer).await?;
+                let len = stream.read(&mut buffer).await?;
                 let peer_name = String::from_utf8_lossy(&buffer[..len]).into_owned();
 
                 // send own PlayerName
                 let own_name = self.node().name().as_bytes().to_vec();
-                conn.writer().write_all(&own_name).await?;
+                stream.write_all(&own_name).await?;
 
                 peer_name
             }
         };
 
         let player = PlayerInfo {
-            addr: conn.addr,
+            addr: conn.addr(),
             is_carrier: false,
         };
         self.other_players.lock().insert(peer_name, player);

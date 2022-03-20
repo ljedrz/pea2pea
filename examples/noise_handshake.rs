@@ -168,9 +168,10 @@ impl Handshake for SecureNode {
             .local_private_key(&static_key)
             .psk(3, PRE_SHARED_KEY);
 
-        let stream = conn.take_stream();
+        let node_conn_side = !conn.side();
+        let stream = self.borrow_stream(&mut conn);
 
-        let (stream, noise) = match !conn.side {
+        let noise = match node_conn_side {
             ConnectionSide::Initiator => {
                 let noise = Box::new(noise_builder.build_initiator().unwrap());
                 let mut framed = Framed::new(stream, NoiseCodec::new(NoiseState::Handshake(noise)));
@@ -187,9 +188,9 @@ impl Handshake for SecureNode {
                 framed.send("".into()).await?;
                 debug!(parent: self.node().span(), "sent s, se, psk (XX handshake part 3/3)");
 
-                let FramedParts { io, codec, .. } = framed.into_parts();
+                let FramedParts { codec, .. } = framed.into_parts();
                 let NoiseCodec { noise, .. } = codec;
-                (io, noise.into_post_handshake())
+                noise.into_post_handshake()
             }
             ConnectionSide::Responder => {
                 let noise = Box::new(noise_builder.build_responder().unwrap());
@@ -207,17 +208,15 @@ impl Handshake for SecureNode {
                 framed.try_next().await?;
                 debug!(parent: self.node().span(), "received s, se, psk (XX handshake part 3/3)");
 
-                let FramedParts { io, codec, .. } = framed.into_parts();
+                let FramedParts { codec, .. } = framed.into_parts();
                 let NoiseCodec { noise, .. } = codec;
-                (io, noise.into_post_handshake())
+                noise.into_post_handshake()
             }
         };
 
-        conn.return_stream(stream);
-
         debug!(parent: self.node().span(), "XX handshake complete");
 
-        self.noise_states.write().insert(conn.addr, noise);
+        self.noise_states.write().insert(conn.addr(), noise);
 
         Ok(conn)
     }

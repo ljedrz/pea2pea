@@ -224,7 +224,15 @@ impl Node {
     }
 
     async fn enable_protocols(&self, conn: Connection) -> io::Result<Connection> {
-        let conn = enable_protocol!(handshake_handler, self, conn);
+        let mut conn = enable_protocol!(handshake_handler, self, conn);
+
+        // split the stream after the handshake
+        if let Some(stream) = conn.stream.take() {
+            let (reader, writer) = stream.into_split();
+            conn.reader = Some(reader);
+            conn.writer = Some(writer);
+        }
+
         let conn = enable_protocol!(reading_handler, self, conn);
         let conn = enable_protocol!(writing_handler, self, conn);
 
@@ -326,7 +334,7 @@ impl Node {
         let conn = self.connections.remove(addr);
 
         if let Some(ref conn) = conn {
-            debug!(parent: self.span(), "disconnecting from {}", conn.addr);
+            debug!(parent: self.span(), "disconnecting from {}", conn.addr());
 
             // shut the associated tasks down
             for task in conn.tasks.iter().rev() {
@@ -341,8 +349,8 @@ impl Node {
             // if the (owning) node was not the initiator of the connection, it doesn't know the listening address
             // of the associated peer, so the related stats are unreliable; the next connection initiated by the
             // peer could be bound to an entirely different port number
-            if matches!(conn.side, ConnectionSide::Initiator) {
-                self.known_peers().remove(conn.addr);
+            if conn.side() == ConnectionSide::Initiator {
+                self.known_peers().remove(conn.addr());
             }
 
             debug!(parent: self.span(), "disconnected from {}", addr);

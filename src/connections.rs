@@ -1,7 +1,7 @@
 //! Objects associated with connection handling.
 
 #[cfg(doc)]
-use crate::protocols::Handshake;
+use crate::protocols::{Handshake, Reading, Writing};
 
 use parking_lot::RwLock;
 use tokio::{
@@ -64,63 +64,40 @@ impl Not for ConnectionSide {
 /// of the connection.
 pub struct Connection {
     /// The address of the connection.
-    pub addr: SocketAddr,
-    /// Kept only until the protocols are enabled (the reading protocol should take it).
+    addr: SocketAddr,
+    /// The connection's side in relation to the node.
+    side: ConnectionSide,
+    /// Available and used only in the [`Handshake`] protocol.
+    pub(crate) stream: Option<TcpStream>,
+    /// Available and used only in the [`Reading`] protocol.
     pub(crate) reader: Option<OwnedReadHalf>,
-    /// Kept only until the protocols are enabled (the writing protocol should take it).
+    /// Available and used only in the [`Writing`] protocol.
     pub(crate) writer: Option<OwnedWriteHalf>,
     /// Handles to tasks spawned for the connection.
     pub(crate) tasks: Vec<JoinHandle<()>>,
-    /// The connection's side in relation to the node.
-    pub side: ConnectionSide,
 }
 
 impl Connection {
     /// Creates a [`Connection`] with placeholders for protocol-related objects.
     pub(crate) fn new(addr: SocketAddr, stream: TcpStream, side: ConnectionSide) -> Self {
-        let (reader, writer) = stream.into_split();
-
         Self {
             addr,
-            reader: Some(reader),
-            writer: Some(writer),
+            stream: Some(stream),
+            reader: None,
+            writer: None,
             side,
             tasks: Default::default(),
         }
     }
 
-    /// Obtains the full underlying stream; can be useful for handshake purposes. The stream must
-    /// be returned with [`Connection::return_stream`] before the end of [`Handshake::perform_handshake`].
-    pub fn take_stream(&mut self) -> TcpStream {
-        self.reader
-            .take()
-            .expect("Connection's reader is not available!")
-            .reunite(
-                self.writer
-                    .take()
-                    .expect("Connection's writer is not available!"),
-            )
-            .unwrap()
+    /// Returns the address associated with the connection.
+    pub fn addr(&self) -> SocketAddr {
+        self.addr
     }
 
-    /// Restores the stream obtained via [`Connection::take_stream`].
-    pub fn return_stream(&mut self, stream: TcpStream) {
-        let (reader, writer) = stream.into_split();
-        self.reader = Some(reader);
-        self.writer = Some(writer);
-    }
-
-    /// Provides mutable access to the underlying reader; it should only be used in protocol definitions.
-    pub fn reader(&mut self) -> &mut OwnedReadHalf {
-        self.reader
-            .as_mut()
-            .expect("Connection's reader is not available!")
-    }
-
-    /// Provides mutable access to the underlying writer; it should only be used in protocol definitions.
-    pub fn writer(&mut self) -> &mut OwnedWriteHalf {
-        self.writer
-            .as_mut()
-            .expect("Connection's writer is not available!")
+    /// Returns `Initiator` if the associated peer initiated the connection
+    /// and `Responder` if the connection request was initiated by the node.
+    pub fn side(&self) -> ConnectionSide {
+        self.side
     }
 }

@@ -26,7 +26,7 @@ impl Pea2Pea for JoJoNode {
 impl Handshake for JoJoNode {
     async fn perform_handshake(&self, conn: Connection) -> io::Result<Connection> {
         // some handshakes are useful, others are menacing ゴゴゴゴ
-        match !conn.side {
+        match !conn.side() {
             ConnectionSide::Initiator => {
                 info!(parent: self.node().span(), "Dio!");
                 sleep(Duration::from_secs(4)).await;

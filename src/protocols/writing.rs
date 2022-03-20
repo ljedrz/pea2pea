@@ -1,4 +1,4 @@
-use crate::{protocols::ReturnableConnection, Pea2Pea};
+use crate::{protocols::ReturnableConnection, Connection, Pea2Pea};
 
 #[cfg(doc)]
 use crate::{protocols::Handshake, Config, Node};
@@ -8,6 +8,7 @@ use futures_util::sink::SinkExt;
 use parking_lot::RwLock;
 use tokio::{
     io::AsyncWrite,
+    net::tcp::OwnedWriteHalf,
     sync::{mpsc, oneshot},
 };
 use tokio_util::codec::{Encoder, FramedWrite};
@@ -45,9 +46,9 @@ where
 
             // these objects are sent from `Node::adapt_stream`
             while let Some((mut conn, conn_returner)) = conn_receiver.recv().await {
-                let addr = conn.addr;
+                let addr = conn.addr();
                 let codec = self_clone.codec(addr);
-                let writer = conn.writer.take().unwrap(); // safe; it is available at this point
+                let writer = self_clone.take_writer(&mut conn);
                 let mut framed = FramedWrite::new(writer, codec);
 
                 let (outbound_message_sender, mut outbound_message_receiver) =
@@ -193,6 +194,13 @@ where
         } else {
             Err(io::ErrorKind::Unsupported.into())
         }
+    }
+
+    /// Obtains the write half of the connection to be used in [`Writing::enable_writing`].
+    fn take_writer(&self, conn: &mut Connection) -> OwnedWriteHalf {
+        conn.writer
+            .take()
+            .expect("Connection's writer is not available!")
     }
 }
 
