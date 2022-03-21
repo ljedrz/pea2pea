@@ -110,6 +110,26 @@ macro_rules! impl_messaging {
 impl_messaging!(TestNode);
 
 #[macro_export]
+macro_rules! impl_noop_disconnect_and_handshake {
+    ($target: ty) => {
+        #[async_trait::async_trait]
+        impl Handshake for $target {
+            async fn perform_handshake(
+                &self,
+                conn: pea2pea::Connection,
+            ) -> io::Result<pea2pea::Connection> {
+                Ok(conn)
+            }
+        }
+
+        #[async_trait::async_trait]
+        impl Disconnect for $target {
+            async fn handle_disconnect(&self, _addr: SocketAddr) {}
+        }
+    };
+}
+
+#[macro_export]
 macro_rules! wait_until {
     ($limit_secs: expr, $condition: expr) => {
         let now = std::time::Instant::now();

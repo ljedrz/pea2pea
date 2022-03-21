@@ -4,25 +4,12 @@ use peak_alloc::PeakAlloc;
 mod common;
 use pea2pea::{
     protocols::{Disconnect, Handshake, Reading, Writing},
-    Connection, Pea2Pea,
+    Pea2Pea,
 };
 
 use std::{io, net::SocketAddr};
 
-#[async_trait::async_trait]
-impl Handshake for common::TestNode {
-    async fn perform_handshake(&self, conn: Connection) -> io::Result<Connection> {
-        // nothing to do here, just using all protocols
-        Ok(conn)
-    }
-}
-
-#[async_trait::async_trait]
-impl Disconnect for common::TestNode {
-    async fn handle_disconnect(&self, _addr: SocketAddr) {
-        // nothing to do here, just using all protocols
-    }
-}
+impl_noop_disconnect_and_handshake!(common::TestNode);
 
 #[tokio::test]
 async fn check_node_cleanups() {

@@ -5,7 +5,7 @@ use tokio_util::codec::Decoder;
 
 mod common;
 use pea2pea::{
-    protocols::{Reading, Writing},
+    protocols::{Disconnect, Handshake, Reading, Writing},
     Node, Pea2Pea,
 };
 
@@ -116,5 +116,55 @@ async fn bench_spam_to_one() {
     }
 
     let avg_throughput = results.iter().sum::<f64>() / results.len() as f64;
-    println!("\naverage: {}/s", common::display_bytes(avg_throughput));
+    println!("\naverage: {}/s\n", common::display_bytes(avg_throughput));
+}
+
+#[ignore]
+#[tokio::test]
+async fn bench_node_startup() {
+    const NUM_ITERATIONS: usize = 1000;
+
+    impl_noop_disconnect_and_handshake!(common::TestNode);
+
+    let mut avg_start_up_time = std::time::Duration::new(0, 0);
+    for _ in 0..NUM_ITERATIONS {
+        let start = std::time::Instant::now();
+        let temp_node = crate::test_node!("temp_node");
+
+        temp_node.enable_handshake().await;
+        temp_node.enable_reading().await;
+        temp_node.enable_writing().await;
+        temp_node.enable_disconnect().await;
+        avg_start_up_time += start.elapsed();
+    }
+    avg_start_up_time /= NUM_ITERATIONS as u32;
+
+    println!("average start-up time: {:?}\n", avg_start_up_time);
+}
+
+#[ignore]
+#[tokio::test]
+async fn bench_connection() {
+    const NUM_ITERATIONS: usize = 1000;
+
+    let initiator = test_node!("initiator");
+    let responder = test_node!("responder");
+    let responder_addr = responder.node().listening_addr().unwrap();
+
+    let mut avg_conn_time = std::time::Duration::new(0, 0);
+    for _ in 0..NUM_ITERATIONS {
+        let start = std::time::Instant::now();
+        initiator.node().connect(responder_addr).await.unwrap();
+        avg_conn_time += start.elapsed();
+        wait_until!(1, responder.node().num_connected() == 1);
+        initiator.node().disconnect(responder_addr).await;
+        let initiator_addr = responder.node().connected_addrs()[0];
+        responder.node().disconnect(initiator_addr).await;
+
+        assert_eq!(initiator.node().num_connected(), 0);
+        assert_eq!(responder.node().num_connected(), 0);
+    }
+    avg_conn_time /= NUM_ITERATIONS as u32;
+
+    println!("average connection time: {:?}\n", avg_conn_time);
 }
