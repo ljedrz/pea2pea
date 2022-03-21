@@ -1,4 +1,7 @@
-use crate::{protocols::ReturnableConnection, Connection, Pea2Pea};
+use crate::{
+    protocols::{ProtocolHandler, ReturnableConnection},
+    Connection, Pea2Pea,
+};
 
 use tokio::{
     net::TcpStream,
@@ -69,8 +72,8 @@ where
         let _ = rx.await;
         self.node().tasks.lock().push(handshake_task);
 
-        // register the HandshakeHandler with the Node
-        let hdl = HandshakeHandler(from_node_sender);
+        // register the Handshake handler with the Node
+        let hdl = ProtocolHandler(from_node_sender);
         assert!(
             self.node().protocols.handshake_handler.set(hdl).is_ok(),
             "the Handshake protocol was enabled more than once!"
@@ -86,16 +89,5 @@ where
         conn.stream
             .as_mut()
             .expect("Connection's stream is not available!")
-    }
-}
-
-/// The handler object dedicated to the [`Handshake`] protocol.
-pub struct HandshakeHandler(mpsc::UnboundedSender<ReturnableConnection>);
-
-impl HandshakeHandler {
-    pub(crate) fn trigger(&self, item: ReturnableConnection) {
-        if self.0.send(item).is_err() {
-            unreachable!(); // protocol's task is down! can't recover
-        }
     }
 }

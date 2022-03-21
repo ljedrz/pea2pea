@@ -1,6 +1,6 @@
 use crate::{
     connections::{Connection, ConnectionSide, Connections},
-    protocols::Protocols,
+    protocols::{Protocol, Protocols},
     Config, KnownPeers, Stats,
 };
 

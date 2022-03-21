@@ -5,9 +5,9 @@
 use crate::connections::Connection;
 
 use once_cell::sync::OnceCell;
-use tokio::sync::oneshot;
+use tokio::sync::{mpsc, oneshot};
 
-use std::io;
+use std::{io, net::SocketAddr};
 
 mod disconnect;
 mod handshake;
@@ -21,10 +21,10 @@ pub use writing::Writing;
 
 #[derive(Default)]
 pub(crate) struct Protocols {
-    pub(crate) handshake_handler: OnceCell<handshake::HandshakeHandler>,
-    pub(crate) reading_handler: OnceCell<reading::ReadingHandler>,
+    pub(crate) handshake_handler: OnceCell<ProtocolHandler<Connection, io::Result<Connection>>>,
+    pub(crate) reading_handler: OnceCell<ProtocolHandler<Connection, io::Result<Connection>>>,
     pub(crate) writing_handler: OnceCell<writing::WritingHandler>,
-    pub(crate) disconnect_handler: OnceCell<disconnect::DisconnectHandler>,
+    pub(crate) disconnect_handler: OnceCell<ProtocolHandler<SocketAddr, ()>>,
 }
 
 /// An object sent to a protocol handler task; the task assumes control of a protocol-relevant item `T`,
@@ -33,3 +33,17 @@ pub(crate) struct Protocols {
 pub(crate) type ReturnableItem<T, U> = (T, oneshot::Sender<U>);
 
 pub(crate) type ReturnableConnection = ReturnableItem<Connection, io::Result<Connection>>;
+
+pub(crate) struct ProtocolHandler<T, U>(mpsc::UnboundedSender<ReturnableItem<T, U>>);
+
+pub(crate) trait Protocol<T, U> {
+    fn trigger(&self, item: ReturnableItem<T, U>);
+}
+
+impl<T, U> Protocol<T, U> for ProtocolHandler<T, U> {
+    fn trigger(&self, item: ReturnableItem<T, U>) {
+        if self.0.send(item).is_err() {
+            unreachable!(); // protocol's task is down! can't recover
+        }
+    }
+}

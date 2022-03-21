@@ -1,4 +1,7 @@
-use crate::{protocols::ReturnableConnection, Connection, Node, Pea2Pea};
+use crate::{
+    protocols::{ProtocolHandler, ReturnableConnection},
+    Connection, Node, Pea2Pea,
+};
 
 #[cfg(doc)]
 use crate::{protocols::Handshake, Config};
@@ -135,8 +138,8 @@ where
         let _ = rx_reading.await;
         self.node().tasks.lock().push(reading_task);
 
-        // register the ReadingHandler with the Node
-        let hdl = ReadingHandler(conn_sender);
+        // register the Reading handler with the Node
+        let hdl = ProtocolHandler(conn_sender);
         assert!(
             self.node().protocols.reading_handler.set(hdl).is_ok(),
             "the Reading protocol was enabled more than once!"
@@ -206,16 +209,5 @@ impl<D: Decoder> Decoder for CountingCodec<D> {
         }
 
         Ok(ret)
-    }
-}
-
-/// The handler object dedicated to the [`Reading`] protocol.
-pub(crate) struct ReadingHandler(mpsc::UnboundedSender<ReturnableConnection>);
-
-impl ReadingHandler {
-    pub(crate) fn trigger(&self, item: ReturnableConnection) {
-        if self.0.send(item).is_err() {
-            unreachable!(); // protocol's task is down! can't recover
-        }
     }
 }

@@ -1,4 +1,7 @@
-use crate::{protocols::ReturnableConnection, Connection, Pea2Pea};
+use crate::{
+    protocols::{Protocol, ProtocolHandler, ReturnableConnection},
+    Connection, Pea2Pea,
+};
 
 #[cfg(doc)]
 use crate::{protocols::Handshake, Config, Node};
@@ -14,7 +17,7 @@ use tokio::{
 use tokio_util::codec::{Encoder, FramedWrite};
 use tracing::*;
 
-use std::{any::Any, collections::HashMap, io, net::SocketAddr};
+use std::{any::Any, collections::HashMap, io, net::SocketAddr, sync::Arc};
 
 /// Can be used to specify and enable writing, i.e. sending outbound messages. If the [`Handshake`]
 /// protocol is enabled too, it goes into force only after the handshake has been concluded.
@@ -35,11 +38,15 @@ where
     async fn enable_writing(&self) {
         let (conn_sender, mut conn_receiver) = mpsc::unbounded_channel::<ReturnableConnection>();
 
+        let conn_senders: Arc<RwLock<HashMap<SocketAddr, mpsc::Sender<WrappedMessage>>>> =
+            Default::default();
+
         // Use a channel to know when the writing task is ready.
         let (tx_writing, rx_writing) = oneshot::channel::<()>();
 
         // the task spawning tasks reading messages from the given stream
         let self_clone = self.clone();
+        let conn_senders_clone = conn_senders.clone();
         let writing_task = tokio::spawn(async move {
             trace!(parent: self_clone.node().span(), "spawned the Writing handler task");
             tx_writing.send(()).unwrap(); // safe; the channel was just opened
@@ -54,14 +61,10 @@ where
                 let (outbound_message_sender, mut outbound_message_receiver) =
                     mpsc::channel(self_clone.node().config().outbound_queue_depth);
 
-                if let Some(handler) = self_clone.node().protocols.writing_handler.get() {
-                    handler
-                        .senders
-                        .write()
-                        .insert(addr, outbound_message_sender);
-                } else {
-                    unreachable!();
-                }
+                // register the connection's message sender with the Writing protocol handler
+                conn_senders_clone
+                    .write()
+                    .insert(addr, outbound_message_sender);
 
                 // Use a channel to know when the writer task is ready.
                 let (tx_writer, rx_writer) = oneshot::channel::<()>();
@@ -109,8 +112,8 @@ where
 
         // register the WritingHandler with the Node
         let hdl = WritingHandler {
-            handler: conn_sender,
-            senders: Default::default(),
+            handler: ProtocolHandler(conn_sender),
+            senders: conn_senders,
         };
         assert!(
             self.node().protocols.writing_handler.set(hdl).is_ok(),
@@ -224,14 +227,12 @@ impl WrappedMessage {
 
 /// The handler object dedicated to the [`Writing`] protocol.
 pub struct WritingHandler {
-    handler: mpsc::UnboundedSender<ReturnableConnection>,
-    pub(crate) senders: RwLock<HashMap<SocketAddr, mpsc::Sender<WrappedMessage>>>,
+    handler: ProtocolHandler<Connection, io::Result<Connection>>,
+    pub(crate) senders: Arc<RwLock<HashMap<SocketAddr, mpsc::Sender<WrappedMessage>>>>,
 }
 
-impl WritingHandler {
-    pub(crate) fn trigger(&self, item: ReturnableConnection) {
-        if self.handler.send(item).is_err() {
-            unreachable!(); // protocol's task is down! can't recover
-        }
+impl Protocol<Connection, io::Result<Connection>> for WritingHandler {
+    fn trigger(&self, item: ReturnableConnection) {
+        self.handler.trigger(item);
     }
 }

@@ -1,4 +1,4 @@
-use crate::{protocols::ReturnableItem, Pea2Pea};
+use crate::{protocols::ProtocolHandler, Pea2Pea};
 
 #[cfg(doc)]
 use crate::{protocols::Writing, Connection};
@@ -49,8 +49,8 @@ where
         let _ = rx.await;
         self.node().tasks.lock().push(disconnect_task);
 
-        // register the DisconnectHandler with the Node
-        let hdl = DisconnectHandler(from_node_sender);
+        // register the Disconnect handler with the Node
+        let hdl = ProtocolHandler(from_node_sender);
         assert!(
             self.node().protocols.disconnect_handler.set(hdl).is_ok(),
             "the Disconnect protocol was enabled more than once!"
@@ -61,15 +61,4 @@ where
     /// communicate with the peer in the usual manner (i.e. via [`Writing`]), only its [`SocketAddr`]
     /// (as opposed to the related [`Connection`] object) is provided as an argument.
     async fn handle_disconnect(&self, addr: SocketAddr);
-}
-
-/// The handler object dedicated to the [`Disconnect`] protocol.
-pub struct DisconnectHandler(mpsc::UnboundedSender<ReturnableItem<SocketAddr, ()>>);
-
-impl DisconnectHandler {
-    pub(crate) fn trigger(&self, item: ReturnableItem<SocketAddr, ()>) {
-        if self.0.send(item).is_err() {
-            unreachable!(); // protocol's task is down! can't recover
-        }
-    }
 }
