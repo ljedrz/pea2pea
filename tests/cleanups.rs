@@ -103,7 +103,7 @@ async fn check_node_cleanups() {
     }
 
     // calculate avg heap use
-    let avg_heap_use = avg_heap_use / NUM_CONNS;
+    avg_heap_use /= NUM_CONNS;
 
     // check final heap use and calculate heap growth
     let final_heap_use = PEAK_ALLOC.current_usage();

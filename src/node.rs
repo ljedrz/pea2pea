@@ -227,11 +227,9 @@ impl Node {
         let mut conn = enable_protocol!(handshake_handler, self, conn);
 
         // split the stream after the handshake
-        if let Some(stream) = conn.stream.take() {
-            let (reader, writer) = stream.into_split();
-            conn.reader = Some(reader);
-            conn.writer = Some(writer);
-        }
+        let (reader, writer) = conn.stream.take().unwrap().into_split();
+        conn.reader = Some(reader);
+        conn.writer = Some(writer);
 
         let conn = enable_protocol!(reading_handler, self, conn);
         let conn = enable_protocol!(writing_handler, self, conn);
