@@ -87,9 +87,8 @@ where
                 let (tx_reader, rx_reader) = oneshot::channel::<()>();
 
                 // the task for reading messages from a stream
-                let reader_clone = self_clone.clone();
+                let node = self_clone.node().clone();
                 let reader_task = tokio::spawn(async move {
-                    let node = reader_clone.node();
                     trace!(parent: node.span(), "spawned a task for reading messages from {}", addr);
                     tx_reader.send(()).unwrap(); // safe; the channel was just opened
 
