@@ -339,11 +339,6 @@ impl Node {
                 task.abort();
             }
 
-            // drop the associated outbound message sender if Writing is enabled
-            if let Some(handler) = self.protocols.writing_handler.get() {
-                handler.senders.write().remove(&addr);
-            }
-
             // if the (owning) node was not the initiator of the connection, it doesn't know the listening address
             // of the associated peer, so the related stats are unreliable; the next connection initiated by the
             // peer could be bound to an entirely different port number

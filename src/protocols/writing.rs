@@ -19,6 +19,8 @@ use tracing::*;
 
 use std::{any::Any, collections::HashMap, io, net::SocketAddr, sync::Arc};
 
+type WritingSenders = Arc<RwLock<HashMap<SocketAddr, mpsc::Sender<WrappedMessage>>>>;
+
 /// Can be used to specify and enable writing, i.e. sending outbound messages. If the [`Handshake`]
 /// protocol is enabled too, it goes into force only after the handshake has been concluded.
 #[async_trait]
@@ -38,8 +40,7 @@ where
     async fn enable_writing(&self) {
         let (conn_sender, mut conn_receiver) = mpsc::unbounded_channel::<ReturnableConnection>();
 
-        let conn_senders: Arc<RwLock<HashMap<SocketAddr, mpsc::Sender<WrappedMessage>>>> =
-            Default::default();
+        let conn_senders: WritingSenders = Default::default();
 
         // Use a channel to know when the writing task is ready.
         let (tx_writing, rx_writing) = oneshot::channel::<()>();
@@ -66,6 +67,12 @@ where
                     .write()
                     .insert(addr, outbound_message_sender);
 
+                // this will automatically drop the sender upon a disconnect
+                let auto_cleanup = SenderCleanup {
+                    addr,
+                    senders: Arc::clone(&conn_senders_clone),
+                };
+
                 // Use a channel to know when the writer task is ready.
                 let (tx_writer, rx_writer) = oneshot::channel::<()>();
 
@@ -75,6 +82,9 @@ where
                     let node = writer_clone.node();
                     trace!(parent: node.span(), "spawned a task for writing messages to {}", addr);
                     tx_writer.send(()).unwrap(); // safe; the channel was just opened
+
+                    // move the cleanup into the task that gets aborted on disconnect
+                    let _auto_cleanup = auto_cleanup;
 
                     while let Some(wrapped_msg) = outbound_message_receiver.recv().await {
                         let msg = wrapped_msg.msg.downcast::<Self::Message>().unwrap();
@@ -226,13 +236,24 @@ impl WrappedMessage {
 }
 
 /// The handler object dedicated to the [`Writing`] protocol.
-pub struct WritingHandler {
+pub(crate) struct WritingHandler {
     handler: ProtocolHandler<Connection, io::Result<Connection>>,
-    pub(crate) senders: Arc<RwLock<HashMap<SocketAddr, mpsc::Sender<WrappedMessage>>>>,
+    pub(crate) senders: WritingSenders,
 }
 
 impl Protocol<Connection, io::Result<Connection>> for WritingHandler {
     fn trigger(&self, item: ReturnableConnection) {
         self.handler.trigger(item);
+    }
+}
+
+pub(crate) struct SenderCleanup {
+    addr: SocketAddr,
+    senders: WritingSenders,
+}
+
+impl Drop for SenderCleanup {
+    fn drop(&mut self) {
+        self.senders.write().remove(&self.addr);
     }
 }
