@@ -1,3 +1,13 @@
+# 0.35.1
+
+### Fixed
+
+- fixed a panic when a protocol handler can't be triggered
+
+### Changed
+
+- some protocol plumbing (shouldn't affect public APIs)
+
 # 0.35.0
 
 ### Added
