@@ -43,7 +43,7 @@ pub(crate) trait Protocol<T, U> {
 impl<T, U> Protocol<T, U> for ProtocolHandler<T, U> {
     fn trigger(&self, item: ReturnableItem<T, U>) {
         if self.0.send(item).is_err() {
-            unreachable!(); // protocol's task is down! can't recover
+            // ignore: this can only happen if a disconnect interrupts the protocol setup process
         }
     }
 }

@@ -32,7 +32,7 @@ macro_rules! enable_protocol {
 
             match conn_retriever.await {
                 Ok(Ok(conn)) => conn,
-                Err(_) => unreachable!(), // protocol's task is down! can't recover
+                Err(_) => return Err(io::ErrorKind::BrokenPipe.into()),
                 Ok(e) => return e,
             }
         } else {
