@@ -113,11 +113,6 @@ where
                                 if node.config().fatal_io_errors.contains(&e.kind()) {
                                     node.disconnect(addr).await;
                                     break;
-                                } else {
-                                    sleep(Duration::from_secs(
-                                        node.config().invalid_read_delay_secs,
-                                    ))
-                                    .await;
                                 }
                             }
                         }

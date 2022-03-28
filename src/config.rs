@@ -27,10 +27,6 @@ pub struct Config {
     ///
     /// note: [`Config::listener_ip`] must not be `None` in order for it to have any effect.
     pub allow_random_port: bool,
-    /// The delay on the next read attempt from a connection that can't be read from.
-    ///
-    /// note: The node needs to implement the [`Reading`] protocol in order for it to have any effect.
-    pub invalid_read_delay_secs: u64,
     /// The list of IO errors considered fatal and causing the connection to be dropped.
     ///
     /// note: The node needs to implement the [`Reading`] and/or [`Writing`] protocol in order for it to have any effect.
@@ -81,7 +77,6 @@ impl Default for Config {
             listener_ip: default_ip(),
             desired_listening_port: None,
             allow_random_port: true,
-            invalid_read_delay_secs: 10,
             fatal_io_errors: vec![
                 ConnectionReset,
                 ConnectionAborted,

@@ -1,3 +1,9 @@
+# 0.36.0
+
+### Removed
+
+- `Config::invalid_read_delay_secs` (not that practical)
+
 # 0.35.1
 
 ### Fixed
