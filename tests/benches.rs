@@ -160,9 +160,6 @@ async fn bench_connection() {
         initiator.node().disconnect(responder_addr).await;
         let initiator_addr = responder.node().connected_addrs()[0];
         responder.node().disconnect(initiator_addr).await;
-
-        assert_eq!(initiator.node().num_connected(), 0);
-        assert_eq!(responder.node().num_connected(), 0);
     }
     avg_conn_time /= NUM_ITERATIONS as u32;
 
