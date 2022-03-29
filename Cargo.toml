@@ -30,6 +30,7 @@ tracing = { version = "0.1", default-features = false }
 
 [dev-dependencies]
 bincode = "1"
+httparse = "1.6"
 libp2p = { version = "0.45", default-features = false, features = ["noise", "ping", "tcp-tokio", "yamux"] }
 native-tls = "0.2"
 peak_alloc = "0.1"
@@ -40,5 +41,8 @@ snow = "0.9"
 tokio = { version = "1.14", features = ["macros", "rt-multi-thread"] }
 tokio-native-tls = "0.3"
 tracing-subscriber = { version = "0.3", default-features = false, features = ["ansi", "env-filter", "fmt", "parking_lot", "smallvec"] }
+tungstenite = "0.17"
+tokio-tungstenite = "0.17"
+websocket-codec = "0.5"
 pea2pea = { path = ".", features = ["test"] } # a workaround to use the `test` feature in tests by default
 unsigned-varint = { git = "https://github.com/ljedrz/unsigned-varint", branch = "update_tokio_util", features = ["codec", "futures"] }
