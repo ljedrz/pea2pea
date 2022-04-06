@@ -7,6 +7,8 @@
 ### Removed
 
 - `Config::invalid_read_delay_secs` (not that practical)
+- `Reading::take_reader`
+- `Writing::take_writer`
 
 # 0.35.1
 

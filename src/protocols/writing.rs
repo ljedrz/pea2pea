@@ -11,7 +11,6 @@ use futures_util::sink::SinkExt;
 use parking_lot::RwLock;
 use tokio::{
     io::AsyncWrite,
-    net::tcp::OwnedWriteHalf,
     sync::{mpsc, oneshot},
 };
 use tokio_util::codec::{Encoder, FramedWrite};
@@ -56,7 +55,7 @@ where
             while let Some((mut conn, conn_returner)) = conn_receiver.recv().await {
                 let addr = conn.addr();
                 let codec = self_clone.codec(addr);
-                let writer = self_clone.take_writer(&mut conn);
+                let writer = conn.writer.take().unwrap();
                 let mut framed = FramedWrite::new(writer, codec);
 
                 let (outbound_message_sender, mut outbound_message_receiver) =
@@ -207,13 +206,6 @@ where
         } else {
             Err(io::ErrorKind::Unsupported.into())
         }
-    }
-
-    /// Obtains the write half of the connection to be used in [`Writing::enable_writing`].
-    fn take_writer(&self, conn: &mut Connection) -> OwnedWriteHalf {
-        conn.writer
-            .take()
-            .expect("Connection's writer is not available!")
     }
 }
 
