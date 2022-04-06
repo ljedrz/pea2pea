@@ -10,6 +10,7 @@ use async_trait::async_trait;
 use bytes::BytesMut;
 use futures_util::StreamExt;
 use tokio::{
+    io::AsyncRead,
     net::tcp::OwnedReadHalf,
     sync::{mpsc, oneshot},
     time::sleep,
@@ -142,11 +143,11 @@ where
 
     /// Wraps the user-supplied [`Decoder`] in another one used for message accounting.
     #[doc(hidden)]
-    fn map_codec(
+    fn map_codec<T: AsyncRead>(
         &self,
-        framed: FramedRead<OwnedReadHalf, Self::Codec>,
+        framed: FramedRead<T, Self::Codec>,
         addr: SocketAddr,
-    ) -> FramedRead<OwnedReadHalf, CountingCodec<Self::Codec>> {
+    ) -> FramedRead<T, CountingCodec<Self::Codec>> {
         framed.map_decoder(|codec| CountingCodec {
             codec,
             node: self.node().clone(),

@@ -1,5 +1,9 @@
 # 0.36.0
 
+### Changed
+
+- `Reading::map_codec` is now generic over `AsyncRead`
+
 ### Removed
 
 - `Config::invalid_read_delay_secs` (not that practical)
