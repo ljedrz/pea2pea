@@ -3,6 +3,7 @@
 ### Changed
 
 - `Reading::map_codec` is now generic over `AsyncRead`
+- use `OnceBox` instead of `OnceCell` in the protocols
 
 ### Removed
 

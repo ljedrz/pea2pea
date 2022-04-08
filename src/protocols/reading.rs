@@ -133,7 +133,7 @@ where
         self.node().tasks.lock().push(reading_task);
 
         // register the Reading handler with the Node
-        let hdl = ProtocolHandler(conn_sender);
+        let hdl = Box::new(ProtocolHandler(conn_sender));
         assert!(
             self.node().protocols.reading_handler.set(hdl).is_ok(),
             "the Reading protocol was enabled more than once!"

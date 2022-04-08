@@ -4,7 +4,7 @@
 
 use crate::connections::Connection;
 
-use once_cell::sync::OnceCell;
+use once_cell::race::OnceBox;
 use tokio::sync::{mpsc, oneshot};
 
 use std::{io, net::SocketAddr};
@@ -21,10 +21,10 @@ pub use writing::Writing;
 
 #[derive(Default)]
 pub(crate) struct Protocols {
-    pub(crate) handshake_handler: OnceCell<ProtocolHandler<Connection, io::Result<Connection>>>,
-    pub(crate) reading_handler: OnceCell<ProtocolHandler<Connection, io::Result<Connection>>>,
-    pub(crate) writing_handler: OnceCell<writing::WritingHandler>,
-    pub(crate) disconnect_handler: OnceCell<ProtocolHandler<SocketAddr, ()>>,
+    pub(crate) handshake_handler: OnceBox<ProtocolHandler<Connection, io::Result<Connection>>>,
+    pub(crate) reading_handler: OnceBox<ProtocolHandler<Connection, io::Result<Connection>>>,
+    pub(crate) writing_handler: OnceBox<writing::WritingHandler>,
+    pub(crate) disconnect_handler: OnceBox<ProtocolHandler<SocketAddr, ()>>,
 }
 
 /// An object sent to a protocol handler task; the task assumes control of a protocol-relevant item `T`,

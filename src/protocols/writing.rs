@@ -120,10 +120,10 @@ where
         self.node().tasks.lock().push(writing_task);
 
         // register the WritingHandler with the Node
-        let hdl = WritingHandler {
+        let hdl = Box::new(WritingHandler {
             handler: ProtocolHandler(conn_sender),
             senders: conn_senders,
-        };
+        });
         assert!(
             self.node().protocols.writing_handler.set(hdl).is_ok(),
             "the Writing protocol was enabled more than once!"
