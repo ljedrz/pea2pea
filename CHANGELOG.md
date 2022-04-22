@@ -10,6 +10,7 @@
 - `Config::invalid_read_delay_secs` (not that practical)
 - `Reading::take_reader`
 - `Writing::take_writer`
+- the fuzz tests (as the buffering is outsourced now)
 
 # 0.35.1
 
