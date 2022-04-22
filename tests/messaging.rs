@@ -1,6 +1,5 @@
 use bytes::{Buf, Bytes, BytesMut};
 use parking_lot::Mutex;
-use tokio::time::sleep;
 use tokio_util::codec::Decoder;
 use tracing::*;
 
@@ -11,7 +10,7 @@ use pea2pea::{
 };
 use TestMessage::*;
 
-use std::{collections::HashSet, io, net::SocketAddr, sync::Arc, time::Duration};
+use std::{collections::HashSet, io, net::SocketAddr, sync::Arc};
 
 #[derive(PartialEq, Eq, Hash, Debug, Clone, Copy)]
 enum TestMessage {
@@ -195,8 +194,6 @@ async fn no_reading_no_delivery() {
         .await
         .unwrap();
 
-    sleep(Duration::from_millis(10)).await;
-
     // but the reader didn't enable reading, so it won't receive anything
     wait_until!(1, reader.node().stats().received() == (0, 0));
 }
@@ -217,8 +214,6 @@ async fn no_writing_no_delivery() {
     assert!(writer
         .send_direct_message(reader_addr, vec![0; 16].into())
         .is_err());
-
-    sleep(Duration::from_millis(10)).await;
 
     // the writer didn't enable writing, so the reader won't receive anything
     wait_until!(1, reader.node().stats().received() == (0, 0));

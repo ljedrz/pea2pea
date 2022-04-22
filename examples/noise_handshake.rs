@@ -291,6 +291,4 @@ async fn main() {
             .await
             .unwrap();
     }
-
-    sleep(Duration::from_millis(10)).await;
 }

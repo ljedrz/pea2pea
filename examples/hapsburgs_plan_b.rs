@@ -128,14 +128,13 @@ async fn main() {
 
         drebin
             .send_direct_message(thug_addr, "Talk!".to_string())
+            .unwrap()
+            .await
             .unwrap();
 
-        sleep(Duration::from_millis(50)).await;
+        sleep(Duration::from_millis(10)).await;
 
         // the thug dies before revealing the location of Hapsburg's Plan B
         hapsburgs_thug.node().shut_down().await;
-
-        // wait until Drebin realizes the thug is dead
-        sleep(Duration::from_millis(50)).await;
     }
 }

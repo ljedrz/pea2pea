@@ -202,10 +202,10 @@ async fn hung_handshake_fails() {
 #[tokio::test(flavor = "multi_thread")]
 async fn timeout_when_spammed_with_connections() {
     const NUM_ATTEMPTS: u16 = 200;
-    const TIMEOUT_SECS: u64 = 1;
+    const TIMEOUT_MS: u64 = 100;
 
     let config = Config {
-        max_handshake_time_ms: TIMEOUT_SECS * 1_000,
+        max_handshake_time_ms: TIMEOUT_MS,
         max_connections: NUM_ATTEMPTS,
         ..Default::default()
     };
@@ -221,7 +221,10 @@ async fn timeout_when_spammed_with_connections() {
         }
     }
 
-    wait_until!(3, victim.node().num_connecting() == NUM_ATTEMPTS as usize);
+    wait_until!(1, victim.node().num_connecting() == NUM_ATTEMPTS as usize);
 
-    wait_until!(TIMEOUT_SECS + 1, victim.node().num_connecting() == 0);
+    wait_until!(
+        1,
+        victim.node().num_connecting() + victim.node().num_connected() == 0
+    );
 }
