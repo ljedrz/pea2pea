@@ -99,11 +99,14 @@ impl Node {
                     Ok(listener) => listener,
                     Err(e) => {
                         if config.allow_random_port {
-                            warn!(parent: span.clone(), "trying any port, the desired one is unavailable: {}", e);
+                            warn!(
+                                parent: &span,
+                                "trying any port, the desired one is unavailable: {}", e
+                            );
                             let random_available_addr = SocketAddr::new(listener_ip, 0);
                             TcpListener::bind(random_available_addr).await?
                         } else {
-                            error!(parent: span.clone(), "the desired port is unavailable: {}", e);
+                            error!(parent: &span, "the desired port is unavailable: {}", e);
                             return Err(e);
                         }
                     }
