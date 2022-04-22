@@ -122,7 +122,7 @@ async fn bench_spam_to_one() {
 #[ignore]
 #[tokio::test]
 async fn bench_node_startup() {
-    const NUM_ITERATIONS: usize = 1000;
+    const NUM_ITERATIONS: usize = 5000;
 
     impl_noop_disconnect_and_handshake!(common::TestNode);
 
