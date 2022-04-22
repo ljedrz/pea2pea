@@ -37,7 +37,7 @@ where
     async fn enable_reading(&self) {
         let (conn_sender, mut conn_receiver) = mpsc::unbounded_channel::<ReturnableConnection>();
 
-        // Use a channel to know when the reading task is ready.
+        // use a channel to know when the reading task is ready
         let (tx_reading, rx_reading) = oneshot::channel::<()>();
 
         // the main task spawning per-connection tasks reading messages from their streams
@@ -66,7 +66,7 @@ where
                 let (inbound_message_sender, mut inbound_message_receiver) =
                     mpsc::channel(self_clone.node().config().inbound_queue_depth);
 
-                // Use a channel to know when the processing task is ready.
+                // use a channel to know when the processing task is ready
                 let (tx_processing, rx_processing) = oneshot::channel::<()>();
 
                 // the task for processing parsed messages
@@ -86,7 +86,7 @@ where
                 let _ = rx_processing.await;
                 conn.tasks.push(inbound_processing_task);
 
-                // Use a channel to know when the reader task is ready.
+                // use a channel to know when the reader task is ready
                 let (tx_reader, rx_reader) = oneshot::channel::<()>();
 
                 // the task for reading messages from a stream

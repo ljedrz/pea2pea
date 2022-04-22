@@ -41,7 +41,7 @@ where
 
         let conn_senders: WritingSenders = Default::default();
 
-        // Use a channel to know when the writing task is ready.
+        // use a channel to know when the writing task is ready
         let (tx_writing, rx_writing) = oneshot::channel::<()>();
 
         // the task spawning tasks reading messages from the given stream
@@ -72,7 +72,7 @@ where
                     senders: Arc::clone(&conn_senders_clone),
                 };
 
-                // Use a channel to know when the writer task is ready.
+                // use a channel to know when the writer task is ready
                 let (tx_writer, rx_writer) = oneshot::channel::<()>();
 
                 // the task for writing outbound messages

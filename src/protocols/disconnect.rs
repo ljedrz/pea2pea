@@ -26,7 +26,7 @@ where
         let (from_node_sender, mut from_node_receiver) =
             mpsc::unbounded_channel::<(SocketAddr, oneshot::Sender<()>)>();
 
-        // Use a channel to know when the disconnect task is ready.
+        // use a channel to know when the disconnect task is ready
         let (tx, rx) = oneshot::channel::<()>();
 
         // spawn a background task dedicated to handling disconnect events

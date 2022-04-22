@@ -146,7 +146,7 @@ impl Node {
         }));
 
         if let Some(listener) = listener {
-            // Use a channel to know when the listening task is ready.
+            // use a channel to know when the listening task is ready
             let (tx, rx) = oneshot::channel::<()>();
 
             let node_clone = node.clone();
