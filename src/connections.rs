@@ -9,6 +9,7 @@ use tokio::{
         tcp::{OwnedReadHalf, OwnedWriteHalf},
         TcpStream,
     },
+    sync::oneshot,
     task::JoinHandle,
 };
 
@@ -73,6 +74,8 @@ pub struct Connection {
     pub(crate) reader: Option<OwnedReadHalf>,
     /// Available and used only in the [`Writing`] protocol.
     pub(crate) writer: Option<OwnedWriteHalf>,
+    /// Used to notify the [`Reading`] protocol that the connection is fully ready.
+    pub(crate) readiness_notifier: Option<oneshot::Sender<()>>,
     /// Handles to tasks spawned for the connection.
     pub(crate) tasks: Vec<JoinHandle<()>>,
 }
@@ -85,6 +88,7 @@ impl Connection {
             stream: Some(stream),
             reader: None,
             writer: None,
+            readiness_notifier: None,
             side,
             tasks: Default::default(),
         }

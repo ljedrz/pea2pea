@@ -4,6 +4,11 @@
 
 - `Reading::map_codec` is now generic over `AsyncRead`
 - use `OnceBox` instead of `OnceCell` in the protocols
+- the `Reading` protocol should now be a bit faster to start reading
+
+### Fixed
+
+- nodes that implement neither `Reading` nor `Writing` no longer instantly disconnect from peers
 
 ### Removed
 

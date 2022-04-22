@@ -266,13 +266,16 @@ impl Node {
         // enact the enabled protocols
         let mut connection = self.enable_protocols(connection).await?;
 
-        // the protocols are responsible for doing reads and writes; ensure that the Connection object
-        // is not capable of performing them if the protocols haven't been enabled.
-        connection.reader = None;
-        connection.writer = None;
+        // if Reading is enabled, we'll notify the related task when the connection is fully ready
+        let conn_ready_tx = connection.readiness_notifier.take();
 
         self.connections.add(connection);
         self.connecting.lock().remove(&peer_addr);
+
+        // send the aforementioned notification so that reading from the socket can commence
+        if let Some(tx) = conn_ready_tx {
+            let _ = tx.send(());
+        }
 
         Ok(())
     }

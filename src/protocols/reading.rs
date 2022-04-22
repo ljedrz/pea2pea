@@ -12,12 +12,11 @@ use futures_util::StreamExt;
 use tokio::{
     io::AsyncRead,
     sync::{mpsc, oneshot},
-    time::sleep,
 };
 use tokio_util::codec::{Decoder, FramedRead};
 use tracing::*;
 
-use std::{io, net::SocketAddr, time::Duration};
+use std::{io, net::SocketAddr};
 
 /// Can be used to specify and enable reading, i.e. receiving inbound messages. If the [`Handshake`]
 /// protocol is enabled too, it goes into force only after the handshake has been concluded.
@@ -54,6 +53,10 @@ where
                 let reader = conn.reader.take().unwrap();
                 let framed = FramedRead::new(reader, codec);
                 let mut framed = self_clone.map_codec(framed, addr);
+
+                // the connection will notify the reading task once it's fully ready
+                let (tx_conn_ready, rx_conn_ready) = oneshot::channel();
+                conn.readiness_notifier = Some(tx_conn_ready);
 
                 let initial_read_buffer_size = self_clone.node().config().initial_read_buffer_size;
                 if initial_read_buffer_size != 0 {
@@ -94,9 +97,7 @@ where
 
                     // postpone reads until the connection is fully established; if the process fails,
                     // this task gets aborted, so there is no need for a dedicated timeout
-                    while !node.connected_addrs().contains(&addr) {
-                        sleep(Duration::from_millis(1)).await;
-                    }
+                    let _ = rx_conn_ready.await;
 
                     while let Some(bytes) = framed.next().await {
                         match bytes {
