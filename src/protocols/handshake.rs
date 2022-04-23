@@ -21,6 +21,11 @@ pub trait Handshake: Pea2Pea
 where
     Self: Clone + Send + Sync + 'static,
 {
+    /// The maximum time allowed for a connection to perform a handshake before it is rejected.
+    ///
+    /// The default value is 3000ms.
+    const TIMEOUT_MS: u64 = 3_000;
+
     /// Prepares the node to perform specified network handshakes.
     async fn enable_handshake(&self) {
         let (from_node_sender, mut from_node_receiver) =
@@ -42,7 +47,7 @@ where
                 task::spawn(async move {
                     debug!(parent: node.node().span(), "shaking hands with {} as the {:?}", addr, !conn.side());
                     let result = timeout(
-                        Duration::from_millis(node.node().config().max_handshake_time_ms),
+                        Duration::from_millis(Self::TIMEOUT_MS),
                         node.perform_handshake(conn),
                     )
                     .await;

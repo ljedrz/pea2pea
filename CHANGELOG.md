@@ -1,3 +1,11 @@
+# 0.37.0
+
+### Changed
+
+- `Config::{inbound_queue_depth, initial_read_buffer_size}` were moved to `Reading::{MESSAGE_QUEUE_DEPTH, INITIAL_BUFFER_SIZE}`
+- `Config::max_handshake_time_ms` was moved to `Handshake::TIMEOUT_MS`
+- `Config::outbound_queue_depth` was moved to `Writing::MESSAGE_QUEUE_DEPTH`
+
 # 0.36.0
 
 ### Changed

@@ -27,6 +27,13 @@ pub trait Writing: Pea2Pea
 where
     Self: Clone + Send + Sync + 'static,
 {
+    /// The depth of per-connection queues used to send outbound messages; the greater it is, the more outbound
+    /// messages the node can enqueue. Setting it to a large value is not recommended, as doing it might
+    /// obscure potential issues with your implementation (like slow serialization) or network.
+    ///
+    /// The default value is 64.
+    const MESSAGE_QUEUE_DEPTH: usize = 64;
+
     /// The type of the outbound messages; unless their serialization is expensive and the message
     /// is broadcasted (in which case it would get serialized multiple times), serialization should
     /// be done in the implementation of [`Self::Codec`].
@@ -59,7 +66,7 @@ where
                 let mut framed = FramedWrite::new(writer, codec);
 
                 let (outbound_message_sender, mut outbound_message_receiver) =
-                    mpsc::channel(self_clone.node().config().outbound_queue_depth);
+                    mpsc::channel(Self::MESSAGE_QUEUE_DEPTH);
 
                 // register the connection's message sender with the Writing protocol handler
                 conn_senders_clone

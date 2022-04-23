@@ -160,6 +160,8 @@ impl Pea2Pea for Wrap {
 // is even made), but it is never provided by either of them
 #[async_trait::async_trait]
 impl Handshake for Wrap {
+    const TIMEOUT_MS: u64 = 100;
+
     async fn perform_handshake(&self, mut conn: Connection) -> io::Result<Connection> {
         let _ = self
             .borrow_stream(&mut conn)
@@ -172,12 +174,8 @@ impl Handshake for Wrap {
 
 #[tokio::test]
 async fn hung_handshake_fails() {
-    let config = Config {
-        max_handshake_time_ms: 10,
-        ..Default::default()
-    };
     let connector = Wrap(Node::new(None).await.unwrap());
-    let connectee = Wrap(Node::new(Some(config)).await.unwrap());
+    let connectee = Wrap(Node::new(None).await.unwrap());
 
     // note: the connector does NOT enable handshakes
     connectee.enable_handshake().await;
@@ -201,11 +199,9 @@ async fn hung_handshake_fails() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn timeout_when_spammed_with_connections() {
-    const NUM_ATTEMPTS: u16 = 200;
-    const TIMEOUT_MS: u64 = 100;
+    const NUM_ATTEMPTS: u16 = 100;
 
     let config = Config {
-        max_handshake_time_ms: TIMEOUT_MS,
         max_connections: NUM_ATTEMPTS,
         ..Default::default()
     };

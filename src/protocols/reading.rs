@@ -25,6 +25,19 @@ pub trait Reading: Pea2Pea
 where
     Self: Clone + Send + Sync + 'static,
 {
+    /// The depth of per-connection queues used to process inbound messages; the greater it is, the more inbound
+    /// messages the node can enqueue, but setting it to a large value can make the node more susceptible to DoS
+    /// attacks.
+    ///
+    /// The default value is 64.
+    const MESSAGE_QUEUE_DEPTH: usize = 64;
+
+    /// The initial size of a per-connection buffer for reading inbound messages. Can be set to the maximum expected size
+    /// of the inbound message in order to only allocate it once.
+    ///
+    /// The default value is 64KiB.
+    const INITIAL_BUFFER_SIZE: usize = 64 * 1024;
+
     /// The final (deserialized) type of inbound messages.
     type Message: Send;
 
@@ -58,13 +71,12 @@ where
                 let (tx_conn_ready, rx_conn_ready) = oneshot::channel();
                 conn.readiness_notifier = Some(tx_conn_ready);
 
-                let initial_read_buffer_size = self_clone.node().config().initial_read_buffer_size;
-                if initial_read_buffer_size != 0 {
-                    framed.read_buffer_mut().reserve(initial_read_buffer_size);
+                if Self::INITIAL_BUFFER_SIZE != 0 {
+                    framed.read_buffer_mut().reserve(Self::INITIAL_BUFFER_SIZE);
                 }
 
                 let (inbound_message_sender, mut inbound_message_receiver) =
-                    mpsc::channel(self_clone.node().config().inbound_queue_depth);
+                    mpsc::channel(Self::MESSAGE_QUEUE_DEPTH);
 
                 // use a channel to know when the processing task is ready
                 let (tx_processing, rx_processing) = oneshot::channel::<()>();

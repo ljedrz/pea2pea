@@ -24,6 +24,8 @@ impl Pea2Pea for JoJoNode {
 
 #[async_trait::async_trait]
 impl Handshake for JoJoNode {
+    const TIMEOUT_MS: u64 = 10_000;
+
     async fn perform_handshake(&self, conn: Connection) -> io::Result<Connection> {
         // some handshakes are useful, others are menacing ゴゴゴゴ
         match !conn.side() {
@@ -133,14 +135,12 @@ async fn main() {
 
     let config = Config {
         name: Some("Jotaro".into()),
-        max_handshake_time_ms: 10_000,
         ..Default::default()
     };
     let jotaro = JoJoNode(Node::new(Some(config)).await.unwrap());
 
     let config = Config {
         name: Some("Dio".into()),
-        max_handshake_time_ms: 10_000,
         ..Default::default()
     };
     let dio = JoJoNode(Node::new(Some(config)).await.unwrap());

@@ -36,28 +36,6 @@ pub struct Config {
     /// note: This number can very briefly be breached by 1 in case of inbound connection attempts. It can never be
     /// breached by outbound connection attempts, though.
     pub max_connections: u16,
-
-    /// The initial size of a per-connection buffer for reading inbound messages. Can be set to the maximum expected size
-    /// of the inbound message in order to only allocate it once.
-    ///
-    /// note: The node needs to implement the [`Reading`] protocol in order for it to have any effect.
-    pub initial_read_buffer_size: usize,
-    /// The depth of per-connection queues used to process inbound messages; the greater it is, the more inbound
-    /// messages the node can enqueue, but setting it to a large value can make the node more susceptible to DoS
-    /// attacks.
-    ///
-    /// note: The node needs to implement the [`Reading`] protocol in order for it to have any effect.
-    pub inbound_queue_depth: usize,
-    /// The depth of per-connection queues used to send outbound messages; the greater it is, the more outbound
-    /// messages the node can enqueue. Setting it to a large value is not recommended, as doing it might
-    /// obscure potential issues with your implementation (like slow serialization) or network.
-    ///
-    /// note: The node needs to implement the [`Writing`] protocol in order for it to have any effect.
-    pub outbound_queue_depth: usize,
-    /// The maximum time allowed for a connection to perform a handshake before it is rejected.
-    ///
-    /// note: The node needs to implement the [`Handshake`] protocol in order for it to have any effect.
-    pub max_handshake_time_ms: u64,
 }
 
 impl Default for Config {
@@ -85,11 +63,6 @@ impl Default for Config {
                 UnexpectedEof,
             ],
             max_connections: 100,
-
-            initial_read_buffer_size: 64 * 1024,
-            inbound_queue_depth: 64,
-            outbound_queue_depth: 64,
-            max_handshake_time_ms: 3_000,
         }
     }
 }
