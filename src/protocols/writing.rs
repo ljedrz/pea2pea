@@ -138,7 +138,7 @@ where
     }
 
     /// Creates an [`Encoder`] used to write the outbound messages to the target stream.
-    fn codec(&self, _addr: SocketAddr) -> Self::Codec;
+    fn codec(&self, addr: SocketAddr) -> Self::Codec;
 
     /// Writes the given message to the network stream and returns the number of written bytes.
     #[doc(hidden)]

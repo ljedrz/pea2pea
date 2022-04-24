@@ -173,7 +173,7 @@ where
     }
 
     /// Creates a [`Decoder`] used to interpret messages from the network.
-    fn codec(&self, _addr: SocketAddr) -> Self::Codec;
+    fn codec(&self, addr: SocketAddr) -> Self::Codec;
 
     /// Processes an inbound message. Can be used to update state, send replies etc.
     async fn process_message(&self, source: SocketAddr, message: Self::Message) -> io::Result<()>;
