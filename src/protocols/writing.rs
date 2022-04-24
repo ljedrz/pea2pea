@@ -141,6 +141,7 @@ where
     fn codec(&self, _addr: SocketAddr) -> Self::Codec;
 
     /// Writes the given message to the network stream and returns the number of written bytes.
+    #[doc(hidden)]
     async fn write_to_stream<W: AsyncWrite + Unpin + Send>(
         &self,
         message: Self::Message,

@@ -20,6 +20,10 @@ use std::{io, net::SocketAddr};
 
 /// Can be used to specify and enable reading, i.e. receiving inbound messages. If the [`Handshake`]
 /// protocol is enabled too, it goes into force only after the handshake has been concluded.
+///
+/// Each inbound message is isolated by the user-supplied [`Reading::Codec`], creating a [`Reading::Message`],
+/// which is immediately queued (with a [`Reading::MESSAGE_QUEUE_DEPTH`] limit) to be processed by
+/// [`Reading::process_message`].
 #[async_trait]
 pub trait Reading: Pea2Pea
 where
