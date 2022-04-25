@@ -39,7 +39,7 @@ where
     /// be done in the implementation of [`Self::Codec`].
     type Message: Send;
 
-    /// The user-supplied [`Encoder`] used to write the outbound messages to the target stream.
+    /// The user-supplied [`Encoder`] used to write outbound messages to the target stream.
     type Codec: Encoder<Self::Message, Error = io::Error> + Send;
 
     /// Prepares the node to send messages.

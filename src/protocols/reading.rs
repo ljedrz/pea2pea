@@ -23,7 +23,8 @@ use std::{io, net::SocketAddr};
 ///
 /// Each inbound message is isolated by the user-supplied [`Reading::Codec`], creating a [`Reading::Message`],
 /// which is immediately queued (with a [`Reading::MESSAGE_QUEUE_DEPTH`] limit) to be processed by
-/// [`Reading::process_message`].
+/// [`Reading::process_message`]. The configured fatal IO errors result in an immediate disconnect
+/// (in order to e.g. avoid accidentally reading "borked" messages).
 #[async_trait]
 pub trait Reading: Pea2Pea
 where
@@ -45,12 +46,10 @@ where
     /// The final (deserialized) type of inbound messages.
     type Message: Send;
 
-    /// The user-supplied [`Decoder`] used to interpret the inbound messages.
+    /// The user-supplied [`Decoder`] used to interpret inbound messages.
     type Codec: Decoder<Item = Self::Message, Error = io::Error> + Send;
 
-    /// Prepares the node to receive messages; failures to read from a connection's stream are penalized by a timeout
-    /// defined in [`Config`], while the configured fatal errors result in an immediate disconnect (in order to e.g. avoid
-    /// accidentally reading "borked" messages).
+    /// Prepares the node to receive messages.
     async fn enable_reading(&self) {
         let (conn_sender, mut conn_receiver) = mpsc::unbounded_channel::<ReturnableConnection>();
 
