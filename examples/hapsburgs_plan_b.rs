@@ -68,10 +68,10 @@ impl Reading for NakedNode {
 
         info!(parent: self.node().span(), "{}", reply);
 
-        self.send_direct_message(source, reply.to_string())
+        let _ = self
+            .send_direct_message(source, reply.to_string())
             .unwrap()
-            .await
-            .unwrap();
+            .await;
 
         Ok(())
     }
@@ -126,11 +126,10 @@ async fn main() {
         sleep(Duration::from_millis(50)).await;
         let thug_addr = drebin.node().connected_addrs()[0];
 
-        drebin
+        let _ = drebin
             .send_direct_message(thug_addr, "Talk!".to_string())
             .unwrap()
-            .await
-            .unwrap();
+            .await;
 
         sleep(Duration::from_millis(10)).await;
 

@@ -277,18 +277,19 @@ async fn main() {
     for _ in 0..3 {
         // send a message from initiator to responder
         let msg = "why hello there, fellow noise protocol user; I'm the initiator";
-        initiator
+        let _ = initiator
             .send_direct_message(responder.node().listening_addr().unwrap(), msg.to_string())
             .unwrap()
-            .await
-            .unwrap();
+            .await;
 
         // send a message from responder to initiator
         let msg = "why hello there, fellow noise protocol user; I'm the responder";
-        responder
+        let _ = responder
             .send_direct_message(initiator_addr, msg.to_string())
             .unwrap()
-            .await
-            .unwrap();
+            .await;
     }
+
+    // a small delay to ensure all messages were processed
+    sleep(Duration::from_millis(10)).await;
 }

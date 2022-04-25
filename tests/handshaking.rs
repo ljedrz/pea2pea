@@ -7,6 +7,7 @@ use tokio::{
 use tracing::*;
 
 mod common;
+use crate::common::WritingExt;
 use pea2pea::{
     protocols::{Handshake, Reading, Writing},
     Config, Connection, ConnectionSide, Node, Pea2Pea,
@@ -137,8 +138,7 @@ async fn no_handshake_no_messaging() {
         .into();
 
     initiator
-        .send_direct_message(responder.node().listening_addr().unwrap(), message)
-        .unwrap()
+        .send_dm(responder.node().listening_addr().unwrap(), message)
         .await
         .unwrap();
 

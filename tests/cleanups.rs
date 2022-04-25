@@ -2,6 +2,7 @@ use bytes::Bytes;
 use peak_alloc::PeakAlloc;
 
 mod common;
+use crate::common::WritingExt;
 use pea2pea::{
     protocols::{Disconnect, Handshake, Reading, Writing},
     Pea2Pea,
@@ -60,14 +61,12 @@ async fn check_node_cleanups() {
         let temporary_addr = persistent_node.node().connected_addrs()[0];
 
         persistent_node
-            .send_direct_message(temporary_addr, Bytes::from(&b"herp"[..]))
-            .unwrap()
+            .send_dm(temporary_addr, Bytes::from(&b"herp"[..]))
             .await
             .unwrap();
 
         temp_node
-            .send_direct_message(persistent_addr, Bytes::from(&b"derp"[..]))
-            .unwrap()
+            .send_dm(persistent_addr, Bytes::from(&b"derp"[..]))
             .await
             .unwrap();
 

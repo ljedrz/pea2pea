@@ -97,16 +97,17 @@ where
 
                         match writer_clone.write_to_stream(*msg, &mut framed).await {
                             Ok(len) => {
-                                let _ = wrapped_msg.delivery_notification.send(true);
+                                let _ = wrapped_msg.delivery_notification.send(Ok(()));
                                 node.known_peers().register_sent_message(addr, len);
                                 node.stats().register_sent_message(len);
                                 trace!(parent: node.span(), "sent {}B to {}", len, addr);
                             }
                             Err(e) => {
-                                let _ = wrapped_msg.delivery_notification.send(false);
                                 node.known_peers().register_failure(addr);
                                 error!(parent: node.span(), "couldn't send a message to {}: {}", addr, e);
-                                if node.config().fatal_io_errors.contains(&e.kind()) {
+                                let is_fatal = node.config().fatal_io_errors.contains(&e.kind());
+                                let _ = wrapped_msg.delivery_notification.send(Err(e));
+                                if is_fatal {
                                     node.disconnect(addr).await;
                                     break;
                                 }
@@ -168,7 +169,7 @@ where
         &self,
         addr: SocketAddr,
         message: Self::Message,
-    ) -> io::Result<oneshot::Receiver<bool>> {
+    ) -> io::Result<oneshot::Receiver<io::Result<()>>> {
         // access the protocol handler
         if let Some(handler) = self.node().protocols.writing_handler.get() {
             // find the message sender for the given address
@@ -220,11 +221,11 @@ where
 /// Used to queue messages for delivery.
 pub(crate) struct WrappedMessage {
     msg: Box<dyn Any + Send>,
-    delivery_notification: oneshot::Sender<bool>,
+    delivery_notification: oneshot::Sender<io::Result<()>>,
 }
 
 impl WrappedMessage {
-    fn new(msg: Box<dyn Any + Send>) -> (Self, oneshot::Receiver<bool>) {
+    fn new(msg: Box<dyn Any + Send>) -> (Self, oneshot::Receiver<io::Result<()>>) {
         let (tx, rx) = oneshot::channel();
         let wrapped_msg = Self {
             msg,

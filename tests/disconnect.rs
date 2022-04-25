@@ -1,6 +1,7 @@
 use bytes::Bytes;
 
 mod common;
+use crate::common::WritingExt;
 use pea2pea::{
     protocols::{Disconnect, Reading, Writing},
     Pea2Pea,
@@ -13,10 +14,7 @@ impl Disconnect for common::TestNode {
     async fn handle_disconnect(&self, addr: SocketAddr) {
         let disconnect_message = Bytes::from("bye-bye!".as_bytes());
 
-        self.send_direct_message(addr, disconnect_message)
-            .unwrap()
-            .await
-            .unwrap();
+        self.send_dm(addr, disconnect_message).await.unwrap();
     }
 }
 

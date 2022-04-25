@@ -4,6 +4,7 @@ use tokio_util::codec::Decoder;
 use tracing::*;
 
 mod common;
+use crate::common::WritingExt;
 use pea2pea::{
     protocols::{Reading, Writing},
     Config, Node, Pea2Pea,
@@ -64,8 +65,7 @@ impl Reading for EchoNode {
         if self.echoed.lock().insert(message) {
             info!(parent: self.node().span(), "it was new! echoing it");
 
-            self.send_direct_message(source, Bytes::copy_from_slice(&[message as u8]))
-                .unwrap()
+            self.send_dm(source, Bytes::copy_from_slice(&[message as u8]))
                 .await
                 .unwrap();
         } else {
@@ -110,19 +110,14 @@ async fn messaging_example() {
 
     for message in &[Herp, Derp, Herp] {
         let msg = Bytes::copy_from_slice(&[*message as u8]);
-        shouter
-            .send_direct_message(picky_echo_addr, msg)
-            .unwrap()
-            .await
-            .unwrap();
+        shouter.send_dm(picky_echo_addr, msg).await.unwrap();
     }
 
     // let echo send one message on its own too, for good measure
     let shouter_addr = picky_echo.node().connected_addrs()[0];
 
     picky_echo
-        .send_direct_message(shouter_addr, [Herp as u8][..].into())
-        .unwrap()
+        .send_dm(shouter_addr, [Herp as u8][..].into())
         .await
         .unwrap();
 
@@ -146,11 +141,7 @@ async fn drop_connection_on_invalid_message() {
     // an invalid message: a zero-length payload
     let bad_message = Bytes::from(vec![]);
 
-    writer
-        .send_direct_message(reader_addr, bad_message)
-        .unwrap()
-        .await
-        .unwrap();
+    writer.send_dm(reader_addr, bad_message).await.unwrap();
 
     wait_until!(1, reader.node().num_connected() == 0);
 }
@@ -189,8 +180,7 @@ async fn no_reading_no_delivery() {
 
     // writer sends a message
     writer
-        .send_direct_message(reader_addr, vec![0; 16].into())
-        .unwrap()
+        .send_dm(reader_addr, vec![0; 16].into())
         .await
         .unwrap();
 
@@ -212,7 +202,8 @@ async fn no_writing_no_delivery() {
 
     // writer tries to send a message
     assert!(writer
-        .send_direct_message(reader_addr, vec![0; 16].into())
+        .send_dm(reader_addr, vec![0; 16].into())
+        .await
         .is_err());
 
     // the writer didn't enable writing, so the reader won't receive anything

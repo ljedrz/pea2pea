@@ -20,6 +20,16 @@ impl Pea2Pea for TestNode {
     }
 }
 
+/// A helper trait to shorten the calls to `Writing::send_direct_message` in tests.
+#[async_trait::async_trait]
+pub trait WritingExt: Writing {
+    async fn send_dm(&self, addr: SocketAddr, msg: <Self as Writing>::Message) -> io::Result<()> {
+        self.send_direct_message(addr, msg)?.await.unwrap()
+    }
+}
+
+impl<T: Writing> WritingExt for T {}
+
 #[macro_export]
 macro_rules! test_node {
     ($name: expr) => {{

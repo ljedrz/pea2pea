@@ -4,6 +4,7 @@ use rand::{distributions::Standard, rngs::SmallRng, Rng, SeedableRng};
 use tokio_util::codec::Decoder;
 
 mod common;
+use crate::common::WritingExt;
 use pea2pea::{
     protocols::{Disconnect, Handshake, Reading, Writing},
     Node, Pea2Pea,
@@ -82,8 +83,7 @@ async fn run_bench_scenario(sender_count: usize) -> f64 {
         tokio::spawn(async move {
             for _ in 0..NUM_MESSAGES {
                 sender
-                    .send_direct_message(receiver_addr, RANDOM_BYTES.clone())
-                    .unwrap()
+                    .send_dm(receiver_addr, RANDOM_BYTES.clone())
                     .await
                     .unwrap();
             }

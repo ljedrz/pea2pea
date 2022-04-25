@@ -47,7 +47,7 @@ impl Reading for Player {
 
         // there are just a maximum of 2 connections, so this is sufficient
         if let Some(addr) = connected_addrs.into_iter().find(|addr| *addr != source) {
-            self.send_direct_message(addr, message)?.await.unwrap();
+            let _ = self.send_direct_message(addr, message)?.await;
         }
 
         Ok(())
@@ -83,14 +83,13 @@ async fn main() {
     let message = "when we can't think for ourselves, we can always quote";
 
     info!(parent: players[0].node().span(), "psst, player {}; \"{}\", pass it on!", players[1].node().name(), message);
-    players[0]
+    let _ = players[0]
         .send_direct_message(
             players[1].node().listening_addr().unwrap(),
             message.to_string(),
         )
         .unwrap()
-        .await
-        .unwrap();
+        .await;
 
     while players.last().unwrap().node().stats().received().0 != 1 {
         sleep(Duration::from_millis(10)).await;

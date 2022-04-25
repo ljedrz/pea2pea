@@ -31,6 +31,7 @@ async fn message_stats() {
             .send_direct_message(reader_addr, msg.clone())
             .unwrap()
             .await
+            .unwrap()
             .unwrap();
     }
 

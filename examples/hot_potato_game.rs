@@ -70,10 +70,10 @@ impl Player {
 
         info!(parent: self.node().span(), "throwing the potato to player {}!", new_carrier_name);
 
-        self.send_direct_message(new_carrier_addr, Message::HotPotato)
+        let _ = self
+            .send_direct_message(new_carrier_addr, Message::HotPotato)
             .unwrap()
-            .await
-            .unwrap();
+            .await;
     }
 }
 
