@@ -63,86 +63,8 @@ where
             tx_reading.send(()).unwrap(); // safe; the channel was just opened
 
             // these objects are sent from `Node::adapt_stream`
-            while let Some((mut conn, conn_returner)) = conn_receiver.recv().await {
-                let addr = conn.addr();
-                let codec = self_clone.codec(addr);
-                let reader = conn.reader.take().unwrap();
-                let framed = FramedRead::new(reader, codec);
-                let mut framed = self_clone.map_codec(framed, addr);
-
-                // the connection will notify the reading task once it's fully ready
-                let (tx_conn_ready, rx_conn_ready) = oneshot::channel();
-                conn.readiness_notifier = Some(tx_conn_ready);
-
-                if Self::INITIAL_BUFFER_SIZE != 0 {
-                    framed.read_buffer_mut().reserve(Self::INITIAL_BUFFER_SIZE);
-                }
-
-                let (inbound_message_sender, mut inbound_message_receiver) =
-                    mpsc::channel(Self::MESSAGE_QUEUE_DEPTH);
-
-                // use a channel to know when the processing task is ready
-                let (tx_processing, rx_processing) = oneshot::channel::<()>();
-
-                // the task for processing parsed messages
-                let processing_clone = self_clone.clone();
-                let inbound_processing_task = tokio::spawn(async move {
-                    let node = processing_clone.node();
-                    trace!(parent: node.span(), "spawned a task for processing messages from {}", addr);
-                    tx_processing.send(()).unwrap(); // safe; the channel was just opened
-
-                    while let Some(msg) = inbound_message_receiver.recv().await {
-                        if let Err(e) = processing_clone.process_message(addr, msg).await {
-                            error!(parent: node.span(), "can't process a message from {}: {}", addr, e);
-                            node.known_peers().register_failure(addr);
-                        }
-                    }
-                });
-                let _ = rx_processing.await;
-                conn.tasks.push(inbound_processing_task);
-
-                // use a channel to know when the reader task is ready
-                let (tx_reader, rx_reader) = oneshot::channel::<()>();
-
-                // the task for reading messages from a stream
-                let node = self_clone.node().clone();
-                let reader_task = tokio::spawn(async move {
-                    trace!(parent: node.span(), "spawned a task for reading messages from {}", addr);
-                    tx_reader.send(()).unwrap(); // safe; the channel was just opened
-
-                    // postpone reads until the connection is fully established; if the process fails,
-                    // this task gets aborted, so there is no need for a dedicated timeout
-                    let _ = rx_conn_ready.await;
-
-                    while let Some(bytes) = framed.next().await {
-                        match bytes {
-                            Ok(msg) => {
-                                // send the message for further processing
-                                if let Err(e) = inbound_message_sender.try_send(msg) {
-                                    error!(parent: node.span(), "can't process a message from {}: {}", addr, e);
-                                    node.stats().register_failure();
-                                }
-                            }
-                            Err(e) => {
-                                error!(parent: node.span(), "can't read from {}: {}", addr, e);
-                                node.known_peers().register_failure(addr);
-                                if node.config().fatal_io_errors.contains(&e.kind()) {
-                                    node.disconnect(addr).await;
-                                    break;
-                                }
-                            }
-                        }
-                    }
-
-                    let _ = node.disconnect(addr).await;
-                });
-                let _ = rx_reader.await;
-                conn.tasks.push(reader_task);
-
-                // return the Connection to the Node, resuming Node::adapt_stream
-                if conn_returner.send(Ok(conn)).is_err() {
-                    unreachable!("could't return a Connection to the Node");
-                }
+            while let Some(returnable_conn) = conn_receiver.recv().await {
+                self_clone.handle_new_connection(returnable_conn).await;
             }
         });
         let _ = rx_reading.await;
@@ -154,6 +76,90 @@ where
             self.node().protocols.reading_handler.set(hdl).is_ok(),
             "the Reading protocol was enabled more than once!"
         );
+    }
+
+    /// Applies the [`Reading`] protocol to a single connection.
+    #[doc(hidden)]
+    async fn handle_new_connection(&self, (mut conn, conn_returner): ReturnableConnection) {
+        let addr = conn.addr();
+        let codec = self.codec(addr);
+        let reader = conn.reader.take().unwrap();
+        let framed = FramedRead::new(reader, codec);
+        let mut framed = self.map_codec(framed, addr);
+
+        // the connection will notify the reading task once it's fully ready
+        let (tx_conn_ready, rx_conn_ready) = oneshot::channel();
+        conn.readiness_notifier = Some(tx_conn_ready);
+
+        if Self::INITIAL_BUFFER_SIZE != 0 {
+            framed.read_buffer_mut().reserve(Self::INITIAL_BUFFER_SIZE);
+        }
+
+        let (inbound_message_sender, mut inbound_message_receiver) =
+            mpsc::channel(Self::MESSAGE_QUEUE_DEPTH);
+
+        // use a channel to know when the processing task is ready
+        let (tx_processing, rx_processing) = oneshot::channel::<()>();
+
+        // the task for processing parsed messages
+        let self_clone = self.clone();
+        let inbound_processing_task = tokio::spawn(async move {
+            let node = self_clone.node();
+            trace!(parent: node.span(), "spawned a task for processing messages from {}", addr);
+            tx_processing.send(()).unwrap(); // safe; the channel was just opened
+
+            while let Some(msg) = inbound_message_receiver.recv().await {
+                if let Err(e) = self_clone.process_message(addr, msg).await {
+                    error!(parent: node.span(), "can't process a message from {}: {}", addr, e);
+                    node.known_peers().register_failure(addr);
+                }
+            }
+        });
+        let _ = rx_processing.await;
+        conn.tasks.push(inbound_processing_task);
+
+        // use a channel to know when the reader task is ready
+        let (tx_reader, rx_reader) = oneshot::channel::<()>();
+
+        // the task for reading messages from a stream
+        let node = self.node().clone();
+        let reader_task = tokio::spawn(async move {
+            trace!(parent: node.span(), "spawned a task for reading messages from {}", addr);
+            tx_reader.send(()).unwrap(); // safe; the channel was just opened
+
+            // postpone reads until the connection is fully established; if the process fails,
+            // this task gets aborted, so there is no need for a dedicated timeout
+            let _ = rx_conn_ready.await;
+
+            while let Some(bytes) = framed.next().await {
+                match bytes {
+                    Ok(msg) => {
+                        // send the message for further processing
+                        if let Err(e) = inbound_message_sender.try_send(msg) {
+                            error!(parent: node.span(), "can't process a message from {}: {}", addr, e);
+                            node.stats().register_failure();
+                        }
+                    }
+                    Err(e) => {
+                        error!(parent: node.span(), "can't read from {}: {}", addr, e);
+                        node.known_peers().register_failure(addr);
+                        if node.config().fatal_io_errors.contains(&e.kind()) {
+                            node.disconnect(addr).await;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            let _ = node.disconnect(addr).await;
+        });
+        let _ = rx_reader.await;
+        conn.tasks.push(reader_task);
+
+        // return the Connection to the Node, resuming Node::adapt_stream
+        if conn_returner.send(Ok(conn)).is_err() {
+            unreachable!("could't return a Connection to the Node");
+        }
     }
 
     /// Wraps the user-supplied [`Decoder`] in another one used for message accounting.
