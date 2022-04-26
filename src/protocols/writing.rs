@@ -46,82 +46,25 @@ where
     async fn enable_writing(&self) {
         let (conn_sender, mut conn_receiver) = mpsc::unbounded_channel::<ReturnableConnection>();
 
+        // the conn_senders are used to send messages from the Node to individual connections
         let conn_senders: WritingSenders = Default::default();
+        // procure a clone to create the WritingHandler with
+        let senders = conn_senders.clone();
 
         // use a channel to know when the writing task is ready
         let (tx_writing, rx_writing) = oneshot::channel::<()>();
 
-        // the task spawning tasks reading messages from the given stream
+        // the task spawning tasks sending messages to all the streams
         let self_clone = self.clone();
-        let conn_senders_clone = conn_senders.clone();
         let writing_task = tokio::spawn(async move {
             trace!(parent: self_clone.node().span(), "spawned the Writing handler task");
             tx_writing.send(()).unwrap(); // safe; the channel was just opened
 
             // these objects are sent from `Node::adapt_stream`
-            while let Some((mut conn, conn_returner)) = conn_receiver.recv().await {
-                let addr = conn.addr();
-                let codec = self_clone.codec(addr);
-                let writer = conn.writer.take().unwrap();
-                let mut framed = FramedWrite::new(writer, codec);
-
-                let (outbound_message_sender, mut outbound_message_receiver) =
-                    mpsc::channel(Self::MESSAGE_QUEUE_DEPTH);
-
-                // register the connection's message sender with the Writing protocol handler
-                conn_senders_clone
-                    .write()
-                    .insert(addr, outbound_message_sender);
-
-                // this will automatically drop the sender upon a disconnect
-                let auto_cleanup = SenderCleanup {
-                    addr,
-                    senders: Arc::clone(&conn_senders_clone),
-                };
-
-                // use a channel to know when the writer task is ready
-                let (tx_writer, rx_writer) = oneshot::channel::<()>();
-
-                // the task for writing outbound messages
-                let writer_clone = self_clone.clone();
-                let writer_task = tokio::spawn(async move {
-                    let node = writer_clone.node();
-                    trace!(parent: node.span(), "spawned a task for writing messages to {}", addr);
-                    tx_writer.send(()).unwrap(); // safe; the channel was just opened
-
-                    // move the cleanup into the task that gets aborted on disconnect
-                    let _auto_cleanup = auto_cleanup;
-
-                    while let Some(wrapped_msg) = outbound_message_receiver.recv().await {
-                        let msg = wrapped_msg.msg.downcast::<Self::Message>().unwrap();
-
-                        match writer_clone.write_to_stream(*msg, &mut framed).await {
-                            Ok(len) => {
-                                let _ = wrapped_msg.delivery_notification.send(Ok(()));
-                                node.known_peers().register_sent_message(addr, len);
-                                node.stats().register_sent_message(len);
-                                trace!(parent: node.span(), "sent {}B to {}", len, addr);
-                            }
-                            Err(e) => {
-                                node.known_peers().register_failure(addr);
-                                error!(parent: node.span(), "couldn't send a message to {}: {}", addr, e);
-                                let is_fatal = node.config().fatal_io_errors.contains(&e.kind());
-                                let _ = wrapped_msg.delivery_notification.send(Err(e));
-                                if is_fatal {
-                                    node.disconnect(addr).await;
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                });
-                let _ = rx_writer.await;
-                conn.tasks.push(writer_task);
-
-                // return the Connection to the Node, resuming Node::adapt_stream
-                if conn_returner.send(Ok(conn)).is_err() {
-                    unreachable!("could't return a Connection to the Node");
-                }
+            while let Some(returnable_conn) = conn_receiver.recv().await {
+                self_clone
+                    .handle_new_connection(returnable_conn, &conn_senders)
+                    .await;
             }
         });
         let _ = rx_writing.await;
@@ -130,12 +73,81 @@ where
         // register the WritingHandler with the Node
         let hdl = Box::new(WritingHandler {
             handler: ProtocolHandler(conn_sender),
-            senders: conn_senders,
+            senders,
         });
         assert!(
             self.node().protocols.writing_handler.set(hdl).is_ok(),
             "the Writing protocol was enabled more than once!"
         );
+    }
+
+    /// Applies the [`Writing`] protocol to a single connection.
+    #[doc(hidden)]
+    async fn handle_new_connection(
+        &self,
+        (mut conn, conn_returner): ReturnableConnection,
+        conn_senders: &WritingSenders,
+    ) {
+        let addr = conn.addr();
+        let codec = self.codec(addr);
+        let writer = conn.writer.take().unwrap();
+        let mut framed = FramedWrite::new(writer, codec);
+
+        let (outbound_message_sender, mut outbound_message_receiver) =
+            mpsc::channel(Self::MESSAGE_QUEUE_DEPTH);
+
+        // register the connection's message sender with the Writing protocol handler
+        conn_senders.write().insert(addr, outbound_message_sender);
+
+        // this will automatically drop the sender upon a disconnect
+        let auto_cleanup = SenderCleanup {
+            addr,
+            senders: Arc::clone(conn_senders),
+        };
+
+        // use a channel to know when the writer task is ready
+        let (tx_writer, rx_writer) = oneshot::channel::<()>();
+
+        // the task for writing outbound messages
+        let self_clone = self.clone();
+        let writer_task = tokio::spawn(async move {
+            let node = self_clone.node();
+            trace!(parent: node.span(), "spawned a task for writing messages to {}", addr);
+            tx_writer.send(()).unwrap(); // safe; the channel was just opened
+
+            // move the cleanup into the task that gets aborted on disconnect
+            let _auto_cleanup = auto_cleanup;
+
+            while let Some(wrapped_msg) = outbound_message_receiver.recv().await {
+                let msg = wrapped_msg.msg.downcast::<Self::Message>().unwrap();
+
+                match self_clone.write_to_stream(*msg, &mut framed).await {
+                    Ok(len) => {
+                        let _ = wrapped_msg.delivery_notification.send(Ok(()));
+                        node.known_peers().register_sent_message(addr, len);
+                        node.stats().register_sent_message(len);
+                        trace!(parent: node.span(), "sent {}B to {}", len, addr);
+                    }
+                    Err(e) => {
+                        node.known_peers().register_failure(addr);
+                        error!(parent: node.span(), "couldn't send a message to {}: {}", addr, e);
+                        let is_fatal = node.config().fatal_io_errors.contains(&e.kind());
+                        let _ = wrapped_msg.delivery_notification.send(Err(e));
+                        if is_fatal {
+                            node.disconnect(addr).await;
+                            break;
+                        }
+                    }
+                }
+            }
+        });
+        let _ = rx_writer.await;
+        conn.tasks.push(writer_task);
+
+        // return the Connection to the Node, resuming Node::adapt_stream
+        if conn_returner.send(Ok(conn)).is_err() {
+            unreachable!("could't return a Connection to the Node");
+        }
     }
 
     /// Creates an [`Encoder`] used to write the outbound messages to the target stream.
@@ -219,7 +231,8 @@ where
 }
 
 /// Used to queue messages for delivery.
-pub(crate) struct WrappedMessage {
+#[doc(hidden)]
+pub struct WrappedMessage {
     msg: Box<dyn Any + Send>,
     delivery_notification: oneshot::Sender<io::Result<()>>,
 }
