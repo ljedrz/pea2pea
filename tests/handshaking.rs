@@ -187,7 +187,7 @@ async fn hung_handshake_fails() {
         .await
         .is_ok());
 
-    // the TPC connection itself has been established, and with no reading, the connector doesn't know
+    // the TCP connection itself has been established, and with no reading, the connector doesn't know
     // that the connectee has already disconnected from it by now
     assert!(connector.node().num_connected() == 1);
     assert!(connector.node().num_connecting() == 0);
