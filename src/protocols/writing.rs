@@ -81,8 +81,104 @@ where
         );
     }
 
+    /// Creates an [`Encoder`] used to write the outbound messages to the target stream.
+    fn codec(&self, addr: SocketAddr) -> Self::Codec;
+
+    /// Sends the provided message to the specified [`SocketAddr`]. Returns as soon as the message is queued to
+    /// be sent, without waiting for the actual delivery; instead, the caller is provided with a [`oneshot::Receiver`]
+    /// which can be used to determine when and whether the message has been delivered.
+    ///
+    /// # Errors
+    ///
+    /// The following errors can be returned:
+    /// - [`io::ErrorKind::NotConnected`] if the node is not connected to the provided address
+    /// - [`io::ErrorKind::Other`] if the outbound message queue for this address is full
+    /// - [`io::ErrorKind::Unsupported`] if [`Writing::enable_writing`] hadn't been called yet
+    fn send_direct_message(
+        &self,
+        addr: SocketAddr,
+        message: Self::Message,
+    ) -> io::Result<oneshot::Receiver<io::Result<()>>> {
+        // access the protocol handler
+        if let Some(handler) = self.node().protocols.writing_handler.get() {
+            // find the message sender for the given address
+            if let Some(sender) = handler.senders.read().get(&addr).cloned() {
+                let (msg, delivery) = WrappedMessage::new(Box::new(message));
+                sender.try_send(msg).map_err(|e| {
+                    error!(parent: self.node().span(), "can't send a message to {}: {}", addr, e);
+                    self.node().stats().register_failure();
+                    io::ErrorKind::Other.into()
+                }).map(|_| delivery)
+            } else {
+                Err(io::ErrorKind::NotConnected.into())
+            }
+        } else {
+            Err(io::ErrorKind::Unsupported.into())
+        }
+    }
+
+    /// Broadcasts the provided message to all connected peers. Returns as soon as the message is queued to
+    /// be sent to all the peers, without waiting for the actual delivery. This method doesn't provide the
+    /// means to check when and if the messages actually get delivered; you can achieve that by calling
+    /// [`Writing::send_direct_message`] for each address returned by [`Node::connected_addrs`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`io::ErrorKind::Unsupported`] if [`Writing::enable_writing`] hadn't been called yet.
+    fn send_broadcast(&self, message: Self::Message) -> io::Result<()>
+    where
+        Self::Message: Clone,
+    {
+        // access the protocol handler
+        if let Some(handler) = self.node().protocols.writing_handler.get() {
+            let senders = handler.senders.read().clone();
+            for (addr, message_sender) in senders {
+                let (msg, _delivery) = WrappedMessage::new(Box::new(message.clone()));
+                let _ = message_sender.try_send(msg).map_err(|e| {
+                    error!(parent: self.node().span(), "can't send a message to {}: {}", addr, e);
+                    self.node().stats().register_failure();
+                });
+            }
+
+            Ok(())
+        } else {
+            Err(io::ErrorKind::Unsupported.into())
+        }
+    }
+}
+
+/// This trait is used to restrict access to methods that would otherwise be public in [`Writing`].
+#[async_trait]
+trait WritingInternal: Writing {
+    /// Writes the given message to the network stream and returns the number of written bytes.
+    async fn write_to_stream<W: AsyncWrite + Unpin + Send>(
+        &self,
+        message: Self::Message,
+        writer: &mut FramedWrite<W, Self::Codec>,
+    ) -> Result<usize, <Self::Codec as Encoder<Self::Message>>::Error>;
+
     /// Applies the [`Writing`] protocol to a single connection.
-    #[doc(hidden)]
+    async fn handle_new_connection(
+        &self,
+        (conn, conn_returner): ReturnableConnection,
+        conn_senders: &WritingSenders,
+    );
+}
+
+#[async_trait]
+impl<W: Writing> WritingInternal for W {
+    async fn write_to_stream<A: AsyncWrite + Unpin + Send>(
+        &self,
+        message: Self::Message,
+        writer: &mut FramedWrite<A, Self::Codec>,
+    ) -> Result<usize, <Self::Codec as Encoder<Self::Message>>::Error> {
+        writer.feed(message).await?;
+        let len = writer.write_buffer().len();
+        writer.flush().await?;
+
+        Ok(len)
+    }
+
     async fn handle_new_connection(
         &self,
         (mut conn, conn_returner): ReturnableConnection,
@@ -149,90 +245,10 @@ where
             unreachable!("could't return a Connection to the Node");
         }
     }
-
-    /// Creates an [`Encoder`] used to write the outbound messages to the target stream.
-    fn codec(&self, addr: SocketAddr) -> Self::Codec;
-
-    /// Writes the given message to the network stream and returns the number of written bytes.
-    #[doc(hidden)]
-    async fn write_to_stream<W: AsyncWrite + Unpin + Send>(
-        &self,
-        message: Self::Message,
-        writer: &mut FramedWrite<W, Self::Codec>,
-    ) -> Result<usize, <Self::Codec as Encoder<Self::Message>>::Error> {
-        writer.feed(message).await?;
-        let len = writer.write_buffer().len();
-        writer.flush().await?;
-
-        Ok(len)
-    }
-
-    /// Sends the provided message to the specified [`SocketAddr`]. Returns as soon as the message is queued to
-    /// be sent, without waiting for the actual delivery; instead, the caller is provided with a [`oneshot::Receiver`]
-    /// which can be used to determine when and whether the message has been delivered.
-    ///
-    /// # Errors
-    ///
-    /// The following errors can be returned:
-    /// - [`io::ErrorKind::NotConnected`] if the node is not connected to the provided address
-    /// - [`io::ErrorKind::Other`] if the outbound message queue for this address is full
-    /// - [`io::ErrorKind::Unsupported`] if [`Writing::enable_writing`] hadn't been called yet
-    fn send_direct_message(
-        &self,
-        addr: SocketAddr,
-        message: Self::Message,
-    ) -> io::Result<oneshot::Receiver<io::Result<()>>> {
-        // access the protocol handler
-        if let Some(handler) = self.node().protocols.writing_handler.get() {
-            // find the message sender for the given address
-            if let Some(sender) = handler.senders.read().get(&addr).cloned() {
-                let (msg, delivery) = WrappedMessage::new(Box::new(message));
-                sender.try_send(msg).map_err(|e| {
-                    error!(parent: self.node().span(), "can't send a message to {}: {}", addr, e);
-                    self.node().stats().register_failure();
-                    io::ErrorKind::Other.into()
-                }).map(|_| delivery)
-            } else {
-                Err(io::ErrorKind::NotConnected.into())
-            }
-        } else {
-            Err(io::ErrorKind::Unsupported.into())
-        }
-    }
-
-    /// Broadcasts the provided message to all connected peers. Returns as soon as the message is queued to
-    /// be sent to all the peers, without waiting for the actual delivery. This method doesn't provide the
-    /// means to check when and if the messages actually get delivered; you can achieve that by calling
-    /// [`Writing::send_direct_message`] for each address returned by [`Node::connected_addrs`].
-    ///
-    /// # Errors
-    ///
-    /// Returns [`io::ErrorKind::Unsupported`] if [`Writing::enable_writing`] hadn't been called yet.
-    fn send_broadcast(&self, message: Self::Message) -> io::Result<()>
-    where
-        Self::Message: Clone,
-    {
-        // access the protocol handler
-        if let Some(handler) = self.node().protocols.writing_handler.get() {
-            let senders = handler.senders.read().clone();
-            for (addr, message_sender) in senders {
-                let (msg, _delivery) = WrappedMessage::new(Box::new(message.clone()));
-                let _ = message_sender.try_send(msg).map_err(|e| {
-                    error!(parent: self.node().span(), "can't send a message to {}: {}", addr, e);
-                    self.node().stats().register_failure();
-                });
-            }
-
-            Ok(())
-        } else {
-            Err(io::ErrorKind::Unsupported.into())
-        }
-    }
 }
 
 /// Used to queue messages for delivery.
-#[doc(hidden)]
-pub struct WrappedMessage {
+struct WrappedMessage {
     msg: Box<dyn Any + Send>,
     delivery_notification: oneshot::Sender<io::Result<()>>,
 }
@@ -252,7 +268,7 @@ impl WrappedMessage {
 /// The handler object dedicated to the [`Writing`] protocol.
 pub(crate) struct WritingHandler {
     handler: ProtocolHandler<Connection, io::Result<Connection>>,
-    pub(crate) senders: WritingSenders,
+    senders: WritingSenders,
 }
 
 impl Protocol<Connection, io::Result<Connection>> for WritingHandler {
@@ -261,7 +277,7 @@ impl Protocol<Connection, io::Result<Connection>> for WritingHandler {
     }
 }
 
-pub(crate) struct SenderCleanup {
+struct SenderCleanup {
     addr: SocketAddr,
     senders: WritingSenders,
 }

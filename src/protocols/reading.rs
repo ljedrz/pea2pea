@@ -78,8 +78,29 @@ where
         );
     }
 
+    /// Creates a [`Decoder`] used to interpret messages from the network.
+    fn codec(&self, addr: SocketAddr) -> Self::Codec;
+
+    /// Processes an inbound message. Can be used to update state, send replies etc.
+    async fn process_message(&self, source: SocketAddr, message: Self::Message) -> io::Result<()>;
+}
+
+/// This trait is used to restrict access to methods that would otherwise be public in [`Reading`].
+#[async_trait]
+trait ReadingInternal: Reading {
     /// Applies the [`Reading`] protocol to a single connection.
-    #[doc(hidden)]
+    async fn handle_new_connection(&self, (conn, conn_returner): ReturnableConnection);
+
+    /// Wraps the user-supplied [`Decoder`] ([`Reading::Codec`]) in another one used for message accounting.
+    fn map_codec<T: AsyncRead>(
+        &self,
+        framed: FramedRead<T, Self::Codec>,
+        addr: SocketAddr,
+    ) -> FramedRead<T, CountingCodec<Self::Codec>>;
+}
+
+#[async_trait]
+impl<R: Reading> ReadingInternal for R {
     async fn handle_new_connection(&self, (mut conn, conn_returner): ReturnableConnection) {
         let addr = conn.addr();
         let codec = self.codec(addr);
@@ -162,8 +183,6 @@ where
         }
     }
 
-    /// Wraps the user-supplied [`Decoder`] in another one used for message accounting.
-    #[doc(hidden)]
     fn map_codec<T: AsyncRead>(
         &self,
         framed: FramedRead<T, Self::Codec>,
@@ -176,17 +195,10 @@ where
             acc: 0,
         })
     }
-
-    /// Creates a [`Decoder`] used to interpret messages from the network.
-    fn codec(&self, addr: SocketAddr) -> Self::Codec;
-
-    /// Processes an inbound message. Can be used to update state, send replies etc.
-    async fn process_message(&self, source: SocketAddr, message: Self::Message) -> io::Result<()>;
 }
 
 /// A wrapper [`Decoder`] that also counts the inbound messages.
-#[doc(hidden)]
-pub struct CountingCodec<D: Decoder> {
+struct CountingCodec<D: Decoder> {
     codec: D,
     node: Node,
     addr: SocketAddr,

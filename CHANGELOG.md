@@ -6,6 +6,7 @@
 - `Config::max_handshake_time_ms` was moved to `Handshake::TIMEOUT_MS`
 - `Config::outbound_queue_depth` was moved to `Writing::MESSAGE_QUEUE_DEPTH`
 - `Writing::send_direct_message` now returns an `io::Result<oneshot::Receiver<io::Result<()>>>` instead of `io::Result<oneshot::Receiver<bool>>`
+- several objects and trait methods indended to not be used outside of the crate were made private
 
 # 0.36.0
 
