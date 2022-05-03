@@ -3,10 +3,7 @@ use crate::{protocols::ProtocolHandler, Pea2Pea};
 #[cfg(doc)]
 use crate::{protocols::Writing, Connection};
 
-use tokio::{
-    sync::{mpsc, oneshot},
-    task,
-};
+use tokio::sync::{mpsc, oneshot};
 use tracing::*;
 
 use std::net::SocketAddr;
@@ -37,7 +34,7 @@ where
 
             while let Some((addr, notifier)) = from_node_receiver.recv().await {
                 let self_clone2 = self_clone.clone();
-                task::spawn(async move {
+                tokio::spawn(async move {
                     // perform the specified extra actions
                     self_clone2.handle_disconnect(addr).await;
                     // notify the node that the extra actions have concluded

@@ -44,7 +44,7 @@ where
 
     /// Prepares the node to send messages.
     async fn enable_writing(&self) {
-        let (conn_sender, mut conn_receiver) = mpsc::unbounded_channel::<ReturnableConnection>();
+        let (conn_sender, mut conn_receiver) = mpsc::unbounded_channel();
 
         // the conn_senders are used to send messages from the Node to individual connections
         let conn_senders: WritingSenders = Default::default();
@@ -52,7 +52,7 @@ where
         let senders = conn_senders.clone();
 
         // use a channel to know when the writing task is ready
-        let (tx_writing, rx_writing) = oneshot::channel::<()>();
+        let (tx_writing, rx_writing) = oneshot::channel();
 
         // the task spawning tasks sending messages to all the streams
         let self_clone = self.clone();
@@ -202,7 +202,7 @@ impl<W: Writing> WritingInternal for W {
         };
 
         // use a channel to know when the writer task is ready
-        let (tx_writer, rx_writer) = oneshot::channel::<()>();
+        let (tx_writer, rx_writer) = oneshot::channel();
 
         // the task for writing outbound messages
         let self_clone = self.clone();
@@ -215,7 +215,7 @@ impl<W: Writing> WritingInternal for W {
             let _auto_cleanup = auto_cleanup;
 
             while let Some(wrapped_msg) = outbound_message_receiver.recv().await {
-                let msg = wrapped_msg.msg.downcast::<Self::Message>().unwrap();
+                let msg = wrapped_msg.msg.downcast().unwrap();
 
                 match self_clone.write_to_stream(*msg, &mut framed).await {
                     Ok(len) => {

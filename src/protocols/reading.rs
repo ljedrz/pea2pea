@@ -51,10 +51,10 @@ where
 
     /// Prepares the node to receive messages.
     async fn enable_reading(&self) {
-        let (conn_sender, mut conn_receiver) = mpsc::unbounded_channel::<ReturnableConnection>();
+        let (conn_sender, mut conn_receiver) = mpsc::unbounded_channel();
 
         // use a channel to know when the reading task is ready
-        let (tx_reading, rx_reading) = oneshot::channel::<()>();
+        let (tx_reading, rx_reading) = oneshot::channel();
 
         // the main task spawning per-connection tasks reading messages from their streams
         let self_clone = self.clone();

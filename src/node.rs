@@ -8,7 +8,7 @@ use parking_lot::Mutex;
 use tokio::{
     net::{TcpListener, TcpStream},
     sync::oneshot,
-    task::{self, JoinHandle},
+    task::JoinHandle,
 };
 use tracing::*;
 
@@ -115,9 +115,7 @@ impl Node {
                 let random_available_addr = SocketAddr::new(listener_ip, 0);
                 TcpListener::bind(random_available_addr).await?
             } else {
-                panic!(
-                    "you must either provide a desired port or allow a random port to be chosen"
-                );
+                panic!("you must either provide a desired port or allow a random one");
             };
 
             Some(listener)
@@ -147,7 +145,7 @@ impl Node {
 
         if let Some(listener) = listener {
             // use a channel to know when the listening task is ready
-            let (tx, rx) = oneshot::channel::<()>();
+            let (tx, rx) = oneshot::channel();
 
             let node_clone = node.clone();
             let listening_task = tokio::spawn(async move {
@@ -167,7 +165,7 @@ impl Node {
                             node_clone.connecting.lock().insert(addr);
 
                             let node_clone2 = node_clone.clone();
-                            task::spawn(async move {
+                            tokio::spawn(async move {
                                 if let Err(e) = node_clone2
                                     .adapt_stream(stream, addr, ConnectionSide::Responder)
                                     .await

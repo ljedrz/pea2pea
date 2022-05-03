@@ -6,7 +6,6 @@ use crate::{
 use tokio::{
     net::TcpStream,
     sync::{mpsc, oneshot},
-    task,
     time::timeout,
 };
 use tracing::*;
@@ -32,7 +31,7 @@ where
             mpsc::unbounded_channel::<ReturnableConnection>();
 
         // use a channel to know when the handshake task is ready
-        let (tx, rx) = oneshot::channel::<()>();
+        let (tx, rx) = oneshot::channel();
 
         // spawn a background task dedicated to handling the handshakes
         let self_clone = self.clone();
@@ -44,7 +43,7 @@ where
                 let addr = conn.addr();
 
                 let node = self_clone.clone();
-                task::spawn(async move {
+                tokio::spawn(async move {
                     debug!(parent: node.node().span(), "shaking hands with {} as the {:?}", addr, !conn.side());
                     let result = timeout(
                         Duration::from_millis(Self::TIMEOUT_MS),
@@ -91,8 +90,6 @@ where
 
     /// Borrows the full connection stream to be used in the implementation of [`Handshake::perform_handshake`].
     fn borrow_stream<'a>(&self, conn: &'a mut Connection) -> &'a mut TcpStream {
-        conn.stream
-            .as_mut()
-            .expect("Connection's stream is not available!")
+        conn.stream.as_mut().unwrap()
     }
 }
