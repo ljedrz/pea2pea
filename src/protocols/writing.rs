@@ -76,7 +76,7 @@ where
             senders,
         });
         assert!(
-            self.node().protocols.writing_handler.set(hdl).is_ok(),
+            self.node().protocols.writing.set(hdl).is_ok(),
             "the Writing protocol was enabled more than once!"
         );
     }
@@ -100,7 +100,7 @@ where
         message: Self::Message,
     ) -> io::Result<oneshot::Receiver<io::Result<()>>> {
         // access the protocol handler
-        if let Some(handler) = self.node().protocols.writing_handler.get() {
+        if let Some(handler) = self.node().protocols.writing.get() {
             // find the message sender for the given address
             if let Some(sender) = handler.senders.read().get(&addr).cloned() {
                 let (msg, delivery) = WrappedMessage::new(Box::new(message));
@@ -130,7 +130,7 @@ where
         Self::Message: Clone,
     {
         // access the protocol handler
-        if let Some(handler) = self.node().protocols.writing_handler.get() {
+        if let Some(handler) = self.node().protocols.writing.get() {
             let senders = handler.senders.read().clone();
             for (addr, message_sender) in senders {
                 let (msg, _delivery) = WrappedMessage::new(Box::new(message.clone()));

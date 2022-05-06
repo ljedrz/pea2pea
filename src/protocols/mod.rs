@@ -21,10 +21,10 @@ pub use writing::Writing;
 
 #[derive(Default)]
 pub(crate) struct Protocols {
-    pub(crate) handshake_handler: OnceBox<ProtocolHandler<Connection, io::Result<Connection>>>,
-    pub(crate) reading_handler: OnceBox<ProtocolHandler<Connection, io::Result<Connection>>>,
-    pub(crate) writing_handler: OnceBox<writing::WritingHandler>,
-    pub(crate) disconnect_handler: OnceBox<ProtocolHandler<SocketAddr, ()>>,
+    pub(crate) handshake: OnceBox<ProtocolHandler<Connection, io::Result<Connection>>>,
+    pub(crate) reading: OnceBox<ProtocolHandler<Connection, io::Result<Connection>>>,
+    pub(crate) writing: OnceBox<writing::WritingHandler>,
+    pub(crate) disconnect: OnceBox<ProtocolHandler<SocketAddr, ()>>,
 }
 
 /// An object sent to a protocol handler task; the task assumes control of a protocol-relevant item `T`,

@@ -225,15 +225,15 @@ impl Node {
     }
 
     async fn enable_protocols(&self, conn: Connection) -> io::Result<Connection> {
-        let mut conn = enable_protocol!(handshake_handler, self, conn);
+        let mut conn = enable_protocol!(handshake, self, conn);
 
         // split the stream after the handshake
         let (reader, writer) = conn.stream.take().unwrap().into_split();
         conn.reader = Some(reader);
         conn.writer = Some(writer);
 
-        let conn = enable_protocol!(reading_handler, self, conn);
-        let conn = enable_protocol!(writing_handler, self, conn);
+        let conn = enable_protocol!(reading, self, conn);
+        let conn = enable_protocol!(writing, self, conn);
 
         Ok(conn)
     }
@@ -324,7 +324,7 @@ impl Node {
 
     /// Disconnects from the provided `SocketAddr`.
     pub async fn disconnect(&self, addr: SocketAddr) -> bool {
-        if let Some(handler) = self.protocols.disconnect_handler.get() {
+        if let Some(handler) = self.protocols.disconnect.get() {
             if self.is_connected(addr) {
                 let (sender, receiver) = oneshot::channel();
 

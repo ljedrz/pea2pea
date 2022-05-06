@@ -79,7 +79,7 @@ where
         // register the Handshake handler with the Node
         let hdl = Box::new(ProtocolHandler(from_node_sender));
         assert!(
-            self.node().protocols.handshake_handler.set(hdl).is_ok(),
+            self.node().protocols.handshake.set(hdl).is_ok(),
             "the Handshake protocol was enabled more than once!"
         );
     }

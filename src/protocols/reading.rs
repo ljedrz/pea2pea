@@ -73,7 +73,7 @@ where
         // register the Reading handler with the Node
         let hdl = Box::new(ProtocolHandler(conn_sender));
         assert!(
-            self.node().protocols.reading_handler.set(hdl).is_ok(),
+            self.node().protocols.reading.set(hdl).is_ok(),
             "the Reading protocol was enabled more than once!"
         );
     }
