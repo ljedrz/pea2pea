@@ -6,6 +6,7 @@ use crate::{
 
 use parking_lot::Mutex;
 use tokio::{
+    io::split,
     net::{TcpListener, TcpStream},
     sync::oneshot,
     task::JoinHandle,
@@ -227,10 +228,12 @@ impl Node {
     async fn enable_protocols(&self, conn: Connection) -> io::Result<Connection> {
         let mut conn = enable_protocol!(handshake, self, conn);
 
-        // split the stream after the handshake
-        let (reader, writer) = conn.stream.take().unwrap().into_split();
-        conn.reader = Some(reader);
-        conn.writer = Some(writer);
+        // split the stream after the handshake (if not done before)
+        if let Some(stream) = conn.stream.take() {
+            let (reader, writer) = split(stream);
+            conn.reader = Some(Box::new(reader));
+            conn.writer = Some(Box::new(writer));
+        }
 
         let conn = enable_protocol!(reading, self, conn);
         let conn = enable_protocol!(writing, self, conn);

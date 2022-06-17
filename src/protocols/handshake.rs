@@ -4,6 +4,7 @@ use crate::{
 };
 
 use tokio::{
+    io::{split, AsyncRead, AsyncWrite},
     net::TcpStream,
     sync::{mpsc, oneshot},
     time::timeout,
@@ -91,5 +92,23 @@ where
     /// Borrows the full connection stream to be used in the implementation of [`Handshake::perform_handshake`].
     fn borrow_stream<'a>(&self, conn: &'a mut Connection) -> &'a mut TcpStream {
         conn.stream.as_mut().unwrap()
+    }
+
+    /// Assumes full control of a connection's stream in the implementation of [`Handshake::perform_handshake`], by
+    /// the end of which it *must* be followed by [`Handshake::return_stream`].
+    fn take_stream(&self, conn: &mut Connection) -> TcpStream {
+        conn.stream.take().unwrap()
+    }
+
+    /// This method only needs to be called if [`Handshake::take_stream`] had been called before; it is used to
+    /// return a (potentially modified) stream back to the applicable connection.
+    fn return_stream<T: AsyncRead + AsyncWrite + Send + Sync + 'static>(
+        &self,
+        conn: &mut Connection,
+        stream: T,
+    ) {
+        let (reader, writer) = split(stream);
+        conn.reader = Some(Box::new(reader));
+        conn.writer = Some(Box::new(writer));
     }
 }

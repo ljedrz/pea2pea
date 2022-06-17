@@ -104,7 +104,7 @@ impl<R: Reading> ReadingInternal for R {
     async fn handle_new_connection(&self, (mut conn, conn_returner): ReturnableConnection) {
         let addr = conn.addr();
         let codec = self.codec(addr);
-        let reader = conn.reader.take().unwrap();
+        let reader = conn.reader.take().expect("missing connection reader!");
         let framed = FramedRead::new(reader, codec);
         let mut framed = self.map_codec(framed, addr);
 

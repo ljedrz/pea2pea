@@ -1,3 +1,9 @@
+# 0.38.0
+
+### Added
+
+- `Handshake::{take_stream, return_stream}`
+
 # 0.37.0
 
 ### Changed

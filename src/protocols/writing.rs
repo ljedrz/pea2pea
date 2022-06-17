@@ -186,7 +186,7 @@ impl<W: Writing> WritingInternal for W {
     ) {
         let addr = conn.addr();
         let codec = self.codec(addr);
-        let writer = conn.writer.take().unwrap();
+        let writer = conn.writer.take().expect("missing connection writer!");
         let mut framed = FramedWrite::new(writer, codec);
 
         let (outbound_message_sender, mut outbound_message_receiver) =
