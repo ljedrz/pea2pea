@@ -3,7 +3,7 @@ mod common;
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use futures_util::{SinkExt, StreamExt, TryStreamExt};
 use libp2p::swarm::Swarm;
-use libp2p::{identity, ping, PeerId};
+use libp2p::{identity, ping, PeerId, Transport};
 use parking_lot::Mutex;
 use prost::Message;
 use tokio::time::sleep;
@@ -845,9 +845,19 @@ async fn main() {
     pea2pea_node.enable_writing().await;
 
     // prepare and start a ping-enabled libp2p swarm
+    // note: it's a leaner version of https://docs.rs/libp2p/latest/libp2p/fn.tokio_development_transport.html
     let swarm_keypair = identity::Keypair::generate_ed25519();
     let swarm_peer_id = PeerId::from(swarm_keypair.public());
-    let transport = libp2p::development_transport(swarm_keypair).await.unwrap();
+    let transport = libp2p::tcp::TokioTcpConfig::new().nodelay(true);
+    let noise_keys = libp2p::noise::Keypair::<libp2p::noise::X25519Spec>::new()
+        .into_authentic(&swarm_keypair)
+        .unwrap();
+    let transport = transport
+        .upgrade(libp2p::core::upgrade::Version::V1)
+        .authenticate(libp2p::noise::NoiseConfig::xx(noise_keys).into_authenticated())
+        .multiplex(libp2p::yamux::YamuxConfig::default())
+        .timeout(Duration::from_secs(20))
+        .boxed();
     let behaviour = ping::Behaviour::new(
         ping::Config::new()
             .with_keep_alive(true)
