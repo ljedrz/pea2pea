@@ -148,7 +148,7 @@ impl Reading for Player {
     type Message = Message;
     type Codec = common::TestCodec<Self::Message>;
 
-    fn codec(&self, _addr: SocketAddr) -> Self::Codec {
+    fn codec(&self, _addr: SocketAddr, _side: ConnectionSide) -> Self::Codec {
         Default::default()
     }
 
@@ -197,7 +197,7 @@ impl Writing for Player {
     type Message = Message;
     type Codec = common::TestCodec<Self::Message>;
 
-    fn codec(&self, _addr: SocketAddr) -> Self::Codec {
+    fn codec(&self, _addr: SocketAddr, _side: ConnectionSide) -> Self::Codec {
         Default::default()
     }
 }

@@ -1,6 +1,6 @@
 use crate::{
     protocols::{ProtocolHandler, ReturnableConnection},
-    Node, Pea2Pea,
+    ConnectionSide, Node, Pea2Pea,
 };
 
 #[cfg(doc)]
@@ -79,7 +79,8 @@ where
     }
 
     /// Creates a [`Decoder`] used to interpret messages from the network.
-    fn codec(&self, addr: SocketAddr) -> Self::Codec;
+    /// The `side` param indicates the connection side **from the node's perspective**.
+    fn codec(&self, addr: SocketAddr, side: ConnectionSide) -> Self::Codec;
 
     /// Processes an inbound message. Can be used to update state, send replies etc.
     async fn process_message(&self, source: SocketAddr, message: Self::Message) -> io::Result<()>;
@@ -103,7 +104,7 @@ trait ReadingInternal: Reading {
 impl<R: Reading> ReadingInternal for R {
     async fn handle_new_connection(&self, (mut conn, conn_returner): ReturnableConnection) {
         let addr = conn.addr();
-        let codec = self.codec(addr);
+        let codec = self.codec(addr, !conn.side());
         let reader = conn.reader.take().expect("missing connection reader!");
         let framed = FramedRead::new(reader, codec);
         let mut framed = self.map_codec(framed, addr);

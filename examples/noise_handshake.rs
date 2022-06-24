@@ -227,7 +227,7 @@ impl Reading for SecureNode {
     type Message = String;
     type Codec = NoiseCodec;
 
-    fn codec(&self, addr: SocketAddr) -> Self::Codec {
+    fn codec(&self, addr: SocketAddr, _side: ConnectionSide) -> Self::Codec {
         let state = self.noise_states.read().get(&addr).cloned().unwrap();
         NoiseCodec::new(state)
     }
@@ -243,7 +243,7 @@ impl Writing for SecureNode {
     type Message = String;
     type Codec = NoiseCodec;
 
-    fn codec(&self, addr: SocketAddr) -> Self::Codec {
+    fn codec(&self, addr: SocketAddr, _side: ConnectionSide) -> Self::Codec {
         let state = self.noise_states.write().remove(&addr).unwrap();
         NoiseCodec::new(state)
     }

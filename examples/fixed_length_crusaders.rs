@@ -91,7 +91,7 @@ impl Reading for JoJoNode {
     type Message = BattleCry;
     type Codec = SingleByteCodec;
 
-    fn codec(&self, _addr: SocketAddr) -> Self::Codec {
+    fn codec(&self, _addr: SocketAddr, _side: ConnectionSide) -> Self::Codec {
         SingleByteCodec
     }
 
@@ -121,7 +121,7 @@ impl Writing for JoJoNode {
     type Message = BattleCry;
     type Codec = SingleByteCodec;
 
-    fn codec(&self, _addr: SocketAddr) -> Self::Codec {
+    fn codec(&self, _addr: SocketAddr, _side: ConnectionSide) -> Self::Codec {
         SingleByteCodec
     }
 }

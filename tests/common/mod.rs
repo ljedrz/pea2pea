@@ -95,7 +95,7 @@ macro_rules! impl_messaging {
             type Message = bytes::BytesMut;
             type Codec = crate::common::TestCodec<Self::Message>;
 
-            fn codec(&self, _addr: SocketAddr) -> Self::Codec {
+            fn codec(&self, _addr: SocketAddr, _side: pea2pea::ConnectionSide) -> Self::Codec {
                 Default::default()
             }
 
@@ -110,7 +110,7 @@ macro_rules! impl_messaging {
             type Message = bytes::Bytes;
             type Codec = crate::common::TestCodec<Self::Message>;
 
-            fn codec(&self, _addr: SocketAddr) -> Self::Codec {
+            fn codec(&self, _addr: SocketAddr, _side: pea2pea::ConnectionSide) -> Self::Codec {
                 Default::default()
             }
         }

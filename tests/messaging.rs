@@ -7,7 +7,7 @@ mod common;
 use crate::common::WritingExt;
 use pea2pea::{
     protocols::{Reading, Writing},
-    Config, Node, Pea2Pea,
+    Config, ConnectionSide, Node, Pea2Pea,
 };
 use TestMessage::*;
 
@@ -55,7 +55,7 @@ impl Reading for EchoNode {
     type Message = TestMessage;
     type Codec = common::TestCodec<Self::Message>;
 
-    fn codec(&self, _addr: SocketAddr) -> Self::Codec {
+    fn codec(&self, _addr: SocketAddr, _side: ConnectionSide) -> Self::Codec {
         Default::default()
     }
 
@@ -80,7 +80,7 @@ impl Writing for EchoNode {
     type Message = Bytes;
     type Codec = common::TestCodec<Self::Message>;
 
-    fn codec(&self, _addr: SocketAddr) -> Self::Codec {
+    fn codec(&self, _addr: SocketAddr, _side: ConnectionSide) -> Self::Codec {
         Default::default()
     }
 }

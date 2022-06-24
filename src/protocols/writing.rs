@@ -1,6 +1,6 @@
 use crate::{
     protocols::{Protocol, ProtocolHandler, ReturnableConnection},
-    Connection, Pea2Pea,
+    Connection, ConnectionSide, Pea2Pea,
 };
 
 #[cfg(doc)]
@@ -82,7 +82,8 @@ where
     }
 
     /// Creates an [`Encoder`] used to write the outbound messages to the target stream.
-    fn codec(&self, addr: SocketAddr) -> Self::Codec;
+    /// The `side` param indicates the connection side **from the node's perspective**.
+    fn codec(&self, addr: SocketAddr, side: ConnectionSide) -> Self::Codec;
 
     /// Sends the provided message to the specified [`SocketAddr`]. Returns as soon as the message is queued to
     /// be sent, without waiting for the actual delivery; instead, the caller is provided with a [`oneshot::Receiver`]
@@ -185,7 +186,7 @@ impl<W: Writing> WritingInternal for W {
         conn_senders: &WritingSenders,
     ) {
         let addr = conn.addr();
-        let codec = self.codec(addr);
+        let codec = self.codec(addr, !conn.side());
         let writer = conn.writer.take().expect("missing connection writer!");
         let mut framed = FramedWrite::new(writer, codec);
 

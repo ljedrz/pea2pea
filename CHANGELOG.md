@@ -1,3 +1,9 @@
+# 0.39.0
+
+### Changed
+
+- `Reading::codec` and `Writing::codec` now also have a `side` parameter
+
 # 0.38.0
 
 ### Added

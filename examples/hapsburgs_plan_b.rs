@@ -6,7 +6,7 @@ use tracing_subscriber::filter::LevelFilter;
 
 use pea2pea::{
     protocols::{Disconnect, Handshake, Reading, Writing},
-    Config, Connection, Node, Pea2Pea,
+    Config, Connection, ConnectionSide, Node, Pea2Pea,
 };
 
 use std::{io, net::SocketAddr, time::Duration};
@@ -49,7 +49,7 @@ impl Reading for NakedNode {
     type Message = String;
     type Codec = common::TestCodec<Self::Message>;
 
-    fn codec(&self, _addr: SocketAddr) -> Self::Codec {
+    fn codec(&self, _addr: SocketAddr, _side: ConnectionSide) -> Self::Codec {
         Default::default()
     }
 
@@ -81,7 +81,7 @@ impl Writing for NakedNode {
     type Message = String;
     type Codec = common::TestCodec<Self::Message>;
 
-    fn codec(&self, _addr: SocketAddr) -> Self::Codec {
+    fn codec(&self, _addr: SocketAddr, _side: ConnectionSide) -> Self::Codec {
         Default::default()
     }
 }

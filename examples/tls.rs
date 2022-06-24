@@ -89,7 +89,7 @@ impl Reading for TlsNode {
     type Message = BytesMut;
     type Codec = BytesCodec;
 
-    fn codec(&self, _addr: SocketAddr) -> Self::Codec {
+    fn codec(&self, _addr: SocketAddr, _side: ConnectionSide) -> Self::Codec {
         Default::default()
     }
 
@@ -104,7 +104,7 @@ impl Writing for TlsNode {
     type Message = Bytes;
     type Codec = BytesCodec;
 
-    fn codec(&self, _addr: SocketAddr) -> Self::Codec {
+    fn codec(&self, _addr: SocketAddr, _side: ConnectionSide) -> Self::Codec {
         Default::default()
     }
 }

@@ -7,7 +7,7 @@ mod common;
 use crate::common::WritingExt;
 use pea2pea::{
     protocols::{Disconnect, Handshake, Reading, Writing},
-    Node, Pea2Pea,
+    ConnectionSide, Node, Pea2Pea,
 };
 
 use std::{io, net::SocketAddr, time::Instant};
@@ -47,7 +47,7 @@ impl Reading for BenchNode {
     type Message = ();
     type Codec = common::TestCodec<Self::Message>;
 
-    fn codec(&self, _addr: SocketAddr) -> Self::Codec {
+    fn codec(&self, _addr: SocketAddr, _side: ConnectionSide) -> Self::Codec {
         Default::default()
     }
 
