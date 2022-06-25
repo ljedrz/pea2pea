@@ -13,17 +13,11 @@ use tracing_subscriber::filter::LevelFilter;
 use unsigned_varint::codec::UviBytes;
 
 use pea2pea::{
-    protocols::{Handshake, Reading, Writing},
+    protocols::{Disconnect, Handshake, Reading, Writing},
     Connection, ConnectionSide, Node, Pea2Pea,
 };
 
-use std::{
-    collections::{HashMap, HashSet},
-    fmt, io,
-    net::SocketAddr,
-    sync::Arc,
-    time::Duration,
-};
+use std::{collections::HashMap, fmt, io, net::SocketAddr, sync::Arc, time::Duration};
 
 // payloads for Noise handshake messages
 // note: this struct was auto-generated using prost-build based on
@@ -44,8 +38,11 @@ const NOISE_MAX_LEN: usize = 65535;
 // the version used in yamux message headers
 const YAMUX_VERSION: u8 = 0;
 
-// the default libp2p ping interval
-const PING_INTERVAL_SECS: u64 = 5;
+// the protocol string of libp2p::ping
+const PROTOCOL_PING: &[u8] = b"\x13/multistream/1.0.0\n\x11/ipfs/ping/1.0.0\n";
+
+// the protocol string of libp2p::identify
+const PROTOCOL_ID: &[u8] = b"\x13/multistream/1.0.0\n\x0f/ipfs/id/1.0.0\n";
 
 // the libp2p-cabable node
 #[derive(Clone)]
@@ -57,7 +54,7 @@ struct Libp2pNode {
     // holds noise states between the handshake and the other protocols
     noise_states: Arc<Mutex<HashMap<SocketAddr, NoiseState>>>,
     // holds the state related to peers
-    peer_states: Arc<Mutex<HashMap<PeerId, PeerState>>>,
+    peer_states: Arc<Mutex<HashMap<SocketAddr, PeerState>>>,
 }
 
 impl Pea2Pea for Libp2pNode {
@@ -66,8 +63,38 @@ impl Pea2Pea for Libp2pNode {
     }
 }
 
-#[derive(Default)]
-struct PeerState;
+impl Libp2pNode {
+    async fn process_event(&self, event: Event, source: SocketAddr) -> io::Result<()> {
+        info!(parent: self.node().span(), "{}", event);
+
+        let reply = match event {
+            Event::NewStream(stream_id) => {
+                // reply to SYN flag with the ACK one
+                Some(YamuxMessage::data(stream_id, vec![YamuxFlag::Ack], None))
+            }
+            Event::ReceivedPing(stream_id, payload) => {
+                // reply to pings with the same payload
+                Some(YamuxMessage::data(stream_id, vec![], Some(payload)))
+            }
+            _ => {
+                // TODO
+                None
+            }
+        };
+
+        if let Some(reply_msg) = reply {
+            info!(parent: self.node().span(), "sending a {:?}", &reply_msg);
+            let _ = self.send_direct_message(source, reply_msg)?.await;
+        }
+
+        Ok(())
+    }
+}
+
+#[allow(dead_code)]
+struct PeerState {
+    id: PeerId,
+}
 
 // an object representing the state of noise
 enum NoiseState {
@@ -240,7 +267,7 @@ impl Encoder<Bytes> for NoiseCodec {
 type StreamId = u32;
 
 // a set of yamux streams belonging to a single connection
-type Streams = HashSet<StreamId>;
+type Streams = HashMap<StreamId, Bytes>;
 
 // a header describing a yamux message
 #[derive(Clone, PartialEq, Eq)]
@@ -263,11 +290,28 @@ impl fmt::Debug for YamuxHeader {
     }
 }
 
-// custom events that can trigger actions on pea2pea side
+// the event indicated by the contents of a yamux message
 #[derive(Debug, Clone, PartialEq, Eq)]
-enum YamuxEvent {
+enum Event {
     NewStream(StreamId),
     StreamTerminated(StreamId),
+    ReceivedPing(StreamId, Bytes),
+    ReceivedId(StreamId),
+    Unknown(YamuxMessage),
+}
+
+impl fmt::Display for Event {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::NewStream(id) => write!(f, "Event::NewStream({})", id),
+            Self::StreamTerminated(id) => write!(f, "Event::StreamTerminated({})", id),
+            Self::ReceivedPing(id, payload) => {
+                write!(f, "Event::ReceivedPing({}, {:?})", id, payload)
+            }
+            Self::ReceivedId(id) => write!(f, "Event::ReceivedId({})", id),
+            Self::Unknown(msg) => write!(f, "Event::Unknown({:?})", msg),
+        }
+    }
 }
 
 // a full yamux message
@@ -275,8 +319,6 @@ enum YamuxEvent {
 struct YamuxMessage {
     header: YamuxHeader,
     payload: Bytes,
-    // an optional internal event related to a yamux message
-    event: Option<YamuxEvent>,
 }
 
 impl YamuxMessage {
@@ -292,11 +334,7 @@ impl YamuxMessage {
             length: payload.len() as u32,
         };
 
-        Self {
-            header,
-            payload,
-            event: None,
-        }
+        Self { header, payload }
     }
 
     fn terminate(stream_id: u32) -> Self {
@@ -311,7 +349,6 @@ impl YamuxMessage {
         Self {
             header,
             payload: Default::default(),
-            event: None,
         }
     }
 }
@@ -477,7 +514,7 @@ enum YamuxMode {
 }
 
 impl Decoder for YamuxCodec {
-    type Item = YamuxMessage;
+    type Item = Vec<Event>;
     type Error = io::Error;
 
     fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
@@ -494,43 +531,58 @@ impl Decoder for YamuxCodec {
         let flags = decode_flags(bytes.get_u16())?;
         let stream_id = bytes.get_u32();
         let length = bytes.get_u32();
+        let payload = bytes.split_to(length as usize);
 
-        // register some custom events so they can later be acted on
-        let event = if flags == [YamuxFlag::Syn] {
+        // register the discovered events
+        let mut events = vec![];
+
+        if flags == [YamuxFlag::Syn] {
             // a new stream is being created
-            if !self.streams.insert(stream_id) {
+            if self.streams.insert(stream_id, payload.clone()).is_some() {
                 error!(parent: &self.span, "yamux stream {} had already been registered", stream_id);
                 return Err(io::ErrorKind::InvalidData.into());
             } else {
-                Some(YamuxEvent::NewStream(stream_id))
+                events.push(Event::NewStream(stream_id));
             }
         } else if flags == [YamuxFlag::Rst] {
             // a stream is being terminated
-            if !self.streams.remove(&stream_id) {
+            if self.streams.remove(&stream_id).is_none() {
                 error!(parent: &self.span, "yamux stream {} is unknown", stream_id);
                 return Err(io::ErrorKind::InvalidData.into());
             } else {
-                Some(YamuxEvent::StreamTerminated(stream_id))
+                events.push(Event::StreamTerminated(stream_id));
             }
+        }
+
+        let protocol = if let Some(p) = self.streams.get(&stream_id) {
+            p.clone()
         } else {
-            None
+            error!(parent: &self.span, "yamux stream {} is unknown", stream_id);
+            return Err(io::ErrorKind::InvalidData.into());
         };
 
-        // construct the header
-        let header = YamuxHeader {
-            version,
-            ty,
-            flags,
-            stream_id,
-            length,
-        };
+        if protocol == PROTOCOL_PING {
+            events.push(Event::ReceivedPing(stream_id, payload));
+        } else if protocol == PROTOCOL_ID {
+            events.push(Event::ReceivedId(stream_id));
+        } else {
+            events.push(Event::Unknown(YamuxMessage {
+                header: YamuxHeader {
+                    version,
+                    ty,
+                    flags,
+                    stream_id,
+                    length,
+                },
+                payload,
+            }));
+        }
 
-        // return the full message
-        Ok(Some(YamuxMessage {
-            header,
-            payload: bytes.split_to(length as usize),
-            event,
-        }))
+        // reverse the order of events to later be able to pop them
+        events.reverse();
+
+        // return the event
+        Ok(Some(events))
     }
 }
 
@@ -751,7 +803,7 @@ impl Handshake for Libp2pNode {
         // register the peer's state
         self.peer_states
             .lock()
-            .insert(peer_id, PeerState::default());
+            .insert(addr, PeerState { id: peer_id });
 
         Ok(conn)
     }
@@ -759,7 +811,7 @@ impl Handshake for Libp2pNode {
 
 #[async_trait::async_trait]
 impl Reading for Libp2pNode {
-    type Message = YamuxMessage;
+    type Message = Vec<Event>;
     type Codec = YamuxCodec;
 
     fn codec(&self, addr: SocketAddr, side: ConnectionSide) -> Self::Codec {
@@ -772,20 +824,9 @@ impl Reading for Libp2pNode {
         )
     }
 
-    async fn process_message(&self, source: SocketAddr, msg: Self::Message) -> io::Result<()> {
-        info!(parent: self.node().span(), "got a {:?}", msg);
-
-        // reply to SYN messages with ACK
-        if let Some(YamuxEvent::NewStream(stream_id)) = msg.event {
-            let ack_msg = YamuxMessage::data(stream_id, vec![YamuxFlag::Ack], None);
-            info!(parent: self.node().span(), "sending a {:?}", &ack_msg);
-            self.send_direct_message(source, ack_msg)?;
-        }
-        // reply to pings with the same payload
-        if msg.header.stream_id == 2 {
-            let ping_msg = YamuxMessage::data(msg.header.stream_id, vec![], Some(msg.payload));
-            info!(parent: self.node().span(), "sending a {:?}", &ping_msg);
-            self.send_direct_message(source, ping_msg).unwrap();
+    async fn process_message(&self, source: SocketAddr, mut events: Vec<Event>) -> io::Result<()> {
+        while let Some(event) = events.pop() {
+            self.process_event(event, source).await?;
         }
 
         Ok(())
@@ -807,23 +848,10 @@ impl Writing for Libp2pNode {
     }
 }
 
-async fn send_pings(node: Libp2pNode) {
-    // advertise the use of the ping protocol
-    let hello_ping = YamuxMessage::data(
-        1,
-        vec![YamuxFlag::Syn],
-        Some(Bytes::from(
-            &b"\x13/multistream/1.0.0\n\x11/ipfs/ping/1.0.0\n"[..],
-        )),
-    );
-    info!(parent: node.node().span(), "sending a {:?}", &hello_ping);
-    node.send_broadcast(hello_ping).unwrap();
-
-    // run for a few ping rounds
-    for _ in 0..5 {
-        // TODO: send own pings here
-
-        sleep(Duration::from_secs(PING_INTERVAL_SECS)).await;
+#[async_trait::async_trait]
+impl Disconnect for Libp2pNode {
+    async fn handle_disconnect(&self, addr: SocketAddr) {
+        self.peer_states.lock().remove(&addr);
     }
 }
 
@@ -871,16 +899,16 @@ async fn main() {
         .unwrap();
 
     /*
-        let pea2pea_addr = pea2pea_node.node.listening_addr().unwrap();
-        let pea2pea_port = pea2pea_addr.port();
+            let pea2pea_addr = pea2pea_node.node.listening_addr().unwrap();
+            let pea2pea_port = pea2pea_addr.port();
 
-        swarm
-            .dial(
-                format!("/ip4/127.0.0.1/tcp/{}", pea2pea_port)
-                    .parse::<libp2p::Multiaddr>()
-                    .unwrap(),
-            )
-            .unwrap();
+            swarm
+                .dial(
+                    format!("/ip4/127.0.0.1/tcp/{}", pea2pea_port)
+                        .parse::<libp2p::Multiaddr>()
+                        .unwrap(),
+                )
+                .unwrap();
     */
 
     tokio::spawn(async move {
@@ -897,8 +925,8 @@ async fn main() {
     let swarm_addr: SocketAddr = "127.0.0.1:30333".parse().unwrap();
     pea2pea_node.node().connect(swarm_addr).await.unwrap();
 
-    // start sending pings
-    send_pings(pea2pea_node.clone()).await;
+    // allow a few messages to be exchanged
+    sleep(Duration::from_secs(30)).await;
 
     // send a termination message
     let terminate_msg = YamuxMessage::terminate(0); // 0 is the yamux session ID
