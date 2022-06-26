@@ -4,6 +4,8 @@
 
 mod common;
 
+use common::noise::{self, NoiseCodec, NoiseState};
+
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use futures_util::{SinkExt, StreamExt, TryStreamExt};
 use libp2p::swarm::Swarm;
@@ -11,7 +13,7 @@ use libp2p::{identity, ping, PeerId, Transport};
 use parking_lot::Mutex;
 use prost::Message;
 use tokio::time::sleep;
-use tokio_util::codec::{Decoder, Encoder, Framed, FramedParts, LengthDelimitedCodec};
+use tokio_util::codec::{Decoder, Encoder, Framed, FramedParts};
 use tracing::*;
 use tracing_subscriber::filter::LevelFilter;
 use unsigned_varint::codec::UviBytes;
@@ -35,9 +37,6 @@ pub struct NoiseHandshakePayload {
     #[prost(bytes = "vec", tag = "3")]
     pub data: ::prost::alloc::vec::Vec<u8>,
 }
-
-// maximum noise message size, as specified by its protocol
-const NOISE_MAX_LEN: usize = 65535;
 
 // the version used in yamux message headers
 const YAMUX_VERSION: u8 = 0;
@@ -92,173 +91,6 @@ impl Libp2pNode {
 #[allow(dead_code)]
 struct PeerState {
     id: PeerId,
-}
-
-// an object representing the state of noise
-enum NoiseState {
-    Handshake(Box<snow::HandshakeState>),
-    PostHandshake {
-        // stateless state can be used immutably
-        state: Arc<snow::StatelessTransportState>,
-        // only used in Reading
-        rx_nonce: Option<u64>,
-        // only used in Writing
-        tx_nonce: Option<u64>,
-    },
-}
-
-// only post-handshake state is cloned (in the Reading impl)
-impl Clone for NoiseState {
-    fn clone(&self) -> Self {
-        match self {
-            Self::Handshake(..) => panic!("unsupported"),
-            Self::PostHandshake {
-                state,
-                rx_nonce,
-                tx_nonce,
-            } => Self::PostHandshake {
-                state: Arc::clone(state),
-                rx_nonce: *rx_nonce,
-                tx_nonce: *tx_nonce,
-            },
-        }
-    }
-}
-
-impl NoiseState {
-    // obtain the handshake noise state
-    fn handshake(&mut self) -> Option<&mut snow::HandshakeState> {
-        if let Self::Handshake(state) = self {
-            Some(state)
-        } else {
-            None
-        }
-    }
-
-    // transform the noise state into post-handshake
-    fn into_post_handshake(self) -> Self {
-        if let Self::Handshake(state) = self {
-            let state = state.into_stateless_transport_mode().unwrap();
-            Self::PostHandshake {
-                state: Arc::new(state),
-                rx_nonce: Some(0),
-                tx_nonce: Some(0),
-            }
-        } else {
-            panic!();
-        }
-    }
-
-    // obtain the post-handshake noise state
-    fn post_handshake(&self) -> &Arc<snow::StatelessTransportState> {
-        if let Self::PostHandshake { state, .. } = self {
-            state
-        } else {
-            panic!();
-        }
-    }
-
-    // mutably borrow the receive nonce
-    fn rx_nonce(&mut self) -> &mut u64 {
-        if let Self::PostHandshake {
-            rx_nonce: Some(ref mut val),
-            ..
-        } = self
-        {
-            val
-        } else {
-            panic!();
-        }
-    }
-
-    // mutably borrow the send nonce
-    fn tx_nonce(&mut self) -> &mut u64 {
-        if let Self::PostHandshake {
-            tx_nonce: Some(ref mut val),
-            ..
-        } = self
-        {
-            val
-        } else {
-            panic!();
-        }
-    }
-}
-
-// a codec used to (en/de)crypt messages using noise
-struct NoiseCodec {
-    codec: LengthDelimitedCodec,
-    noise: NoiseState,
-    buffer: Box<[u8]>,
-}
-
-impl NoiseCodec {
-    fn new(noise: NoiseState) -> Self {
-        NoiseCodec {
-            codec: LengthDelimitedCodec::builder()
-                .length_field_length(2)
-                .new_codec(),
-            noise,
-            buffer: vec![0u8; NOISE_MAX_LEN].into(),
-        }
-    }
-}
-
-impl Decoder for NoiseCodec {
-    type Item = Bytes;
-    type Error = io::Error;
-
-    fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
-        // obtain the whole message first, using the length-delimited codec
-        let bytes = if let Some(bytes) = self.codec.decode(src)? {
-            bytes
-        } else {
-            return Ok(None);
-        };
-
-        // decrypt it in the handshake or post-handshake mode
-        let msg_len = if let Some(noise) = self.noise.handshake() {
-            noise
-                .read_message(&bytes, &mut self.buffer)
-                .map_err(|_| io::ErrorKind::InvalidData)?
-        } else {
-            let rx_nonce = *self.noise.rx_nonce();
-            let len = self
-                .noise
-                .post_handshake()
-                .read_message(rx_nonce, &bytes, &mut self.buffer)
-                .map_err(|_| io::ErrorKind::InvalidData)?;
-            *self.noise.rx_nonce() += 1;
-            len
-        };
-        let msg = self.buffer[..msg_len].to_vec().into();
-
-        Ok(Some(msg))
-    }
-}
-
-impl Encoder<Bytes> for NoiseCodec {
-    type Error = io::Error;
-
-    fn encode(&mut self, msg: Bytes, dst: &mut BytesMut) -> Result<(), Self::Error> {
-        // encrypt the message in the handshake or post-handshake mode
-        let msg_len = if let Some(noise) = self.noise.handshake() {
-            noise.write_message(&msg, &mut self.buffer).unwrap()
-        } else {
-            let tx_nonce = *self.noise.tx_nonce();
-            let len = self
-                .noise
-                .post_handshake()
-                .write_message(tx_nonce, &msg, &mut self.buffer)
-                .map_err(|_| io::ErrorKind::InvalidData)?;
-            *self.noise.tx_nonce() += 1;
-            len
-        };
-        let msg: Bytes = self.buffer[..msg_len].to_vec().into();
-
-        // encode it using the length-delimited codec
-        self.codec.encode(msg, dst)
-    }
 }
 
 // the numeric ID of a yamux stream
@@ -617,19 +449,12 @@ impl Handshake for Libp2pNode {
     const TIMEOUT_MS: u64 = 5_000;
 
     async fn perform_handshake(&self, mut conn: Connection) -> io::Result<Connection> {
-        // the noise handshake settings
-        const HANDSHAKE_PATTERN: &str = "Noise_XX_25519_ChaChaPoly_SHA256";
-
-        // create the noise objects
-        let builder = snow::Builder::new(HANDSHAKE_PATTERN.parse().unwrap());
-        let noise_keypair = builder.generate_keypair().unwrap();
-        let noise_builder = builder.local_private_key(&noise_keypair.private);
-
         let node_conn_side = !conn.side();
         let addr = conn.addr();
         let stream = self.borrow_stream(&mut conn);
 
-        let (framed, peer_id) = match node_conn_side {
+        // exchange libp2p protocol params
+        match node_conn_side {
             ConnectionSide::Initiator => {
                 let mut negotiation_codec = Framed::new(stream, UviBytes::default());
 
@@ -655,69 +480,7 @@ impl Handshake for Libp2pNode {
                     .try_next()
                     .await?
                     .ok_or(io::ErrorKind::InvalidData)?;
-                debug!(parent: self.node().span(), "received protocol params (1/2)");
-
-                // build the Noise codec
-                let stream = negotiation_codec.into_inner();
-                let noise = Box::new(noise_builder.build_initiator().unwrap());
-                let mut framed = Framed::new(stream, NoiseCodec::new(NoiseState::Handshake(noise)));
-
-                // -> e
-                framed.send("".into()).await?;
-                debug!(parent: self.node().span(), "sent e (XX handshake 1/3)");
-
-                // <- e, ee, s, es + the payload
-                let handshake_payload_raw =
-                    framed.try_next().await?.ok_or(io::ErrorKind::InvalidData)?;
-                debug!(parent: self.node().span(), "received e, ee, s, es (XX handshake 2/3)");
-                let handshake_payload = NoiseHandshakePayload::decode(&handshake_payload_raw[..])?;
-                let peek_key =
-                    identity::PublicKey::from_protobuf_encoding(&handshake_payload.identity_key)
-                        .map_err(|_| io::ErrorKind::InvalidData)?;
-                let peer_id = PeerId::from(peek_key);
-                info!(parent: self.node().span(), "the peer ID of {} is {}", addr, &peer_id);
-
-                // -> s, se + the payload
-                let pb = NoiseHandshakePayload {
-                    identity_key: self.keypair.public().to_protobuf_encoding(),
-                    identity_sig: self
-                        .keypair
-                        .sign(&[&b"noise-libp2p-static-key:"[..], &noise_keypair.public].concat())
-                        .unwrap(),
-                    data: vec![],
-                };
-                let mut msg = Vec::with_capacity(pb.encoded_len());
-                pb.encode(&mut msg).unwrap();
-                framed.send(msg.into()).await?;
-                debug!(parent: self.node().span(), "sent s, se (XX handshake 3/3)");
-
-                // upgrade noise state to post-handshake
-                let FramedParts { codec, .. } = framed.into_parts();
-                let NoiseCodec { noise, .. } = codec;
-                let noise = noise.into_post_handshake();
-
-                // reconstruct the Framed with the post-handshake noise state
-                let mut framed = Framed::new(self.borrow_stream(&mut conn), NoiseCodec::new(noise));
-
-                // -> protocol info (1/2)
-                framed
-                    .send(Bytes::from(&b"\x13/multistream/1.0.0\n"[..]))
-                    .await?;
-                debug!(parent: self.node().span(), "sent protocol params (1/2)");
-
-                // <- protocol info (1/2)
-                let _protocol_info = framed.try_next().await?.ok_or(io::ErrorKind::InvalidData)?;
-                debug!(parent: self.node().span(), "received protocol params (1/2)");
-
-                // -> protocol info (2/2)
-                framed.send(Bytes::from(&b"\r/yamux/1.0.0\n"[..])).await?;
-                debug!(parent: self.node().span(), "sent protocol params (2/2)");
-
-                // <- protocol info (2/2)
-                let _protocol_info = framed.try_next().await?.ok_or(io::ErrorKind::InvalidData)?;
                 debug!(parent: self.node().span(), "received protocol params (2/2)");
-
-                (framed, peer_id)
             }
             ConnectionSide::Responder => {
                 let mut negotiation_codec = Framed::new(stream, UviBytes::default());
@@ -739,48 +502,74 @@ impl Handshake for Libp2pNode {
                 // -> protocol info (2/2)
                 negotiation_codec.send(Bytes::from("/noise\n")).await?;
                 debug!(parent: self.node().span(), "sent protocol params (2/2)");
+            }
+        };
 
-                // build the Noise codec
-                let stream = negotiation_codec.into_inner();
-                let noise = Box::new(noise_builder.build_responder().unwrap());
-                let mut framed = Framed::new(stream, NoiseCodec::new(NoiseState::Handshake(noise)));
+        // the noise handshake pattern
+        const HANDSHAKE_PATTERN: &str = "Noise_XX_25519_ChaChaPoly_SHA256";
 
-                // <- e
-                framed.try_next().await?.ok_or(io::ErrorKind::InvalidData)?;
-                debug!(parent: self.node().span(), "received e (XX handshake 1/3)");
+        // create the noise objects
+        let noise_builder = snow::Builder::new(HANDSHAKE_PATTERN.parse().unwrap());
+        let noise_keypair = noise_builder.generate_keypair().unwrap();
+        let noise_builder = noise_builder.local_private_key(&noise_keypair.private);
 
-                // -> e, ee, s, es + the payload
-                let pb = NoiseHandshakePayload {
-                    identity_key: self.keypair.public().to_protobuf_encoding(),
-                    identity_sig: self
-                        .keypair
-                        .sign(&[&b"noise-libp2p-static-key:"[..], &noise_keypair.public].concat())
-                        .unwrap(),
-                    data: vec![],
-                };
-                let mut msg = Vec::with_capacity(pb.encoded_len());
-                pb.encode(&mut msg).unwrap();
-                framed.send(msg.into()).await?;
-                debug!(parent: self.node().span(), "sent e, ee, s, es (XX handshake 2/3)");
+        // prepare the expected handshake payload
+        let noise_payload = {
+            let protobuf_payload = NoiseHandshakePayload {
+                identity_key: self.keypair.public().to_protobuf_encoding(),
+                identity_sig: self
+                    .keypair
+                    .sign(&[&b"noise-libp2p-static-key:"[..], &noise_keypair.public].concat())
+                    .unwrap(),
+                data: vec![],
+            };
+            let mut bytes = Vec::with_capacity(protobuf_payload.encoded_len());
+            protobuf_payload.encode(&mut bytes).unwrap();
+            bytes
+        };
 
-                // <- s, se + the payload
-                let handshake_payload_raw =
-                    framed.try_next().await?.ok_or(io::ErrorKind::InvalidData)?;
-                debug!(parent: self.node().span(), "received s, se, psk (XX handshake 3/3)");
-                let handshake_payload = NoiseHandshakePayload::decode(&handshake_payload_raw[..])?;
-                let peek_key =
-                    identity::PublicKey::from_protobuf_encoding(&handshake_payload.identity_key)
-                        .map_err(|_| io::ErrorKind::InvalidData)?;
-                let peer_id = PeerId::from(peek_key);
-                info!(parent: self.node().span(), "the peer ID of {} is {}", addr, &peer_id);
+        // perform the noise handshake
+        let (noise_state, secure_payload) =
+            noise::handshake_xx(self, &mut conn, noise_builder, noise_payload.into()).await?;
 
-                // upgrade noise state to post-handshake
-                let FramedParts { codec, .. } = framed.into_parts();
-                let NoiseCodec { noise, .. } = codec;
-                let noise = noise.into_post_handshake();
+        // obtain the peer ID from the handshake payload
+        let secure_payload = NoiseHandshakePayload::decode(&secure_payload[..])?;
+        let peer_key = identity::PublicKey::from_protobuf_encoding(&secure_payload.identity_key)
+            .map_err(|_| io::ErrorKind::InvalidData)?;
+        let peer_id = PeerId::from(peer_key);
+        info!(parent: self.node().span(), "the peer ID of {} is {}", addr, &peer_id);
 
+        // exchange further protocol params
+        let framed = match node_conn_side {
+            ConnectionSide::Initiator => {
                 // reconstruct the Framed with the post-handshake noise state
-                let mut framed = Framed::new(self.borrow_stream(&mut conn), NoiseCodec::new(noise));
+                let mut framed =
+                    Framed::new(self.borrow_stream(&mut conn), NoiseCodec::new(noise_state));
+
+                // -> protocol info (1/2)
+                framed
+                    .send(Bytes::from(&b"\x13/multistream/1.0.0\n"[..]))
+                    .await?;
+                debug!(parent: self.node().span(), "sent protocol params (1/2)");
+
+                // <- protocol info (1/2)
+                let _protocol_info = framed.try_next().await?.ok_or(io::ErrorKind::InvalidData)?;
+                debug!(parent: self.node().span(), "received protocol params (1/2)");
+
+                // -> protocol info (2/2)
+                framed.send(Bytes::from(&b"\r/yamux/1.0.0\n"[..])).await?;
+                debug!(parent: self.node().span(), "sent protocol params (2/2)");
+
+                // <- protocol info (2/2)
+                let _protocol_info = framed.try_next().await?.ok_or(io::ErrorKind::InvalidData)?;
+                debug!(parent: self.node().span(), "received protocol params (2/2)");
+
+                framed
+            }
+            ConnectionSide::Responder => {
+                // reconstruct the Framed with the post-handshake noise state
+                let mut framed =
+                    Framed::new(self.borrow_stream(&mut conn), NoiseCodec::new(noise_state));
 
                 // <- protocol info
                 let protocol_info = framed.try_next().await?.ok_or(io::ErrorKind::InvalidData)?;
@@ -790,7 +579,7 @@ impl Handshake for Libp2pNode {
                 framed.send(protocol_info).await?;
                 debug!(parent: self.node().span(), "echoed the protocol params back to the sender");
 
-                (framed, peer_id)
+                framed
             }
         };
 

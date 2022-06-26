@@ -1,5 +1,7 @@
 #![allow(dead_code)]
 
+pub mod noise;
+
 use std::{io, marker::PhantomData};
 
 use bytes::{Bytes, BytesMut};
