@@ -130,13 +130,13 @@ impl Handshake for Libp2pNode {
     async fn perform_handshake(&self, mut conn: Connection) -> io::Result<Connection> {
         let node_conn_side = !conn.side();
         let addr = conn.addr();
-        let stream = self.borrow_stream(&mut conn);
+
+        // TODO: try to use it post-handshake too when parsing protocol info
+        let mut negotiation_codec = Framed::new(self.borrow_stream(&mut conn), UviBytes::default());
 
         // exchange libp2p protocol params
         match node_conn_side {
             ConnectionSide::Initiator => {
-                let mut negotiation_codec = Framed::new(stream, UviBytes::default());
-
                 // -> protocol info (1/2)
                 negotiation_codec
                     .send(Bytes::from("/multistream/1.0.0\n"))
@@ -162,8 +162,6 @@ impl Handshake for Libp2pNode {
                 debug!(parent: self.node().span(), "received protocol params (2/2)");
             }
             ConnectionSide::Responder => {
-                let mut negotiation_codec = Framed::new(stream, UviBytes::default());
-
                 // <- protocol info (1/2)
                 let _protocol_info = negotiation_codec.try_next().await?;
                 debug!(parent: self.node().span(), "received protocol params (1/2)");
@@ -184,11 +182,8 @@ impl Handshake for Libp2pNode {
             }
         };
 
-        // the noise handshake pattern
-        const HANDSHAKE_PATTERN: &str = "Noise_XX_25519_ChaChaPoly_SHA256";
-
         // create the noise objects
-        let noise_builder = snow::Builder::new(HANDSHAKE_PATTERN.parse().unwrap());
+        let noise_builder = snow::Builder::new("Noise_XX_25519_ChaChaPoly_SHA256".parse().unwrap());
         let noise_keypair = noise_builder.generate_keypair().unwrap();
         let noise_builder = noise_builder.local_private_key(&noise_keypair.private);
 
@@ -218,15 +213,15 @@ impl Handshake for Libp2pNode {
         let peer_id = PeerId::from(peer_key);
         info!(parent: self.node().span(), "the peer ID of {} is {}", addr, &peer_id);
 
-        // exchange further protocol params
-        let framed = match node_conn_side {
-            ConnectionSide::Initiator => {
-                // reconstruct the Framed with the post-handshake noise state
-                let mut framed = Framed::new(
-                    self.borrow_stream(&mut conn),
-                    noise::Codec::new(noise_state),
-                );
+        // reconstruct the Framed with the post-handshake noise state
+        let mut framed = Framed::new(
+            self.borrow_stream(&mut conn),
+            noise::Codec::new(noise_state),
+        );
 
+        // exchange further protocol params
+        match node_conn_side {
+            ConnectionSide::Initiator => {
                 // -> protocol info (1/2)
                 framed
                     .send(Bytes::from(&b"\x13/multistream/1.0.0\n"[..]))
@@ -244,16 +239,8 @@ impl Handshake for Libp2pNode {
                 // <- protocol info (2/2)
                 let _protocol_info = framed.try_next().await?.ok_or(io::ErrorKind::InvalidData)?;
                 debug!(parent: self.node().span(), "received protocol params (2/2)");
-
-                framed
             }
             ConnectionSide::Responder => {
-                // reconstruct the Framed with the post-handshake noise state
-                let mut framed = Framed::new(
-                    self.borrow_stream(&mut conn),
-                    noise::Codec::new(noise_state),
-                );
-
                 // <- protocol info
                 let protocol_info = framed.try_next().await?.ok_or(io::ErrorKind::InvalidData)?;
                 debug!(parent: self.node().span(), "received protocol params");
@@ -261,10 +248,8 @@ impl Handshake for Libp2pNode {
                 // echo the protocol params back to the sender
                 framed.send(protocol_info).await?;
                 debug!(parent: self.node().span(), "echoed the protocol params back to the sender");
-
-                framed
             }
-        };
+        }
 
         // deconstruct the framed (again) to preserve the noise state
         let FramedParts { codec, .. } = framed.into_parts();

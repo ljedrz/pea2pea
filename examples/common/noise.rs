@@ -5,7 +5,7 @@ use futures_util::{sink::SinkExt, TryStreamExt};
 use tokio_util::codec::{Decoder, Encoder, Framed, FramedParts, LengthDelimitedCodec};
 use tracing::*;
 
-use pea2pea::{protocols::Handshake, Connection, ConnectionSide, Pea2Pea};
+use pea2pea::{protocols::Handshake, Connection, ConnectionSide};
 
 use std::{io, sync::Arc};
 
@@ -68,7 +68,7 @@ impl State {
     }
 
     // obtain the post-handshake noise state
-    pub fn post_handshake(&self) -> &Arc<snow::StatelessTransportState> {
+    pub fn post_handshake(&self) -> &snow::StatelessTransportState {
         if let Self::PostHandshake { state, .. } = self {
             state
         } else {
@@ -180,7 +180,7 @@ impl Encoder<Bytes> for Codec {
 }
 
 // perform the noise XX handshake
-pub async fn handshake_xx<'a, T: Pea2Pea + Handshake>(
+pub async fn handshake_xx<'a, T: Handshake>(
     node: &T,
     conn: &mut Connection,
     noise_builder: snow::Builder<'a>,
