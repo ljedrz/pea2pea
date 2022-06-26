@@ -1,3 +1,5 @@
+//! A `snow`-powered implementation of the noise XX handshake for `pea2pea`.
+
 use bytes::{Bytes, BytesMut};
 use futures_util::{sink::SinkExt, TryStreamExt};
 use tokio_util::codec::{Decoder, Encoder, Framed, FramedParts, LengthDelimitedCodec};
