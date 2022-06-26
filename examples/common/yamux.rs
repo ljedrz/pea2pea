@@ -1,15 +1,10 @@
 use bytes::{Buf, BufMut, Bytes, BytesMut};
-use futures_util::StreamExt;
-use prost::Message;
 use tokio_util::codec::{Decoder, Encoder};
 use tracing::*;
 
-use pea2pea::{
-    protocols::{Reading, Writing},
-    ConnectionSide,
-};
+use pea2pea::ConnectionSide;
 
-use std::{collections::HashMap, fmt, io};
+use std::{fmt, io};
 
 // the version used in yamux message headers
 pub const VERSION: u8 = 0;
@@ -17,17 +12,14 @@ pub const VERSION: u8 = 0;
 // the numeric ID of a yamux stream
 pub type StreamId = u32;
 
-// a set of yamux streams belonging to a single connection
-pub type Streams = HashMap<StreamId, Bytes>;
-
 // a header describing a yamux message
 #[derive(Clone, PartialEq, Eq)]
 pub struct Header {
     version: u8,
-    ty: Ty,
-    flags: Vec<Flag>,
-    stream_id: StreamId,
-    length: u32,
+    pub ty: Ty,
+    pub flags: Vec<Flag>,
+    pub stream_id: StreamId,
+    pub length: u32,
 }
 
 impl fmt::Debug for Header {
@@ -81,21 +73,17 @@ impl Frame {
 }
 
 // a codec used to (en/de)crypt noise messages and interpret them as yamux ones
-pub struct Codec<T: Decoder + Encoder<Bytes>> {
+pub struct Codec<T> {
     // the underlying noise codec
     codec: T,
     // client or server
     #[allow(dead_code)]
     mode: Side,
-    // the yamux streams applicable to a connection
-    // note: they are within the codec (as opposed to global node state)
-    // for performance reasons
-    streams: Streams,
     // the node's tracing span
     span: Span,
 }
 
-impl<T: Decoder + Encoder<Bytes>> Codec<T> {
+impl<T> Codec<T> {
     pub fn new(codec: T, conn_side: ConnectionSide, span: Span) -> Self {
         let mode = if conn_side == ConnectionSide::Initiator {
             Side::Client
@@ -103,19 +91,14 @@ impl<T: Decoder + Encoder<Bytes>> Codec<T> {
             Side::Server
         };
 
-        Self {
-            codec,
-            mode,
-            streams: Default::default(),
-            span,
-        }
+        Self { codec, mode, span }
     }
 }
 
 // indicates the type of a yamux message
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
-enum Ty {
+pub enum Ty {
     // used to transmit data
     Data = 0x0,
     // used to update the sender's receive window size
@@ -240,8 +223,8 @@ enum Side {
     Server,
 }
 
-impl<T: Decoder + Encoder<Bytes>> Decoder for Codec<T> {
-    type Item = Vec<Event>;
+impl<T: Decoder<Item = Bytes, Error = io::Error>> Decoder for Codec<T> {
+    type Item = Frame;
     type Error = io::Error;
 
     fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
@@ -260,58 +243,20 @@ impl<T: Decoder + Encoder<Bytes>> Decoder for Codec<T> {
         let length = bytes.get_u32();
         let payload = bytes.split_to(length as usize);
 
-        // register the discovered events
-        let mut events = vec![];
-
-        if flags == [Flag::Syn] {
-            // a new stream is being created
-            if self.streams.insert(stream_id, payload.clone()).is_some() {
-                error!(parent: &self.span, "yamux stream {} had already been registered", stream_id);
-                return Err(io::ErrorKind::InvalidData.into());
-            } else {
-                events.push(Event::NewStream(stream_id));
-            }
-        } else if flags == [Flag::Rst] {
-            // a stream is being terminated
-            if self.streams.remove(&stream_id).is_none() {
-                error!(parent: &self.span, "yamux stream {} is unknown", stream_id);
-                return Err(io::ErrorKind::InvalidData.into());
-            } else {
-                events.push(Event::StreamTerminated(stream_id));
-            }
-        }
-
-        let protocol = if let Some(p) = self.streams.get(&stream_id) {
-            p.clone()
-        } else {
-            error!(parent: &self.span, "yamux stream {} is unknown", stream_id);
-            return Err(io::ErrorKind::InvalidData.into());
-        };
-
-        if protocol == PROTOCOL_PING {
-            events.push(Event::ReceivedPing(stream_id, payload));
-        } else {
-            events.push(Event::Unknown(Frame {
-                header: Header {
-                    version,
-                    ty,
-                    flags,
-                    stream_id,
-                    length,
-                },
-                payload,
-            }));
-        }
-
-        // reverse the order of events to later be able to pop them
-        events.reverse();
-
-        // return the event
-        Ok(Some(events))
+        Ok(Some(Frame {
+            header: Header {
+                version,
+                ty,
+                flags,
+                stream_id,
+                length,
+            },
+            payload,
+        }))
     }
 }
 
-impl<T: Decoder + Encoder<Bytes>> Encoder<Frame> for Codec<T> {
+impl<T: Encoder<Bytes, Error = io::Error>> Encoder<Frame> for Codec<T> {
     type Error = io::Error;
 
     fn encode(&mut self, msg: Frame, dst: &mut BytesMut) -> Result<(), Self::Error> {
