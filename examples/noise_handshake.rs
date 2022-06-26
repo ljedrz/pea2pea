@@ -1,3 +1,5 @@
+//! A noise XXpsk3 handshake example.
+
 mod common;
 
 use bytes::{Buf, BytesMut};

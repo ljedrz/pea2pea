@@ -1,3 +1,5 @@
+//! An homage to the Naked Gun trilogy, showing the `Disconnect` protocol.
+
 mod common;
 
 use tokio::time::sleep;

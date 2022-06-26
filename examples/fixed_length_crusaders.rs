@@ -1,3 +1,5 @@
+//! A JoJo-inspired example with fixed-length messages.
+
 mod common;
 
 use bytes::{Buf, BufMut, BytesMut};

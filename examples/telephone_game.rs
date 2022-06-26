@@ -1,3 +1,5 @@
+//! A group of nodes playing the telephone (AKA Chinese whispers) game.
+
 mod common;
 
 use tokio::time::sleep;

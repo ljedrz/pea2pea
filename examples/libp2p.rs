@@ -1,3 +1,7 @@
+//! An minimal node capable of communicating with libp2p nodes.
+//!
+//! The supported libp2p protocol is ping.
+
 mod common;
 
 use bytes::{Buf, BufMut, Bytes, BytesMut};

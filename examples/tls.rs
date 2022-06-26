@@ -1,3 +1,5 @@
+//! Two nodes establishing a TLS connection.
+
 mod common;
 
 use bytes::{Bytes, BytesMut};

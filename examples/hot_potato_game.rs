@@ -1,3 +1,5 @@
+//! A group of nodes playing the hot potato game.
+
 mod common;
 
 use bytes::BytesMut;
