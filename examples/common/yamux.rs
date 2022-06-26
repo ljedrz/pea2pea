@@ -1,3 +1,5 @@
+//! A simple implementation of the Yamux multiplexer.
+
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use tokio_util::codec::{Decoder, Encoder};
 use tracing::*;
@@ -6,13 +8,13 @@ use pea2pea::ConnectionSide;
 
 use std::{fmt, io};
 
-// the version used in yamux message headers
+// the version used in Yamux message headers
 pub const VERSION: u8 = 0;
 
-// the numeric ID of a yamux stream
+// the numeric ID of a Yamux stream
 pub type StreamId = u32;
 
-// a header describing a yamux message
+// a header describing a Yamux message
 #[derive(Clone, PartialEq, Eq)]
 pub struct Header {
     version: u8,
@@ -33,7 +35,7 @@ impl fmt::Debug for Header {
     }
 }
 
-// a full yamux message
+// a full Yamux message
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Frame {
     pub header: Header,
@@ -41,7 +43,7 @@ pub struct Frame {
 }
 
 impl Frame {
-    // creates a new data message for the given yamux stream ID
+    // creates a new data message for the given Yamux stream ID
     pub fn data(stream_id: u32, flags: Vec<Flag>, data: Option<Bytes>) -> Self {
         let payload = data.unwrap_or_default();
 
@@ -72,9 +74,9 @@ impl Frame {
     }
 }
 
-// a codec used to (en/de)crypt noise messages and interpret them as yamux ones
+// a composite codec with Yamux as the most high-level (en/de)coding layer
 pub struct Codec<T> {
-    // the underlying noise codec
+    // the underlying lower-level codec
     codec: T,
     // client or server
     #[allow(dead_code)]
@@ -95,7 +97,7 @@ impl<T> Codec<T> {
     }
 }
 
-// indicates the type of a yamux message
+// indicates the type of a Yamux message
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum Ty {
@@ -144,7 +146,7 @@ pub enum Termination {
     InternalError = 2,
 }
 
-// additional information related to the yamux message type
+// additional information related to the Yamux message type
 #[derive(Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum Flag {
@@ -189,7 +191,7 @@ impl TryFrom<u8> for Flag {
     }
 }
 
-// interpret the flags encoded in a yamux message
+// interpret the flags encoded in a Yamux message
 fn decode_flags(flags: u16) -> io::Result<Vec<Flag>> {
     let mut ret = Vec::new();
 
@@ -203,7 +205,7 @@ fn decode_flags(flags: u16) -> io::Result<Vec<Flag>> {
     Ok(ret)
 }
 
-// encode the given flags in a yamux message
+// encode the given flags in a Yamux message
 fn encode_flags(flags: &[Flag]) -> u16 {
     let mut ret = 0u16;
 
@@ -214,7 +216,7 @@ fn encode_flags(flags: &[Flag]) -> u16 {
     ret
 }
 
-// the side of a yamux connection
+// the side of a Yamux connection
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Side {
     // client side should use odd stream IDs
@@ -228,14 +230,14 @@ impl<T: Decoder<Item = Bytes, Error = io::Error>> Decoder for Codec<T> {
     type Error = io::Error;
 
     fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
-        // decrypt a noise message
+        // decode the raw message
         let mut bytes = if let Some(bytes) = self.codec.decode(src)? {
             bytes
         } else {
             return Ok(None);
         };
 
-        // decode the yamux message
+        // decode the Yamux message
         let version = bytes.get_u8();
         let ty = Ty::try_from(bytes.get_u8())?;
         let flags = decode_flags(bytes.get_u16())?;
@@ -260,7 +262,7 @@ impl<T: Encoder<Bytes, Error = io::Error>> Encoder<Frame> for Codec<T> {
     type Error = io::Error;
 
     fn encode(&mut self, msg: Frame, dst: &mut BytesMut) -> Result<(), Self::Error> {
-        // prepare the serialized yamux message
+        // prepare the serialized Yamux message
         let mut bytes = BytesMut::new();
 
         // version
@@ -277,7 +279,7 @@ impl<T: Encoder<Bytes, Error = io::Error>> Encoder<Frame> for Codec<T> {
         // data
         bytes.put(msg.payload);
 
-        // encrypt the message with the underlying noise codec
+        // encode the message with the underlying codec
         self.codec.encode(bytes.freeze(), dst)
     }
 }

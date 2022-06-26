@@ -316,7 +316,7 @@ impl Reading for Libp2pNode {
                 .peer_states
                 .write()
                 .get_mut(&source)
-                .ok_or_else(|| io::ErrorKind::BrokenPipe)?
+                .ok_or(io::ErrorKind::BrokenPipe)?
                 .streams
                 .insert(*stream_id, payload.clone())
                 .is_some()
@@ -332,9 +332,9 @@ impl Reading for Libp2pNode {
                 .peer_states
                 .write()
                 .get_mut(&source)
-                .ok_or_else(|| io::ErrorKind::BrokenPipe)?
+                .ok_or(io::ErrorKind::BrokenPipe)?
                 .streams
-                .remove(&stream_id)
+                .remove(stream_id)
                 .is_none()
             {
                 error!(parent: self.node().span(), "yamux stream {} is unknown", stream_id);
@@ -348,9 +348,9 @@ impl Reading for Libp2pNode {
             .peer_states
             .read()
             .get(&source)
-            .ok_or_else(|| io::ErrorKind::BrokenPipe)?
+            .ok_or(io::ErrorKind::BrokenPipe)?
             .streams
-            .get(&stream_id)
+            .get(stream_id)
         {
             p.clone()
         } else {
