@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 pub mod noise;
+pub mod yamux;
 
 use std::{io, marker::PhantomData};
 

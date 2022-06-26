@@ -4,9 +4,12 @@
 
 mod common;
 
-use common::noise::{self, NoiseCodec, NoiseState};
+use common::{
+    noise::{self, NoiseCodec, NoiseState},
+    yamux,
+};
 
-use bytes::{Buf, BufMut, Bytes, BytesMut};
+use bytes::Bytes;
 use futures_util::{SinkExt, StreamExt, TryStreamExt};
 use libp2p::swarm::Swarm;
 use libp2p::{identity, ping, PeerId, Transport};
@@ -38,9 +41,6 @@ pub struct NoiseHandshakePayload {
     pub data: ::prost::alloc::vec::Vec<u8>,
 }
 
-// the version used in yamux message headers
-const YAMUX_VERSION: u8 = 0;
-
 // the protocol string of libp2p::ping
 const PROTOCOL_PING: &[u8] = b"\x13/multistream/1.0.0\n\x11/ipfs/ping/1.0.0\n";
 
@@ -70,11 +70,11 @@ impl Libp2pNode {
         let reply = match event {
             Event::NewStream(stream_id) => {
                 // reply to SYN flag with the ACK one
-                Some(YamuxMessage::data(stream_id, vec![YamuxFlag::Ack], None))
+                Some(yamux::Frame::data(stream_id, vec![yamux::Flag::Ack], None))
             }
             Event::ReceivedPing(stream_id, payload) => {
                 // reply to pings with the same payload
-                Some(YamuxMessage::data(stream_id, vec![], Some(payload)))
+                Some(yamux::Frame::data(stream_id, vec![], Some(payload)))
             }
             _ => None,
         };
@@ -93,40 +93,13 @@ struct PeerState {
     id: PeerId,
 }
 
-// the numeric ID of a yamux stream
-type StreamId = u32;
-
-// a set of yamux streams belonging to a single connection
-type Streams = HashMap<StreamId, Bytes>;
-
-// a header describing a yamux message
-#[derive(Clone, PartialEq, Eq)]
-struct YamuxHeader {
-    version: u8,
-    ty: YamuxType,
-    flags: Vec<YamuxFlag>,
-    stream_id: StreamId,
-    length: u32,
-}
-
-impl fmt::Debug for YamuxHeader {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // note: the hardcoded version is hidden for brevity
-        write!(
-            f,
-            "{{ StreamID: {}, Type: {}, Flags: {:?}, Length: {} }}",
-            self.stream_id, self.ty, self.flags, self.length
-        )
-    }
-}
-
 // the event indicated by the contents of a yamux message
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Event {
-    NewStream(StreamId),
-    StreamTerminated(StreamId),
-    ReceivedPing(StreamId, Bytes),
-    Unknown(YamuxMessage),
+    NewStream(yamux::StreamId),
+    StreamTerminated(yamux::StreamId),
+    ReceivedPing(yamux::StreamId, Bytes),
+    Unknown(yamux::Frame),
 }
 
 impl fmt::Display for Event {
@@ -145,302 +118,6 @@ impl fmt::Display for Event {
             }
             Self::Unknown(msg) => write!(f, "received an unknown message: {:?}", msg),
         }
-    }
-}
-
-// a full yamux message
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct YamuxMessage {
-    header: YamuxHeader,
-    payload: Bytes,
-}
-
-impl YamuxMessage {
-    // creates a new data message for the given yamux stream ID
-    fn data(stream_id: u32, flags: Vec<YamuxFlag>, data: Option<Bytes>) -> Self {
-        let payload = data.unwrap_or_default();
-
-        let header = YamuxHeader {
-            version: YAMUX_VERSION,
-            ty: YamuxType::Data,
-            flags,
-            stream_id,
-            length: payload.len() as u32,
-        };
-
-        Self { header, payload }
-    }
-
-    fn terminate(stream_id: u32) -> Self {
-        let header = YamuxHeader {
-            version: YAMUX_VERSION,
-            ty: YamuxType::GoAway,
-            flags: vec![],
-            stream_id,
-            length: YamuxTermination::Normal as u32,
-        };
-
-        Self {
-            header,
-            payload: Default::default(),
-        }
-    }
-}
-
-// a codec used to (en/de)crypt noise messages and interpret them as yamux ones
-struct YamuxCodec {
-    // the underlying noise codec
-    codec: NoiseCodec,
-    // client or server
-    #[allow(dead_code)]
-    mode: YamuxMode,
-    // the yamux streams applicable to a connection
-    // note: they are within the codec (as opposed to global node state)
-    // for performance reasons
-    streams: Streams,
-    // the node's tracing span
-    span: Span,
-}
-
-impl YamuxCodec {
-    fn new(codec: NoiseCodec, side: ConnectionSide, span: Span) -> Self {
-        let mode = if side == ConnectionSide::Initiator {
-            YamuxMode::Client
-        } else {
-            YamuxMode::Server
-        };
-
-        Self {
-            codec,
-            mode,
-            streams: Default::default(),
-            span,
-        }
-    }
-}
-
-// indicates the type of a yamux message
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[repr(u8)]
-enum YamuxType {
-    // used to transmit data
-    Data = 0x0,
-    // used to update the sender's receive window size
-    WindowUpdate = 0x1,
-    // used to measure RTT
-    Ping = 0x2,
-    // used to close a session
-    GoAway = 0x3,
-}
-
-impl fmt::Display for YamuxType {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Data => write!(f, "Data"),
-            Self::WindowUpdate => write!(f, "Window Update"),
-            Self::Ping => write!(f, "Ping"),
-            Self::GoAway => write!(f, "Go Away"),
-        }
-    }
-}
-
-impl TryFrom<u8> for YamuxType {
-    type Error = io::Error;
-
-    fn try_from(ty: u8) -> io::Result<Self> {
-        match ty {
-            0x0 => Ok(Self::Data),
-            0x1 => Ok(Self::WindowUpdate),
-            0x2 => Ok(Self::Ping),
-            0x3 => Ok(Self::GoAway),
-            _ => Err(io::ErrorKind::InvalidData.into()),
-        }
-    }
-}
-
-// indicates the termination of a session
-#[repr(u32)]
-enum YamuxTermination {
-    Normal = 0,
-    #[allow(dead_code)]
-    ProtocolError = 1,
-    #[allow(dead_code)]
-    InternalError = 2,
-}
-
-// additional information related to the yamux message type
-#[derive(Clone, Copy, PartialEq, Eq)]
-#[repr(u8)]
-enum YamuxFlag {
-    // signals the start of a new stream
-    Syn = 0x1,
-    // acknowledges the start of a new stream
-    Ack = 0x2,
-    // performs a half-close of a stream
-    Fin = 0x4,
-    // resets a stream immediately
-    Rst = 0x8,
-}
-
-impl fmt::Display for YamuxFlag {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Syn => write!(f, "SYN"),
-            Self::Ack => write!(f, "ACK"),
-            Self::Fin => write!(f, "FIN"),
-            Self::Rst => write!(f, "RST"),
-        }
-    }
-}
-
-impl fmt::Debug for YamuxFlag {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self)
-    }
-}
-
-impl TryFrom<u8> for YamuxFlag {
-    type Error = io::Error;
-
-    fn try_from(flag: u8) -> io::Result<Self> {
-        match flag {
-            0x1 => Ok(Self::Syn),
-            0x2 => Ok(Self::Ack),
-            0x4 => Ok(Self::Fin),
-            0x8 => Ok(Self::Rst),
-            _ => Err(io::ErrorKind::InvalidData.into()),
-        }
-    }
-}
-
-// interpret the flags encoded in a yamux message
-fn decode_flags(flags: u16) -> io::Result<Vec<YamuxFlag>> {
-    let mut ret = Vec::new();
-
-    for n in 0..15 {
-        let bit = 1 << n;
-        if flags & bit != 0 {
-            ret.push(YamuxFlag::try_from(bit as u8)?);
-        }
-    }
-
-    Ok(ret)
-}
-
-// encode the given flags in a yamux message
-fn encode_flags(flags: &[YamuxFlag]) -> u16 {
-    let mut ret = 0u16;
-
-    for flag in flags {
-        ret |= *flag as u16;
-    }
-
-    ret
-}
-
-// the side of a yamux connection
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum YamuxMode {
-    // client side should use odd stream IDs
-    Client,
-    // server side should use even stream IDs
-    Server,
-}
-
-impl Decoder for YamuxCodec {
-    type Item = Vec<Event>;
-    type Error = io::Error;
-
-    fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
-        // decrypt a noise message
-        let mut bytes = if let Some(bytes) = self.codec.decode(src)? {
-            bytes
-        } else {
-            return Ok(None);
-        };
-
-        // decode the yamux message
-        let version = bytes.get_u8();
-        let ty = YamuxType::try_from(bytes.get_u8())?;
-        let flags = decode_flags(bytes.get_u16())?;
-        let stream_id = bytes.get_u32();
-        let length = bytes.get_u32();
-        let payload = bytes.split_to(length as usize);
-
-        // register the discovered events
-        let mut events = vec![];
-
-        if flags == [YamuxFlag::Syn] {
-            // a new stream is being created
-            if self.streams.insert(stream_id, payload.clone()).is_some() {
-                error!(parent: &self.span, "yamux stream {} had already been registered", stream_id);
-                return Err(io::ErrorKind::InvalidData.into());
-            } else {
-                events.push(Event::NewStream(stream_id));
-            }
-        } else if flags == [YamuxFlag::Rst] {
-            // a stream is being terminated
-            if self.streams.remove(&stream_id).is_none() {
-                error!(parent: &self.span, "yamux stream {} is unknown", stream_id);
-                return Err(io::ErrorKind::InvalidData.into());
-            } else {
-                events.push(Event::StreamTerminated(stream_id));
-            }
-        }
-
-        let protocol = if let Some(p) = self.streams.get(&stream_id) {
-            p.clone()
-        } else {
-            error!(parent: &self.span, "yamux stream {} is unknown", stream_id);
-            return Err(io::ErrorKind::InvalidData.into());
-        };
-
-        if protocol == PROTOCOL_PING {
-            events.push(Event::ReceivedPing(stream_id, payload));
-        } else {
-            events.push(Event::Unknown(YamuxMessage {
-                header: YamuxHeader {
-                    version,
-                    ty,
-                    flags,
-                    stream_id,
-                    length,
-                },
-                payload,
-            }));
-        }
-
-        // reverse the order of events to later be able to pop them
-        events.reverse();
-
-        // return the event
-        Ok(Some(events))
-    }
-}
-
-impl Encoder<YamuxMessage> for YamuxCodec {
-    type Error = io::Error;
-
-    fn encode(&mut self, msg: YamuxMessage, dst: &mut BytesMut) -> Result<(), Self::Error> {
-        // prepare the serialized yamux message
-        let mut bytes = BytesMut::new();
-
-        // version
-        bytes.put_u8(msg.header.version);
-        // type
-        bytes.put_u8(msg.header.ty as u8);
-        // flags
-        bytes.put_u16(encode_flags(&msg.header.flags));
-        // stream ID
-        bytes.put_u32(msg.header.stream_id);
-        // length
-        bytes.put_u32(msg.payload.len() as u32);
-
-        // data
-        bytes.put(msg.payload);
-
-        // encrypt the message with the underlying noise codec
-        self.codec.encode(bytes.freeze(), dst)
     }
 }
 
@@ -601,7 +278,7 @@ impl Handshake for Libp2pNode {
 #[async_trait::async_trait]
 impl Reading for Libp2pNode {
     type Message = Vec<Event>;
-    type Codec = YamuxCodec;
+    type Codec = yamux::Codec<Bytes>;
 
     fn codec(&self, addr: SocketAddr, side: ConnectionSide) -> Self::Codec {
         let noise_state = self.noise_states.lock().get(&addr).cloned().unwrap();
@@ -623,8 +300,8 @@ impl Reading for Libp2pNode {
 }
 
 impl Writing for Libp2pNode {
-    type Message = YamuxMessage;
-    type Codec = YamuxCodec;
+    type Message = yamux::Frame;
+    type Codec = yamux::Codec<Bytes>;
 
     fn codec(&self, addr: SocketAddr, side: ConnectionSide) -> Self::Codec {
         let noise_state = self.noise_states.lock().remove(&addr).unwrap();
@@ -705,7 +382,7 @@ async fn main() {
     sleep(Duration::from_secs(30)).await;
 
     // send a termination message
-    let terminate_msg = YamuxMessage::terminate(0); // 0 is the yamux session ID
+    let terminate_msg = yamux::Frame::terminate(0); // 0 is the yamux session ID
     info!(parent: pea2pea_node.node().span(), "sending a {:?}", &terminate_msg);
     pea2pea_node
         .send_direct_message(swarm_addr, terminate_msg)
