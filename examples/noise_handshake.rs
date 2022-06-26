@@ -2,7 +2,7 @@
 
 mod common;
 
-use common::noise::{self, NoiseCodec, NoiseState};
+use common::noise;
 
 use bytes::Bytes;
 use parking_lot::RwLock;
@@ -20,7 +20,7 @@ use std::{collections::HashMap, io, net::SocketAddr, str, sync::Arc, time::Durat
 #[derive(Clone)]
 struct SecureNode {
     node: Node,
-    noise_states: Arc<RwLock<HashMap<SocketAddr, NoiseState>>>,
+    noise_states: Arc<RwLock<HashMap<SocketAddr, noise::State>>>,
 }
 
 impl Pea2Pea for SecureNode {
@@ -71,11 +71,11 @@ impl Handshake for SecureNode {
 #[async_trait::async_trait]
 impl Reading for SecureNode {
     type Message = Bytes;
-    type Codec = NoiseCodec;
+    type Codec = noise::Codec;
 
     fn codec(&self, addr: SocketAddr, _side: ConnectionSide) -> Self::Codec {
         let state = self.noise_states.read().get(&addr).cloned().unwrap();
-        NoiseCodec::new(state)
+        noise::Codec::new(state)
     }
 
     async fn process_message(&self, source: SocketAddr, message: Self::Message) -> io::Result<()> {
@@ -87,11 +87,11 @@ impl Reading for SecureNode {
 
 impl Writing for SecureNode {
     type Message = Bytes;
-    type Codec = NoiseCodec;
+    type Codec = noise::Codec;
 
     fn codec(&self, addr: SocketAddr, _side: ConnectionSide) -> Self::Codec {
         let state = self.noise_states.write().remove(&addr).unwrap();
-        NoiseCodec::new(state)
+        noise::Codec::new(state)
     }
 }
 

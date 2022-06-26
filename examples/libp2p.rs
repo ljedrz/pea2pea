@@ -4,10 +4,7 @@
 
 mod common;
 
-use common::{
-    noise::{self, NoiseCodec, NoiseState},
-    yamux,
-};
+use common::{noise, yamux};
 
 use bytes::Bytes;
 use futures_util::{SinkExt, StreamExt, TryStreamExt};
@@ -52,7 +49,7 @@ struct Libp2pNode {
     // the libp2p keypair
     keypair: identity::Keypair,
     // holds noise states between the handshake and the other protocols
-    noise_states: Arc<Mutex<HashMap<SocketAddr, NoiseState>>>,
+    noise_states: Arc<Mutex<HashMap<SocketAddr, noise::State>>>,
     // holds the state related to peers
     peer_states: Arc<Mutex<HashMap<SocketAddr, PeerState>>>,
 }
@@ -220,8 +217,10 @@ impl Handshake for Libp2pNode {
         let framed = match node_conn_side {
             ConnectionSide::Initiator => {
                 // reconstruct the Framed with the post-handshake noise state
-                let mut framed =
-                    Framed::new(self.borrow_stream(&mut conn), NoiseCodec::new(noise_state));
+                let mut framed = Framed::new(
+                    self.borrow_stream(&mut conn),
+                    noise::Codec::new(noise_state),
+                );
 
                 // -> protocol info (1/2)
                 framed
@@ -245,8 +244,10 @@ impl Handshake for Libp2pNode {
             }
             ConnectionSide::Responder => {
                 // reconstruct the Framed with the post-handshake noise state
-                let mut framed =
-                    Framed::new(self.borrow_stream(&mut conn), NoiseCodec::new(noise_state));
+                let mut framed = Framed::new(
+                    self.borrow_stream(&mut conn),
+                    noise::Codec::new(noise_state),
+                );
 
                 // <- protocol info
                 let protocol_info = framed.try_next().await?.ok_or(io::ErrorKind::InvalidData)?;
@@ -262,7 +263,7 @@ impl Handshake for Libp2pNode {
 
         // deconstruct the framed (again) to preserve the noise state
         let FramedParts { codec, .. } = framed.into_parts();
-        let NoiseCodec { noise, .. } = codec;
+        let noise::Codec { noise, .. } = codec;
 
         // save the noise state
         self.noise_states.lock().insert(conn.addr(), noise);
@@ -284,7 +285,7 @@ impl Reading for Libp2pNode {
         let noise_state = self.noise_states.lock().get(&addr).cloned().unwrap();
 
         Self::Codec::new(
-            NoiseCodec::new(noise_state),
+            noise::Codec::new(noise_state),
             side,
             self.node().span().clone(),
         )
@@ -307,7 +308,7 @@ impl Writing for Libp2pNode {
         let noise_state = self.noise_states.lock().remove(&addr).unwrap();
 
         Self::Codec::new(
-            NoiseCodec::new(noise_state),
+            noise::Codec::new(noise_state),
             side,
             self.node().span().clone(),
         )

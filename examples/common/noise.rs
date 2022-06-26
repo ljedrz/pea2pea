@@ -11,7 +11,7 @@ use std::{io, sync::Arc};
 pub const NOISE_MAX_LEN: usize = 65535;
 
 // an object representing the state of noise
-pub enum NoiseState {
+pub enum State {
     Handshake(Box<snow::HandshakeState>),
     PostHandshake {
         // stateless state can be used immutably
@@ -24,7 +24,7 @@ pub enum NoiseState {
 }
 
 // only post-handshake state is cloned (in the Reading impl)
-impl Clone for NoiseState {
+impl Clone for State {
     fn clone(&self) -> Self {
         match self {
             Self::Handshake(..) => panic!("unsupported"),
@@ -41,7 +41,7 @@ impl Clone for NoiseState {
     }
 }
 
-impl NoiseState {
+impl State {
     // obtain the handshake noise state
     pub fn handshake(&mut self) -> Option<&mut snow::HandshakeState> {
         if let Self::Handshake(state) = self {
@@ -102,15 +102,15 @@ impl NoiseState {
 }
 
 // a codec used to (en/de)crypt messages using noise
-pub struct NoiseCodec {
+pub struct Codec {
     codec: LengthDelimitedCodec,
-    pub noise: NoiseState,
+    pub noise: State,
     buffer: Box<[u8]>,
 }
 
-impl NoiseCodec {
-    pub fn new(noise: NoiseState) -> Self {
-        NoiseCodec {
+impl Codec {
+    pub fn new(noise: State) -> Self {
+        Codec {
             codec: LengthDelimitedCodec::builder()
                 .length_field_length(2)
                 .new_codec(),
@@ -120,7 +120,7 @@ impl NoiseCodec {
     }
 }
 
-impl Decoder for NoiseCodec {
+impl Decoder for Codec {
     type Item = Bytes;
     type Error = io::Error;
 
@@ -153,7 +153,7 @@ impl Decoder for NoiseCodec {
     }
 }
 
-impl Encoder<Bytes> for NoiseCodec {
+impl Encoder<Bytes> for Codec {
     type Error = io::Error;
 
     fn encode(&mut self, msg: Bytes, dst: &mut BytesMut) -> Result<(), Self::Error> {
@@ -183,14 +183,14 @@ pub async fn handshake_xx<'a, T: Pea2Pea + Handshake>(
     conn: &mut Connection,
     noise_builder: snow::Builder<'a>,
     payload: Bytes,
-) -> io::Result<(NoiseState, Bytes)> {
+) -> io::Result<(State, Bytes)> {
     let node_conn_side = !conn.side();
     let stream = node.borrow_stream(conn);
 
     let (noise_state, secure_payload) = match node_conn_side {
         ConnectionSide::Initiator => {
             let noise = Box::new(noise_builder.build_initiator().unwrap());
-            let mut framed = Framed::new(stream, NoiseCodec::new(NoiseState::Handshake(noise)));
+            let mut framed = Framed::new(stream, Codec::new(State::Handshake(noise)));
 
             // -> e
             framed.send("".into()).await?;
@@ -205,13 +205,13 @@ pub async fn handshake_xx<'a, T: Pea2Pea + Handshake>(
             debug!(parent: node.node().span(), "sent s, se, psk (XX handshake part 3/3)");
 
             let FramedParts { codec, .. } = framed.into_parts();
-            let NoiseCodec { noise, .. } = codec;
+            let Codec { noise, .. } = codec;
 
             (noise.into_post_handshake(), secure_payload)
         }
         ConnectionSide::Responder => {
             let noise = Box::new(noise_builder.build_responder().unwrap());
-            let mut framed = Framed::new(stream, NoiseCodec::new(NoiseState::Handshake(noise)));
+            let mut framed = Framed::new(stream, Codec::new(State::Handshake(noise)));
 
             // <- e
             framed.try_next().await?;
@@ -226,7 +226,7 @@ pub async fn handshake_xx<'a, T: Pea2Pea + Handshake>(
             debug!(parent: node.node().span(), "received s, se, psk (XX handshake part 3/3)");
 
             let FramedParts { codec, .. } = framed.into_parts();
-            let NoiseCodec { noise, .. } = codec;
+            let Codec { noise, .. } = codec;
 
             (noise.into_post_handshake(), secure_payload)
         }
