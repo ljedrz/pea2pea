@@ -41,9 +41,6 @@ const YAMUX_VERSION: u8 = 0;
 // the protocol string of libp2p::ping
 const PROTOCOL_PING: &[u8] = b"\x13/multistream/1.0.0\n\x11/ipfs/ping/1.0.0\n";
 
-// the protocol string of libp2p::identify
-const PROTOCOL_ID: &[u8] = b"\x13/multistream/1.0.0\n\x0f/ipfs/id/1.0.0\n";
-
 // the libp2p-cabable node
 #[derive(Clone)]
 struct Libp2pNode {
@@ -76,10 +73,7 @@ impl Libp2pNode {
                 // reply to pings with the same payload
                 Some(YamuxMessage::data(stream_id, vec![], Some(payload)))
             }
-            _ => {
-                // TODO
-                None
-            }
+            _ => None,
         };
 
         if let Some(reply_msg) = reply {
@@ -296,20 +290,24 @@ enum Event {
     NewStream(StreamId),
     StreamTerminated(StreamId),
     ReceivedPing(StreamId, Bytes),
-    ReceivedId(StreamId),
     Unknown(YamuxMessage),
 }
 
 impl fmt::Display for Event {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::NewStream(id) => write!(f, "Event::NewStream({})", id),
-            Self::StreamTerminated(id) => write!(f, "Event::StreamTerminated({})", id),
-            Self::ReceivedPing(id, payload) => {
-                write!(f, "Event::ReceivedPing({}, {:?})", id, payload)
+            Self::NewStream(id) => write!(f, "registered a new inbound yamux stream (id = {})", id),
+            Self::StreamTerminated(id) => {
+                write!(f, "received a termination message for yamux stream {}", id)
             }
-            Self::ReceivedId(id) => write!(f, "Event::ReceivedId({})", id),
-            Self::Unknown(msg) => write!(f, "Event::Unknown({:?})", msg),
+            Self::ReceivedPing(id, payload) => {
+                write!(
+                    f,
+                    "received a ping (stream = {}, payload = {:?})",
+                    id, payload
+                )
+            }
+            Self::Unknown(msg) => write!(f, "received an unknown message: {:?}", msg),
         }
     }
 }
@@ -358,7 +356,7 @@ struct YamuxCodec {
     // the underlying noise codec
     codec: NoiseCodec,
     // client or server
-    #[allow(dead_code)] // TODO: use it in message creation
+    #[allow(dead_code)]
     mode: YamuxMode,
     // the yamux streams applicable to a connection
     // note: they are within the codec (as opposed to global node state)
@@ -563,8 +561,6 @@ impl Decoder for YamuxCodec {
 
         if protocol == PROTOCOL_PING {
             events.push(Event::ReceivedPing(stream_id, payload));
-        } else if protocol == PROTOCOL_ID {
-            events.push(Event::ReceivedId(stream_id));
         } else {
             events.push(Event::Unknown(YamuxMessage {
                 header: YamuxHeader {
@@ -897,19 +893,6 @@ async fn main() {
     swarm
         .listen_on("/ip4/127.0.0.1/tcp/30333".parse().unwrap())
         .unwrap();
-
-    /*
-            let pea2pea_addr = pea2pea_node.node.listening_addr().unwrap();
-            let pea2pea_port = pea2pea_addr.port();
-
-            swarm
-                .dial(
-                    format!("/ip4/127.0.0.1/tcp/{}", pea2pea_port)
-                        .parse::<libp2p::Multiaddr>()
-                        .unwrap(),
-                )
-                .unwrap();
-    */
 
     tokio::spawn(async move {
         loop {
