@@ -4,7 +4,7 @@ mod common;
 
 use common::noise;
 
-use bytes::Bytes;
+use bytes::{Bytes, BytesMut};
 use parking_lot::RwLock;
 use tokio::time::sleep;
 use tracing::*;
@@ -68,7 +68,7 @@ impl Handshake for SecureNode {
 
 #[async_trait::async_trait]
 impl Reading for SecureNode {
-    type Message = Bytes;
+    type Message = BytesMut;
     type Codec = noise::Codec;
 
     fn codec(&self, addr: SocketAddr, _side: ConnectionSide) -> Self::Codec {

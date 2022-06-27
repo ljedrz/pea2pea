@@ -6,14 +6,14 @@ mod common;
 
 use common::{noise, yamux};
 
-use bytes::Bytes;
+use bytes::{Bytes, BytesMut};
 use futures_util::{SinkExt, StreamExt, TryStreamExt};
 use libp2p::swarm::Swarm;
 use libp2p::{identity, ping, PeerId, Transport};
 use parking_lot::{Mutex, RwLock};
 use prost::Message;
 use tokio::time::sleep;
-use tokio_util::codec::{Framed, FramedParts};
+use tokio_util::codec::{Decoder, Encoder, Framed, FramedParts};
 use tracing::*;
 use tracing_subscriber::filter::LevelFilter;
 use unsigned_varint::codec::UviBytes;
@@ -23,7 +23,7 @@ use pea2pea::{
     Connection, ConnectionSide, Node, Pea2Pea,
 };
 
-use std::{collections::HashMap, fmt, io, net::SocketAddr, sync::Arc, time::Duration};
+use std::{cmp, collections::HashMap, fmt, io, net::SocketAddr, sync::Arc, time::Duration};
 
 // the protocol string of libp2p::ping
 const PROTOCOL_PING: &[u8] = b"\x13/multistream/1.0.0\n\x11/ipfs/ping/1.0.0\n";
@@ -107,6 +107,53 @@ impl fmt::Display for Event {
             }
             Self::Unknown(msg) => write!(f, "received an unknown message: {:?}", msg),
         }
+    }
+}
+
+// a codec capable of (de/en)coding libp2p messages with noise and yamux protocols
+struct Codec {
+    noise: noise::Codec,
+    yamux: yamux::Codec,
+}
+
+impl Codec {
+    fn new(noise: noise::Codec, yamux: yamux::Codec) -> Self {
+        Self { noise, yamux }
+    }
+}
+
+impl Decoder for Codec {
+    type Item = yamux::Frame;
+    type Error = io::Error;
+
+    fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
+        // decrypt raw bytes using noise
+        let mut bytes = if let Some(bytes) = self.noise.decode(src)? {
+            bytes
+        } else {
+            return Ok(None);
+        };
+
+        // decode the Yamux frame
+        self.yamux.decode(&mut bytes)
+    }
+}
+
+impl Encoder<yamux::Frame> for Codec {
+    type Error = io::Error;
+
+    fn encode(&mut self, msg: yamux::Frame, dst: &mut BytesMut) -> Result<(), Self::Error> {
+        // encode the Yamux frame
+        self.yamux.encode(msg, dst)?;
+        let mut bytes = dst.split().freeze();
+
+        // split the frame into noise-compatible chunks
+        while !bytes.is_empty() {
+            let chunk = bytes.split_to(cmp::min(bytes.len(), noise::MAX_MESSAGE_LEN));
+            self.noise.encode(chunk, dst)?;
+        }
+
+        Ok(())
     }
 }
 
@@ -273,15 +320,14 @@ impl Handshake for Libp2pNode {
 #[async_trait::async_trait]
 impl Reading for Libp2pNode {
     type Message = yamux::Frame;
-    type Codec = yamux::Codec<noise::Codec>;
+    type Codec = Codec;
 
     fn codec(&self, addr: SocketAddr, side: ConnectionSide) -> Self::Codec {
         let noise_state = self.noise_states.lock().get(&addr).cloned().unwrap();
 
         Self::Codec::new(
             noise::Codec::new(noise_state),
-            side,
-            self.node().span().clone(),
+            yamux::Codec::new(side, self.node().span().clone()),
         )
     }
 
@@ -365,15 +411,14 @@ impl Reading for Libp2pNode {
 
 impl Writing for Libp2pNode {
     type Message = yamux::Frame;
-    type Codec = yamux::Codec<noise::Codec>;
+    type Codec = Codec;
 
     fn codec(&self, addr: SocketAddr, side: ConnectionSide) -> Self::Codec {
         let noise_state = self.noise_states.lock().remove(&addr).unwrap();
 
         Self::Codec::new(
             noise::Codec::new(noise_state),
-            side,
-            self.node().span().clone(),
+            yamux::Codec::new(side, self.node().span().clone()),
         )
     }
 }

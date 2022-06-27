@@ -10,7 +10,7 @@ use pea2pea::{protocols::Handshake, Connection, ConnectionSide};
 use std::{io, sync::Arc};
 
 // maximum noise message size, as specified by its protocol
-pub const NOISE_MAX_LEN: usize = 65535;
+pub const MAX_MESSAGE_LEN: usize = 65535;
 
 // an object representing the state of noise
 pub enum State {
@@ -117,7 +117,7 @@ impl Codec {
                 .length_field_length(2)
                 .new_codec(),
             noise,
-            buffer: vec![0u8; NOISE_MAX_LEN].into(),
+            buffer: vec![0u8; MAX_MESSAGE_LEN].into(),
         }
     }
 }

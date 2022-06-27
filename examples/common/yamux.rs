@@ -1,7 +1,7 @@
 //! A simple implementation of the Yamux multiplexer.
 
 use bytes::{Buf, BufMut, Bytes, BytesMut};
-use tokio_util::codec::{Decoder, Encoder};
+use tokio_util::codec::{Decoder, Encoder, LengthDelimitedCodec};
 use tracing::*;
 
 use pea2pea::ConnectionSide;
@@ -74,10 +74,9 @@ impl Frame {
     }
 }
 
-// a composite codec with Yamux as the most high-level (en/de)coding layer
-pub struct Codec<T> {
-    // the underlying lower-level codec
-    codec: T,
+// a codec used to (de/en)code Yamux frames
+pub struct Codec {
+    codec: LengthDelimitedCodec,
     // client or server
     #[allow(dead_code)]
     mode: Side,
@@ -85,15 +84,24 @@ pub struct Codec<T> {
     span: Span,
 }
 
-impl<T> Codec<T> {
-    pub fn new(codec: T, conn_side: ConnectionSide, span: Span) -> Self {
+impl Codec {
+    pub fn new(conn_side: ConnectionSide, span: Span) -> Self {
         let mode = if conn_side == ConnectionSide::Initiator {
             Side::Client
         } else {
             Side::Server
         };
 
-        Self { codec, mode, span }
+        Self {
+            codec: LengthDelimitedCodec::builder()
+                .length_field_offset(8)
+                .length_field_length(4)
+                .length_adjustment(12)
+                .num_skip(0)
+                .new_codec(),
+            mode,
+            span,
+        }
     }
 }
 
@@ -225,19 +233,19 @@ enum Side {
     Server,
 }
 
-impl<T: Decoder<Item = BytesMut, Error = io::Error>> Decoder for Codec<T> {
+impl Decoder for Codec {
     type Item = Frame;
     type Error = io::Error;
 
     fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
-        // decode the raw message
+        // decode frames based on the length in the Yamux header
         let mut bytes = if let Some(bytes) = self.codec.decode(src)? {
             bytes
         } else {
             return Ok(None);
         };
 
-        // decode the Yamux message
+        // parse the full Yamux message
         let version = bytes.get_u8();
         let ty = Ty::try_from(bytes.get_u8())?;
         let flags = decode_flags(bytes.get_u16())?;
@@ -258,28 +266,26 @@ impl<T: Decoder<Item = BytesMut, Error = io::Error>> Decoder for Codec<T> {
     }
 }
 
-impl<T: Encoder<Bytes, Error = io::Error>> Encoder<Frame> for Codec<T> {
+impl Encoder<Frame> for Codec {
     type Error = io::Error;
 
     fn encode(&mut self, msg: Frame, dst: &mut BytesMut) -> Result<(), Self::Error> {
-        // prepare the serialized Yamux message
-        let mut bytes = BytesMut::new();
+        // note: no need to use the underlying length-delimited codec for encoding
 
         // version
-        bytes.put_u8(msg.header.version);
+        dst.put_u8(msg.header.version);
         // type
-        bytes.put_u8(msg.header.ty as u8);
+        dst.put_u8(msg.header.ty as u8);
         // flags
-        bytes.put_u16(encode_flags(&msg.header.flags));
+        dst.put_u16(encode_flags(&msg.header.flags));
         // stream ID
-        bytes.put_u32(msg.header.stream_id);
+        dst.put_u32(msg.header.stream_id);
         // length
-        bytes.put_u32(msg.payload.len() as u32);
+        dst.put_u32(msg.payload.len() as u32);
 
         // data
-        bytes.put(msg.payload);
+        dst.put(msg.payload);
 
-        // encode the message with the underlying codec
-        self.codec.encode(bytes.freeze(), dst)
+        Ok(())
     }
 }
