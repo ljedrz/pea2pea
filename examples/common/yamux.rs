@@ -225,7 +225,7 @@ enum Side {
     Server,
 }
 
-impl<T: Decoder<Item = Bytes, Error = io::Error>> Decoder for Codec<T> {
+impl<T: Decoder<Item = BytesMut, Error = io::Error>> Decoder for Codec<T> {
     type Item = Frame;
     type Error = io::Error;
 
@@ -243,7 +243,7 @@ impl<T: Decoder<Item = Bytes, Error = io::Error>> Decoder for Codec<T> {
         let flags = decode_flags(bytes.get_u16())?;
         let stream_id = bytes.get_u32();
         let length = bytes.get_u32();
-        let payload = bytes.split_to(length as usize);
+        let payload = bytes.split_to(length as usize).freeze();
 
         Ok(Some(Frame {
             header: Header {

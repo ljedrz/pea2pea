@@ -246,7 +246,7 @@ impl Handshake for Libp2pNode {
                 debug!(parent: self.node().span(), "received protocol params");
 
                 // echo the protocol params back to the sender
-                framed.send(protocol_info).await?;
+                framed.send(protocol_info.freeze()).await?;
                 debug!(parent: self.node().span(), "echoed the protocol params back to the sender");
             }
         }

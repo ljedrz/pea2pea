@@ -123,7 +123,7 @@ impl Codec {
 }
 
 impl Decoder for Codec {
-    type Item = Bytes;
+    type Item = BytesMut;
     type Error = io::Error;
 
     fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
@@ -149,7 +149,7 @@ impl Decoder for Codec {
             *self.noise.rx_nonce() += 1;
             len
         };
-        let msg = self.buffer[..msg_len].to_vec().into();
+        let msg = self.buffer[..msg_len].into();
 
         Ok(Some(msg))
     }
@@ -236,5 +236,5 @@ pub async fn handshake_xx<'a, T: Handshake>(
 
     debug!(parent: node.node().span(), "XX handshake complete");
 
-    Ok((noise_state, secure_payload))
+    Ok((noise_state, secure_payload.freeze()))
 }
