@@ -464,13 +464,11 @@ async fn main() {
         .upgrade(libp2p::core::upgrade::Version::V1)
         .authenticate(libp2p::noise::NoiseConfig::xx(noise_keys).into_authenticated())
         .multiplex(libp2p::yamux::YamuxConfig::default())
-        .timeout(Duration::from_secs(20))
         .boxed();
     let behaviour = ping::Behaviour::new(
         ping::Config::new()
             .with_keep_alive(true)
-            .with_interval(Duration::from_secs(5))
-            .with_timeout(Duration::from_secs(10)),
+            .with_interval(Duration::from_secs(5)),
     );
     let mut swarm = Swarm::new(transport, behaviour, swarm_peer_id);
 
@@ -481,7 +479,7 @@ async fn main() {
     tokio::spawn(async move {
         loop {
             let event = swarm.select_next_some().await;
-            debug!("libp2p: {:?}", event);
+            debug!("   libp2p node: {:?}", event);
         }
     });
 
@@ -494,20 +492,4 @@ async fn main() {
 
     // allow a few messages to be exchanged
     sleep(Duration::from_secs(30)).await;
-
-    // send a termination message
-    let terminate_msg = yamux::Frame::terminate(0); // 0 is the yamux session ID
-    info!(parent: pea2pea_node.node().span(), "sending a {:?}", &terminate_msg);
-    pea2pea_node
-        .send_direct_message(swarm_addr, terminate_msg)
-        .unwrap()
-        .await
-        .unwrap()
-        .unwrap();
-
-    // disconnect on pea2pea side
-    pea2pea_node.node().disconnect(swarm_addr).await;
-
-    // allow the final messages to be exchanged
-    sleep(Duration::from_millis(100)).await;
 }
