@@ -12,19 +12,26 @@ use std::{io, sync::Arc};
 // maximum noise message size, as specified by its protocol
 pub const MAX_MESSAGE_LEN: usize = 65535;
 
+// noise state during the handshake
+pub struct HandshakeState(Box<snow::HandshakeState>);
+
+// noise state after the handshake
+#[derive(Clone)]
+pub struct PostHandshakeState {
+    // stateless state can be used immutably
+    state: Arc<snow::StatelessTransportState>,
+    // any leftover bytes from the handshake
+    rx_carryover: Option<BytesMut>,
+    // only used in Reading
+    rx_nonce: u64,
+    // only used in Writing
+    tx_nonce: u64,
+}
+
 // an object representing the state of noise
 pub enum State {
-    Handshake(Box<snow::HandshakeState>),
-    PostHandshake {
-        // stateless state can be used immutably
-        state: Arc<snow::StatelessTransportState>,
-        // TODO
-        rx_carryover: BytesMut,
-        // only used in Reading
-        rx_nonce: Option<u64>,
-        // only used in Writing
-        tx_nonce: Option<u64>,
-    },
+    Handshake(HandshakeState),
+    PostHandshake(PostHandshakeState),
 }
 
 // only post-handshake state is cloned (in the Reading impl)
@@ -32,26 +39,16 @@ impl Clone for State {
     fn clone(&self) -> Self {
         match self {
             Self::Handshake(..) => panic!("unsupported"),
-            Self::PostHandshake {
-                state,
-                rx_nonce,
-                tx_nonce,
-                rx_carryover,
-            } => Self::PostHandshake {
-                state: Arc::clone(state),
-                rx_carryover: rx_carryover.clone(),
-                rx_nonce: *rx_nonce,
-                tx_nonce: *tx_nonce,
-            },
+            Self::PostHandshake(ph) => Self::PostHandshake(ph.clone()),
         }
     }
 }
 
 impl State {
     // obtain the handshake noise state
-    pub fn handshake(&mut self) -> Option<&mut snow::HandshakeState> {
+    fn handshake(&mut self) -> Option<&mut snow::HandshakeState> {
         if let Self::Handshake(state) = self {
-            Some(state)
+            Some(&mut state.0)
         } else {
             None
         }
@@ -60,67 +57,29 @@ impl State {
     // transform the noise state into post-handshake
     pub fn into_post_handshake(self) -> Self {
         if let Self::Handshake(state) = self {
-            let state = state.into_stateless_transport_mode().unwrap();
-            Self::PostHandshake {
+            let state = state.0.into_stateless_transport_mode().unwrap();
+            Self::PostHandshake(PostHandshakeState {
                 state: Arc::new(state),
                 rx_carryover: Default::default(),
-                rx_nonce: Some(0),
-                tx_nonce: Some(0),
-            }
+                rx_nonce: 0,
+                tx_nonce: 0,
+            })
         } else {
             panic!();
         }
     }
 
     // obtain the post-handshake noise state
-    pub fn post_handshake(&self) -> &snow::StatelessTransportState {
-        if let Self::PostHandshake { state, .. } = self {
-            state
+    fn post_handshake(&mut self) -> Option<&mut PostHandshakeState> {
+        if let Self::PostHandshake(ph) = self {
+            Some(ph)
         } else {
-            panic!();
+            None
         }
     }
 
     pub fn save_buffer(&mut self, buf: BytesMut) {
-        if let Self::PostHandshake { rx_carryover, .. } = self {
-            *rx_carryover = buf;
-        } else {
-            panic!();
-        }
-    }
-
-    pub fn recover_buffer(&mut self) -> &mut BytesMut {
-        if let Self::PostHandshake { rx_carryover, .. } = self {
-            rx_carryover
-        } else {
-            panic!();
-        }
-    }
-
-    // mutably borrow the receive nonce
-    pub fn rx_nonce(&mut self) -> &mut u64 {
-        if let Self::PostHandshake {
-            rx_nonce: Some(ref mut val),
-            ..
-        } = self
-        {
-            val
-        } else {
-            panic!();
-        }
-    }
-
-    // mutably borrow the send nonce
-    pub fn tx_nonce(&mut self) -> &mut u64 {
-        if let Self::PostHandshake {
-            tx_nonce: Some(ref mut val),
-            ..
-        } = self
-        {
-            val
-        } else {
-            panic!();
-        }
+        self.post_handshake().unwrap().rx_carryover = Some(buf);
     }
 }
 
@@ -150,12 +109,14 @@ impl Decoder for Codec {
     type Error = io::Error;
 
     fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
-        if self.noise.handshake().is_none() {
-            let mut recovered_buffer = self.noise.recover_buffer().split();
-            if !recovered_buffer.is_empty() {
-                recovered_buffer.unsplit(src.split());
-                *src = recovered_buffer;
-            }
+        // if any bytes were carried over from the handshake, prepend them to src
+        if let Some(mut carryover) = self
+            .noise
+            .post_handshake()
+            .and_then(|ph| ph.rx_carryover.take())
+        {
+            carryover.unsplit(src.split());
+            *src = carryover;
         }
 
         // obtain the whole message first, using the length-delimited codec
@@ -166,23 +127,26 @@ impl Decoder for Codec {
         };
 
         // decrypt it in the handshake or post-handshake mode
-        let msg_len = if let Some(noise) = self.noise.handshake() {
-            noise.read_message(&bytes, &mut self.buffer).map_err(|e| {
-                error!(parent: &self.span, "noise: {}; bytes: {:?}", e, bytes);
-                io::ErrorKind::InvalidData
-            })?
-        } else {
-            let rx_nonce = *self.noise.rx_nonce();
-            let len = self
-                .noise
-                .post_handshake()
-                .read_message(rx_nonce, &bytes, &mut self.buffer)
+        let msg_len = match self.noise {
+            State::Handshake(ref mut noise) => noise
+                .0
+                .read_message(&bytes, &mut self.buffer)
                 .map_err(|e| {
                     error!(parent: &self.span, "noise: {}; bytes: {:?}", e, bytes);
                     io::ErrorKind::InvalidData
-                })?;
-            *self.noise.rx_nonce() += 1;
-            len
+                })?,
+            State::PostHandshake(ref mut noise) => {
+                let len = noise
+                    .state
+                    .read_message(noise.rx_nonce, &bytes, &mut self.buffer)
+                    .map_err(|e| {
+                        let span = self.span.clone();
+                        error!(parent: &span, "noise: {}; bytes: {:?}", e, bytes);
+                        io::ErrorKind::InvalidData
+                    })?;
+                noise.rx_nonce += 1;
+                len
+            }
         };
         let msg = self.buffer[..msg_len].into();
 
@@ -195,17 +159,18 @@ impl Encoder<Bytes> for Codec {
 
     fn encode(&mut self, msg: Bytes, dst: &mut BytesMut) -> Result<(), Self::Error> {
         // encrypt the message in the handshake or post-handshake mode
-        let msg_len = if let Some(noise) = self.noise.handshake() {
-            noise.write_message(&msg, &mut self.buffer).unwrap()
-        } else {
-            let tx_nonce = *self.noise.tx_nonce();
-            let len = self
-                .noise
-                .post_handshake()
-                .write_message(tx_nonce, &msg, &mut self.buffer)
-                .map_err(|_| io::ErrorKind::InvalidData)?;
-            *self.noise.tx_nonce() += 1;
-            len
+        let msg_len = match self.noise {
+            State::Handshake(ref mut noise) => {
+                noise.0.write_message(&msg, &mut self.buffer).unwrap()
+            }
+            State::PostHandshake(ref mut noise) => {
+                let len = noise
+                    .state
+                    .write_message(noise.tx_nonce, &msg, &mut self.buffer)
+                    .unwrap();
+                noise.tx_nonce += 1;
+                len
+            }
         };
         let msg: Bytes = self.buffer[..msg_len].to_vec().into();
 
@@ -229,7 +194,10 @@ pub async fn handshake_xx<'a, T: Handshake>(
             let noise = Box::new(noise_builder.build_initiator().unwrap());
             let mut framed = Framed::new(
                 stream,
-                Codec::new(State::Handshake(noise), node.node().span().clone()),
+                Codec::new(
+                    State::Handshake(HandshakeState(noise)),
+                    node.node().span().clone(),
+                ),
             );
 
             // -> e
@@ -253,7 +221,10 @@ pub async fn handshake_xx<'a, T: Handshake>(
             let noise = Box::new(noise_builder.build_responder().unwrap());
             let mut framed = Framed::new(
                 stream,
-                Codec::new(State::Handshake(noise), node.node().span().clone()),
+                Codec::new(
+                    State::Handshake(HandshakeState(noise)),
+                    node.node().span().clone(),
+                ),
             );
 
             // <- e
