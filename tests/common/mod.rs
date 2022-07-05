@@ -93,7 +93,7 @@ macro_rules! impl_messaging {
         #[async_trait::async_trait]
         impl Reading for $target {
             type Message = bytes::BytesMut;
-            type Codec = crate::common::TestCodec<Self::Message>;
+            type Codec = $crate::common::TestCodec<Self::Message>;
 
             fn codec(&self, _addr: SocketAddr, _side: pea2pea::ConnectionSide) -> Self::Codec {
                 Default::default()
@@ -108,7 +108,7 @@ macro_rules! impl_messaging {
 
         impl Writing for $target {
             type Message = bytes::Bytes;
-            type Codec = crate::common::TestCodec<Self::Message>;
+            type Codec = $crate::common::TestCodec<Self::Message>;
 
             fn codec(&self, _addr: SocketAddr, _side: pea2pea::ConnectionSide) -> Self::Codec {
                 Default::default()
