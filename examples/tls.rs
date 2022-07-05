@@ -3,7 +3,7 @@
 mod common;
 
 use bytes::{Bytes, BytesMut};
-use native_tls::Identity;
+use native_tls::{Certificate, Identity};
 use tokio::time::sleep;
 use tokio_native_tls::{TlsAcceptor, TlsConnector};
 use tokio_util::codec::BytesCodec;
@@ -32,15 +32,23 @@ impl TlsNode {
             ..Default::default()
         };
 
-        // TLS acceptor (a single hardcoded identity for simplicity)
-        let file = include_bytes!("../examples/common/tls_identity.pfx");
-        let identity = Identity::from_pkcs12(&file[..], "pass").unwrap();
-        let inner_acceptor = native_tls::TlsAcceptor::builder(identity).build().unwrap();
+        // test keys for both client and server TLS sessions
+        let keys = test_cert_gen::keys();
+
+        // TLS acceptor
+        let identity = Identity::from_pkcs12(
+            &keys.server.cert_and_key_pkcs12.pkcs12.0,
+            &keys.server.cert_and_key_pkcs12.password,
+        )
+        .unwrap();
+        let inner_acceptor = native_tls::TlsAcceptor::new(identity).unwrap();
         let acceptor = TlsAcceptor::from(inner_acceptor);
 
         // TLS connector
+        let root_ca = Certificate::from_der(keys.client.ca.get_der()).unwrap();
         let inner_connector = native_tls::TlsConnector::builder()
-            .danger_accept_invalid_certs(true)
+            .disable_built_in_roots(true)
+            .add_root_certificate(root_ca)
             .build()
             .unwrap();
         let connector = TlsConnector::from(inner_connector);
