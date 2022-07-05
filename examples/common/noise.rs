@@ -18,6 +18,8 @@ pub enum State {
     PostHandshake {
         // stateless state can be used immutably
         state: Arc<snow::StatelessTransportState>,
+        // TODO
+        rx_carryover: BytesMut,
         // only used in Reading
         rx_nonce: Option<u64>,
         // only used in Writing
@@ -34,8 +36,10 @@ impl Clone for State {
                 state,
                 rx_nonce,
                 tx_nonce,
+                rx_carryover,
             } => Self::PostHandshake {
                 state: Arc::clone(state),
+                rx_carryover: rx_carryover.clone(),
                 rx_nonce: *rx_nonce,
                 tx_nonce: *tx_nonce,
             },
@@ -59,6 +63,7 @@ impl State {
             let state = state.into_stateless_transport_mode().unwrap();
             Self::PostHandshake {
                 state: Arc::new(state),
+                rx_carryover: Default::default(),
                 rx_nonce: Some(0),
                 tx_nonce: Some(0),
             }
@@ -71,6 +76,22 @@ impl State {
     pub fn post_handshake(&self) -> &snow::StatelessTransportState {
         if let Self::PostHandshake { state, .. } = self {
             state
+        } else {
+            panic!();
+        }
+    }
+
+    pub fn save_buffer(&mut self, buf: BytesMut) {
+        if let Self::PostHandshake { rx_carryover, .. } = self {
+            *rx_carryover = buf;
+        } else {
+            panic!();
+        }
+    }
+
+    pub fn recover_buffer(&mut self) -> &mut BytesMut {
+        if let Self::PostHandshake { rx_carryover, .. } = self {
+            rx_carryover
         } else {
             panic!();
         }
@@ -129,6 +150,14 @@ impl Decoder for Codec {
     type Error = io::Error;
 
     fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
+        if self.noise.handshake().is_none() {
+            let mut recovered_buffer = self.noise.recover_buffer().split();
+            if !recovered_buffer.is_empty() {
+                recovered_buffer.unsplit(src.split());
+                *src = recovered_buffer;
+            }
+        }
+
         // obtain the whole message first, using the length-delimited codec
         let bytes = if let Some(bytes) = self.codec.decode(src)? {
             bytes

@@ -325,8 +325,13 @@ impl Handshake for Libp2pNode {
         }
 
         // deconstruct the framed (again) to preserve the noise state
-        let FramedParts { codec, .. } = framed.into_parts();
-        let noise::Codec { noise, .. } = codec;
+        let FramedParts {
+            codec, read_buf, ..
+        } = framed.into_parts();
+        let noise::Codec { mut noise, .. } = codec;
+
+        // preserve any unprocessed bytes
+        noise.save_buffer(read_buf);
 
         // save the noise state
         self.noise_states.lock().insert(conn.addr(), noise);
