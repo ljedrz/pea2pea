@@ -35,6 +35,9 @@ struct Libp2pNode {
     node: Node,
     // the libp2p keypair
     keypair: identity::Keypair,
+    // the libp2p PeerId
+    #[allow(dead_code)]
+    peer_id: PeerId,
     // holds noise states between the handshake and the other protocols
     noise_states: Arc<Mutex<HashMap<SocketAddr, noise::State>>>,
     // holds the state related to peers
@@ -48,6 +51,23 @@ impl Pea2Pea for Libp2pNode {
 }
 
 impl Libp2pNode {
+    async fn new() -> Self {
+        let keypair = identity::Keypair::generate_ed25519();
+        let peer_id = keypair.public().to_peer_id();
+
+        let node = Node::new(None).await.unwrap();
+
+        info!(parent: node.span(), "started a node with PeerId {}", peer_id);
+
+        Self {
+            node,
+            keypair,
+            peer_id,
+            noise_states: Default::default(),
+            peer_states: Default::default(),
+        }
+    }
+
     async fn process_event(&self, event: Event, source: SocketAddr) -> io::Result<()> {
         info!(parent: self.node().span(), "{}", event);
 
@@ -259,12 +279,12 @@ impl Handshake for Libp2pNode {
         let (noise_state, secure_payload) =
             noise::handshake_xx(self, &mut conn, noise_builder, noise_payload.into()).await?;
 
-        // obtain the peer ID from the handshake payload
+        // obtain the PeerId from the handshake payload
         let secure_payload = NoiseHandshakePayload::decode(&secure_payload[..])?;
         let peer_key = identity::PublicKey::from_protobuf_encoding(&secure_payload.identity_key)
             .map_err(|_| io::ErrorKind::InvalidData)?;
         let peer_id = PeerId::from(peer_key);
-        info!(parent: self.node().span(), "the peer ID of {} is {}", addr, &peer_id);
+        info!(parent: self.node().span(), "the PeerId of {} is {}", addr, &peer_id);
 
         // reconstruct the Framed with the post-handshake noise state
         let mut framed = Framed::new(
@@ -440,12 +460,7 @@ async fn main() {
     common::start_logger(LevelFilter::DEBUG);
 
     // prepare the pea2pea node
-    let pea2pea_node = Libp2pNode {
-        node: Node::new(None).await.unwrap(),
-        keypair: identity::Keypair::generate_ed25519(),
-        noise_states: Default::default(),
-        peer_states: Default::default(),
-    };
+    let pea2pea_node = Libp2pNode::new().await;
 
     // enable the pea2pea protocols
     pea2pea_node.enable_handshake().await;
