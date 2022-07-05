@@ -217,22 +217,22 @@ impl Handshake for Libp2pNode {
                 debug!(parent: self.node().span(), "sent protocol params (1/2)");
 
                 // <- protocol info (1/2)
-                let _protocol_info = negotiation_codec
+                let protocol_info = negotiation_codec
                     .try_next()
                     .await?
                     .ok_or(io::ErrorKind::InvalidData)?;
-                debug!(parent: self.node().span(), "received protocol params (1/2)");
+                debug!(parent: self.node().span(), "received protocol params (1/2): {:?}", protocol_info);
 
                 // -> protocol info (2/2)
                 negotiation_codec.send(Bytes::from("/noise\n")).await?;
                 debug!(parent: self.node().span(), "sent protocol params (2/2)");
 
                 // <- protocol info (2/2)
-                let _protocol_info = negotiation_codec
+                let protocol_info = negotiation_codec
                     .try_next()
                     .await?
                     .ok_or(io::ErrorKind::InvalidData)?;
-                debug!(parent: self.node().span(), "received protocol params (2/2)");
+                debug!(parent: self.node().span(), "received protocol params (2/2): {:?}", protocol_info);
             }
             ConnectionSide::Responder => {
                 // <- protocol info (1/2)
@@ -289,7 +289,7 @@ impl Handshake for Libp2pNode {
         // reconstruct the Framed with the post-handshake noise state
         let mut framed = Framed::new(
             self.borrow_stream(&mut conn),
-            noise::Codec::new(noise_state),
+            noise::Codec::new(noise_state, self.node().span().clone()),
         );
 
         // exchange further protocol params
@@ -302,21 +302,21 @@ impl Handshake for Libp2pNode {
                 debug!(parent: self.node().span(), "sent protocol params (1/2)");
 
                 // <- protocol info (1/2)
-                let _protocol_info = framed.try_next().await?.ok_or(io::ErrorKind::InvalidData)?;
-                debug!(parent: self.node().span(), "received protocol params (1/2)");
+                let protocol_info = framed.try_next().await?.ok_or(io::ErrorKind::InvalidData)?;
+                debug!(parent: self.node().span(), "received protocol params (1/2): {:?}", protocol_info);
 
                 // -> protocol info (2/2)
                 framed.send(Bytes::from(&b"\r/yamux/1.0.0\n"[..])).await?;
                 debug!(parent: self.node().span(), "sent protocol params (2/2)");
 
                 // <- protocol info (2/2)
-                let _protocol_info = framed.try_next().await?.ok_or(io::ErrorKind::InvalidData)?;
-                debug!(parent: self.node().span(), "received protocol params (2/2)");
+                let protocol_info = framed.try_next().await?.ok_or(io::ErrorKind::InvalidData)?;
+                debug!(parent: self.node().span(), "received protocol params (2/2): {:?}", protocol_info);
             }
             ConnectionSide::Responder => {
                 // <- protocol info
                 let protocol_info = framed.try_next().await?.ok_or(io::ErrorKind::InvalidData)?;
-                debug!(parent: self.node().span(), "received protocol params");
+                debug!(parent: self.node().span(), "received protocol params: {:?}", protocol_info);
 
                 // echo the protocol params back to the sender
                 framed.send(protocol_info.freeze()).await?;
@@ -352,7 +352,7 @@ impl Reading for Libp2pNode {
         let noise_state = self.noise_states.lock().get(&addr).cloned().unwrap();
 
         Self::Codec::new(
-            noise::Codec::new(noise_state),
+            noise::Codec::new(noise_state, self.node().span().clone()),
             yamux::Codec::new(side, self.node().span().clone()),
         )
     }
@@ -442,7 +442,7 @@ impl Writing for Libp2pNode {
         let noise_state = self.noise_states.lock().remove(&addr).unwrap();
 
         Self::Codec::new(
-            noise::Codec::new(noise_state),
+            noise::Codec::new(noise_state, self.node().span().clone()),
             yamux::Codec::new(side, self.node().span().clone()),
         )
     }

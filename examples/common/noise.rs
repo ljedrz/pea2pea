@@ -108,16 +108,18 @@ pub struct Codec {
     codec: LengthDelimitedCodec,
     pub noise: State,
     buffer: Box<[u8]>,
+    span: Span,
 }
 
 impl Codec {
-    pub fn new(noise: State) -> Self {
+    pub fn new(noise: State, span: Span) -> Self {
         Codec {
             codec: LengthDelimitedCodec::builder()
                 .length_field_length(2)
                 .new_codec(),
             noise,
             buffer: vec![0u8; MAX_MESSAGE_LEN].into(),
+            span,
         }
     }
 }
@@ -136,16 +138,20 @@ impl Decoder for Codec {
 
         // decrypt it in the handshake or post-handshake mode
         let msg_len = if let Some(noise) = self.noise.handshake() {
-            noise
-                .read_message(&bytes, &mut self.buffer)
-                .map_err(|_| io::ErrorKind::InvalidData)?
+            noise.read_message(&bytes, &mut self.buffer).map_err(|e| {
+                error!(parent: &self.span, "noise: {}; bytes: {:?}", e, bytes);
+                io::ErrorKind::InvalidData
+            })?
         } else {
             let rx_nonce = *self.noise.rx_nonce();
             let len = self
                 .noise
                 .post_handshake()
                 .read_message(rx_nonce, &bytes, &mut self.buffer)
-                .map_err(|_| io::ErrorKind::InvalidData)?;
+                .map_err(|e| {
+                    error!(parent: &self.span, "noise: {}; bytes: {:?}", e, bytes);
+                    io::ErrorKind::InvalidData
+                })?;
             *self.noise.rx_nonce() += 1;
             len
         };
@@ -192,7 +198,10 @@ pub async fn handshake_xx<'a, T: Handshake>(
     let (noise_state, secure_payload) = match node_conn_side {
         ConnectionSide::Initiator => {
             let noise = Box::new(noise_builder.build_initiator().unwrap());
-            let mut framed = Framed::new(stream, Codec::new(State::Handshake(noise)));
+            let mut framed = Framed::new(
+                stream,
+                Codec::new(State::Handshake(noise), node.node().span().clone()),
+            );
 
             // -> e
             framed.send("".into()).await?;
@@ -213,7 +222,10 @@ pub async fn handshake_xx<'a, T: Handshake>(
         }
         ConnectionSide::Responder => {
             let noise = Box::new(noise_builder.build_responder().unwrap());
-            let mut framed = Framed::new(stream, Codec::new(State::Handshake(noise)));
+            let mut framed = Framed::new(
+                stream,
+                Codec::new(State::Handshake(noise), node.node().span().clone()),
+            );
 
             // <- e
             framed.try_next().await?;
