@@ -52,9 +52,13 @@ impl Libp2pNode {
         info!(parent: self.node().span(), "{}", event);
 
         let reply = match event {
-            Event::NewStream(stream_id) => {
+            Event::NewStream(stream_id, protocol_info) => {
                 // reply to SYN flag with the ACK one
-                Some(yamux::Frame::data(stream_id, vec![yamux::Flag::Ack], None))
+                Some(yamux::Frame::data(
+                    stream_id,
+                    vec![yamux::Flag::Ack],
+                    Some(protocol_info),
+                ))
             }
             Event::ReceivedPing(stream_id, payload) => {
                 // reply to pings with the same payload
@@ -85,7 +89,7 @@ struct PeerState {
 // the event indicated by the contents of a yamux message
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Event {
-    NewStream(yamux::StreamId),
+    NewStream(yamux::StreamId, Bytes),
     StreamTerminated(yamux::StreamId),
     ReceivedPing(yamux::StreamId, Bytes),
     Unknown(yamux::Frame),
@@ -94,16 +98,18 @@ enum Event {
 impl fmt::Display for Event {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::NewStream(id) => write!(f, "registered a new inbound yamux stream (id = {})", id),
+            Self::NewStream(id, protocol) => {
+                write!(
+                    f,
+                    "registered a new inbound stream (id = {}, protocol = {:?})",
+                    id, protocol
+                )
+            }
             Self::StreamTerminated(id) => {
                 write!(f, "received a termination message for yamux stream {}", id)
             }
-            Self::ReceivedPing(id, payload) => {
-                write!(
-                    f,
-                    "received a ping (stream = {}, payload = {:?})",
-                    id, payload
-                )
+            Self::ReceivedPing(..) => {
+                write!(f, "received a Ping",)
             }
             Self::Unknown(msg) => write!(f, "received an unknown message: {:?}", msg),
         }
@@ -355,7 +361,7 @@ impl Reading for Libp2pNode {
                 error!(parent: self.node().span(), "yamux stream {} had already been registered", stream_id);
                 return Err(io::ErrorKind::InvalidData.into());
             } else {
-                events.push(Event::NewStream(*stream_id));
+                events.push(Event::NewStream(*stream_id, payload.clone()));
             }
         } else if flags == &[yamux::Flag::Rst] {
             // a stream is being terminated
@@ -389,19 +395,18 @@ impl Reading for Libp2pNode {
             return Err(io::ErrorKind::InvalidData.into());
         };
 
-        if protocol == PROTOCOL_PING {
-            events.push(Event::ReceivedPing(*stream_id, payload));
-        } else {
-            events.push(Event::Unknown(yamux::Frame {
-                header: message.header,
-                payload,
-            }));
+        if flags != &[yamux::Flag::Syn] {
+            if protocol == PROTOCOL_PING {
+                events.push(Event::ReceivedPing(*stream_id, payload));
+            } else {
+                events.push(Event::Unknown(yamux::Frame {
+                    header: message.header,
+                    payload,
+                }));
+            }
         }
 
-        // reverse the order of events to later be able to pop them
-        events.reverse();
-
-        while let Some(event) = events.pop() {
+        for event in events {
             self.process_event(event, source).await?;
         }
 
