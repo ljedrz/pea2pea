@@ -80,6 +80,10 @@ impl Libp2pNode {
                     Some(protocol_info),
                 ))
             }
+            Event::StreamHalfClosed(stream_id) => {
+                // reply with own half-close
+                Some(yamux::Frame::data(stream_id, vec![yamux::Flag::Fin], None))
+            }
             Event::ReceivedPing(stream_id, payload) => {
                 // reply to pings with the same payload
                 Some(yamux::Frame::data(stream_id, vec![], Some(payload)))
@@ -110,6 +114,7 @@ struct PeerState {
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Event {
     NewStream(yamux::StreamId, Bytes),
+    StreamHalfClosed(yamux::StreamId),
     StreamTerminated(yamux::StreamId),
     ReceivedPing(yamux::StreamId, Bytes),
     Unknown(yamux::Frame),
@@ -124,6 +129,9 @@ impl fmt::Display for Event {
                     "registered a new inbound stream (id = {}, protocol = {:?})",
                     id, protocol
                 )
+            }
+            Self::StreamHalfClosed(id) => {
+                write!(f, "received a half-close message for yamux stream {}", id)
             }
             Self::StreamTerminated(id) => {
                 write!(f, "received a termination message for yamux stream {}", id)
@@ -348,6 +356,17 @@ impl Handshake for Libp2pNode {
     }
 }
 
+macro_rules! get_streams_mut {
+    ($self:expr, $addr:expr) => {
+        $self
+            .peer_states
+            .write()
+            .get_mut(&$addr)
+            .ok_or(io::ErrorKind::BrokenPipe)?
+            .streams
+    };
+}
+
 #[async_trait::async_trait]
 impl Reading for Libp2pNode {
     type Message = yamux::Frame;
@@ -372,62 +391,67 @@ impl Reading for Libp2pNode {
         // register the discovered events
         let mut events = vec![];
 
-        if flags == &[yamux::Flag::Syn] {
-            // a new stream is being created
-            if self
-                .peer_states
-                .write()
-                .get_mut(&source)
-                .ok_or(io::ErrorKind::BrokenPipe)?
-                .streams
-                .insert(*stream_id, payload.clone())
-                .is_some()
-            {
-                error!(parent: self.node().span(), "yamux stream {} had already been registered", stream_id);
-                return Err(io::ErrorKind::InvalidData.into());
-            } else {
-                events.push(Event::NewStream(*stream_id, payload.clone()));
+        match &flags[..] {
+            &[yamux::Flag::Syn] => {
+                // a new stream is being created
+                if get_streams_mut!(self, source)
+                    .insert(*stream_id, payload.clone())
+                    .is_none()
+                {
+                    events.push(Event::NewStream(*stream_id, payload.clone()));
+                } else {
+                    error!(parent: self.node().span(), "yamux stream {} had already been registered", stream_id);
+                    return Err(io::ErrorKind::InvalidData.into());
+                }
             }
-        } else if flags == &[yamux::Flag::Rst] {
-            // a stream is being terminated
-            if self
-                .peer_states
-                .write()
-                .get_mut(&source)
-                .ok_or(io::ErrorKind::BrokenPipe)?
-                .streams
-                .remove(stream_id)
-                .is_none()
-            {
-                error!(parent: self.node().span(), "yamux stream {} is unknown", stream_id);
-                return Err(io::ErrorKind::InvalidData.into());
-            } else {
-                events.push(Event::StreamTerminated(*stream_id));
+            &[yamux::Flag::Rst] => {
+                // a stream is being terminated
+                if get_streams_mut!(self, source).remove(stream_id).is_some() {
+                    events.push(Event::StreamTerminated(*stream_id));
+                } else {
+                    error!(parent: self.node().span(), "yamux stream {} is unknown", stream_id);
+                    return Err(io::ErrorKind::InvalidData.into());
+                }
             }
-        }
+            &[yamux::Flag::Ack] => {
+                todo!(); // TODO: only matters when starting own streams
+            }
+            &[yamux::Flag::Fin] => {
+                // a stream is being half-closed
+                if get_streams_mut!(self, source).remove(stream_id).is_some() {
+                    events.push(Event::StreamHalfClosed(*stream_id));
+                } else {
+                    error!(parent: self.node().span(), "yamux stream {} is unknown", stream_id);
+                    return Err(io::ErrorKind::InvalidData.into());
+                }
+            }
+            &[] => {
+                // a regular message in an established stream
+                let protocol = if let Some(p) = self
+                    .peer_states
+                    .read()
+                    .get(&source)
+                    .ok_or(io::ErrorKind::BrokenPipe)?
+                    .streams
+                    .get(stream_id)
+                {
+                    p.clone()
+                } else {
+                    error!(parent: self.node().span(), "yamux stream {} is unknown", stream_id);
+                    return Err(io::ErrorKind::InvalidData.into());
+                };
 
-        let protocol = if let Some(p) = self
-            .peer_states
-            .read()
-            .get(&source)
-            .ok_or(io::ErrorKind::BrokenPipe)?
-            .streams
-            .get(stream_id)
-        {
-            p.clone()
-        } else {
-            error!(parent: self.node().span(), "yamux stream {} is unknown", stream_id);
-            return Err(io::ErrorKind::InvalidData.into());
-        };
-
-        if flags != &[yamux::Flag::Syn] {
-            if protocol == PROTOCOL_PING {
-                events.push(Event::ReceivedPing(*stream_id, payload));
-            } else {
-                events.push(Event::Unknown(yamux::Frame {
-                    header: message.header,
-                    payload,
-                }));
+                if protocol == PROTOCOL_PING {
+                    events.push(Event::ReceivedPing(*stream_id, payload));
+                } else {
+                    events.push(Event::Unknown(yamux::Frame {
+                        header: message.header,
+                        payload,
+                    }));
+                }
+            }
+            flags => {
+                warn!(parent: self.node().span(), "unexpected combination of yamux flags: {:?}", flags);
             }
         }
 
