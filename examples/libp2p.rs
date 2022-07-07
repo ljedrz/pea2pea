@@ -23,7 +23,7 @@ use pea2pea::{
     Connection, ConnectionSide, Node, Pea2Pea,
 };
 
-use std::{cmp, collections::HashMap, fmt, io, net::SocketAddr, sync::Arc, time::Duration};
+use std::{cmp, collections::HashMap, io, net::SocketAddr, sync::Arc, time::Duration};
 
 // the protocol string of libp2p::ping
 const PROTOCOL_PING: &[u8] = b"\x13/multistream/1.0.0\n\x11/ipfs/ping/1.0.0\n";
@@ -69,8 +69,6 @@ impl Libp2pNode {
     }
 
     async fn process_event(&self, event: Event, source: SocketAddr) -> io::Result<()> {
-        info!(parent: self.node().span(), "{}", event);
-
         let reply = match event {
             Event::NewStream(stream_id, protocol_info) => {
                 // reply to SYN flag with the ACK one
@@ -92,7 +90,7 @@ impl Libp2pNode {
         };
 
         if let Some(reply_msg) = reply {
-            info!(parent: self.node().span(), "sending a {:?}", &reply_msg);
+            info!(parent: self.node().span(), " sending a {:?}", &reply_msg);
             let _ = self.send_direct_message(source, reply_msg)?.await;
         }
 
@@ -118,30 +116,6 @@ enum Event {
     StreamTerminated(yamux::StreamId),
     ReceivedPing(yamux::StreamId, Bytes),
     Unknown(yamux::Frame),
-}
-
-impl fmt::Display for Event {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::NewStream(id, protocol) => {
-                write!(
-                    f,
-                    "registered a new inbound stream (id = {}, protocol = {:?})",
-                    id, protocol
-                )
-            }
-            Self::StreamHalfClosed(id) => {
-                write!(f, "received a half-close message for yamux stream {}", id)
-            }
-            Self::StreamTerminated(id) => {
-                write!(f, "received a termination message for yamux stream {}", id)
-            }
-            Self::ReceivedPing(..) => {
-                write!(f, "received a Ping",)
-            }
-            Self::Unknown(msg) => write!(f, "received an unknown message: {:?}", msg),
-        }
-    }
 }
 
 // a codec capable of (de/en)coding libp2p messages with noise and yamux protocols
@@ -382,6 +356,8 @@ impl Reading for Libp2pNode {
     }
 
     async fn process_message(&self, source: SocketAddr, message: Self::Message) -> io::Result<()> {
+        info!(parent: self.node().span(), "received a {:?}", message);
+
         // deconstruct the yamux frame
         let yamux::Header {
             stream_id, flags, ..

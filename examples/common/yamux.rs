@@ -26,11 +26,11 @@ pub struct Header {
 
 impl fmt::Debug for Header {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // note: the hardcoded version is hidden for brevity
+        // note: the version and length are hidden for brevity
         write!(
             f,
-            "{{ StreamID: {}, Type: {}, Flags: {:?}, Length: {} }}",
-            self.stream_id, self.ty, self.flags, self.length
+            "{{ ID: {}, {}, {:?} }}",
+            self.stream_id, self.ty, self.flags,
         )
     }
 }
