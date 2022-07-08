@@ -54,7 +54,7 @@ impl TlsNode {
         let connector = TlsConnector::from(inner_connector);
 
         Self {
-            node: Node::new(Some(config)).await.unwrap(),
+            node: Node::new(config).await.unwrap(),
             acceptor,
             connector,
         }

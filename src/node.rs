@@ -80,10 +80,8 @@ pub struct InnerNode {
 }
 
 impl Node {
-    /// Creates a new [`Node`] optionally using the given [`Config`].
-    pub async fn new(config: Option<Config>) -> io::Result<Self> {
-        let mut config = config.unwrap_or_default();
-
+    /// Creates a new [`Node`] using the given [`Config`].
+    pub async fn new(mut config: Config) -> io::Result<Self> {
         // if there is no pre-configured name, assign a sequential numeric identifier
         if config.name.is_none() {
             config.name = Some(SEQUENTIAL_NODE_ID.fetch_add(1, SeqCst).to_string());

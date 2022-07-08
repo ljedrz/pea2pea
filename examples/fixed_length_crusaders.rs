@@ -136,13 +136,13 @@ async fn main() {
         name: Some("Jotaro".into()),
         ..Default::default()
     };
-    let jotaro = JoJoNode(Node::new(Some(config)).await.unwrap());
+    let jotaro = JoJoNode(Node::new(config).await.unwrap());
 
     let config = Config {
         name: Some("Dio".into()),
         ..Default::default()
     };
-    let dio = JoJoNode(Node::new(Some(config)).await.unwrap());
+    let dio = JoJoNode(Node::new(config).await.unwrap());
     let dio_addr = dio.node().listening_addr().unwrap();
 
     for node in &[&jotaro, &dio] {

@@ -36,7 +36,7 @@ impl SecureNode {
             name: Some(name.into()),
             ..Default::default()
         };
-        let node = Node::new(Some(config)).await?;
+        let node = Node::new(config).await?;
 
         Ok(Self {
             node,

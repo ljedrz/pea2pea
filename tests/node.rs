@@ -14,7 +14,7 @@ use std::{
 
 #[tokio::test]
 async fn node_creation_any_port_works() {
-    let _node = Node::new(None).await.unwrap();
+    let _node = Node::new(Default::default()).await.unwrap();
 }
 
 #[should_panic]
@@ -24,7 +24,7 @@ async fn node_creation_bad_params_panic() {
         allow_random_port: false,
         ..Default::default()
     };
-    let _node = Node::new(Some(config)).await.unwrap();
+    let _node = Node::new(config).await.unwrap();
 }
 
 #[tokio::test]
@@ -34,7 +34,7 @@ async fn node_creation_used_port_fails() {
         allow_random_port: false,
         ..Default::default()
     };
-    assert!(Node::new(Some(config)).await.is_err());
+    assert!(Node::new(config).await.is_err());
 }
 
 #[tokio::test]
@@ -62,7 +62,7 @@ async fn node_connect_and_disconnect() {
 
 #[tokio::test]
 async fn node_self_connection_fails() {
-    let node = Node::new(None).await.unwrap();
+    let node = Node::new(Default::default()).await.unwrap();
     assert!(node.connect(node.listening_addr().unwrap()).await.is_err());
 }
 
@@ -87,8 +87,8 @@ async fn node_connector_limit_breach_fails() {
         max_connections: 0,
         ..Default::default()
     };
-    let connector = Node::new(Some(config)).await.unwrap();
-    let connectee = Node::new(None).await.unwrap();
+    let connector = Node::new(config).await.unwrap();
+    let connectee = Node::new(Default::default()).await.unwrap();
 
     assert!(connector
         .connect(connectee.listening_addr().unwrap())
@@ -102,8 +102,8 @@ async fn node_connectee_limit_breach_fails() {
         max_connections: 0,
         ..Default::default()
     };
-    let connectee = Node::new(Some(config)).await.unwrap();
-    let connector = Node::new(None).await.unwrap();
+    let connectee = Node::new(config).await.unwrap();
+    let connector = Node::new(Default::default()).await.unwrap();
 
     // a breached connection limit doesn't close the listener, so this works
     connector
@@ -119,8 +119,8 @@ async fn node_connectee_limit_breach_fails() {
 async fn node_overlapping_duplicate_connection_attempts_fail() {
     const NUM_ATTEMPTS: usize = 5;
 
-    let connector = Node::new(None).await.unwrap();
-    let connectee = Node::new(None).await.unwrap();
+    let connector = Node::new(Default::default()).await.unwrap();
+    let connectee = Node::new(Default::default()).await.unwrap();
     let addr = connectee.listening_addr().unwrap();
 
     let err_count = Arc::new(AtomicUsize::new(0));
@@ -139,7 +139,7 @@ async fn node_overlapping_duplicate_connection_attempts_fail() {
 
 #[tokio::test]
 async fn node_shutdown_closes_the_listener() {
-    let node = Node::new(None).await.unwrap();
+    let node = Node::new(Default::default()).await.unwrap();
     let addr = node.listening_addr().unwrap();
 
     assert!(TcpListener::bind(addr).await.is_err());
@@ -150,7 +150,7 @@ async fn node_shutdown_closes_the_listener() {
 
 #[tokio::test]
 async fn test_nodes_use_localhost() {
-    let node = Node::new(None).await.unwrap();
+    let node = Node::new(Default::default()).await.unwrap();
 
     assert_eq!(node.listening_addr().unwrap().ip(), Ipv4Addr::LOCALHOST);
 }

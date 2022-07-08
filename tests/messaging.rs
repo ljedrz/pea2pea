@@ -96,7 +96,7 @@ async fn messaging_example() {
         ..Default::default()
     };
     let picky_echo = EchoNode {
-        node: Node::new(Some(picky_echo_config)).await.unwrap(),
+        node: Node::new(picky_echo_config).await.unwrap(),
         echoed: Default::default(),
     };
     picky_echo.enable_reading().await;

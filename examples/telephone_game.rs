@@ -71,7 +71,7 @@ async fn main() {
 
     let mut players = Vec::with_capacity(NUM_PLAYERS);
     for _ in 0..NUM_PLAYERS {
-        let player = Player(Node::new(None).await.unwrap());
+        let player = Player(Node::new(Default::default()).await.unwrap());
         players.push(player);
     }
 

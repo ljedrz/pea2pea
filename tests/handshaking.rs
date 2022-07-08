@@ -27,7 +27,7 @@ struct HandshakingNode {
 impl HandshakingNode {
     async fn new() -> Self {
         Self {
-            node: Node::new(None).await.unwrap(),
+            node: Node::new(Default::default()).await.unwrap(),
             own_nonce: SmallRng::from_entropy().gen(),
             peer_nonces: Default::default(),
         }
@@ -174,8 +174,8 @@ impl Handshake for Wrap {
 
 #[tokio::test]
 async fn hung_handshake_fails() {
-    let connector = Wrap(Node::new(None).await.unwrap());
-    let connectee = Wrap(Node::new(None).await.unwrap());
+    let connector = Wrap(Node::new(Default::default()).await.unwrap());
+    let connectee = Wrap(Node::new(Default::default()).await.unwrap());
 
     // note: the connector does NOT enable handshakes
     connectee.enable_handshake().await;
@@ -205,7 +205,7 @@ async fn timeout_when_spammed_with_connections() {
         max_connections: NUM_ATTEMPTS,
         ..Default::default()
     };
-    let victim = Wrap(Node::new(Some(config)).await.unwrap());
+    let victim = Wrap(Node::new(config).await.unwrap());
     victim.enable_handshake().await;
     let victim_addr = victim.node().listening_addr().unwrap();
 

@@ -52,7 +52,7 @@ struct Player {
 impl Player {
     async fn new() -> Self {
         Self {
-            node: Node::new(None).await.unwrap(),
+            node: Node::new(Default::default()).await.unwrap(),
             other_players: Default::default(),
             potato_count: Default::default(),
         }

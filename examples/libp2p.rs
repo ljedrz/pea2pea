@@ -55,7 +55,7 @@ impl Libp2pNode {
         let keypair = identity::Keypair::generate_ed25519();
         let peer_id = keypair.public().to_peer_id();
 
-        let node = Node::new(None).await.unwrap();
+        let node = Node::new(Default::default()).await.unwrap();
 
         info!(parent: node.span(), "started a node with PeerId {}", peer_id);
 

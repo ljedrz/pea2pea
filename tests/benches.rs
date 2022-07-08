@@ -63,7 +63,7 @@ async fn run_bench_scenario(sender_count: usize) -> f64 {
         sender.enable_writing().await;
     }
 
-    let receiver = BenchNode(Node::new(None).await.unwrap());
+    let receiver = BenchNode(Node::new(Default::default()).await.unwrap());
     receiver.enable_reading().await;
 
     for sender in &senders {

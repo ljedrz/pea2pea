@@ -23,7 +23,7 @@ impl NakedNode {
             ..Default::default()
         };
 
-        Self(Node::new(Some(config)).await.unwrap())
+        Self(Node::new(config).await.unwrap())
     }
 }
 
