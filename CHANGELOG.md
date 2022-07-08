@@ -1,3 +1,9 @@
+# 0.40.0
+
+### Changed
+
+- renamed `Writing::{send_direct_message, send_broadcast}` to `::{unicast, broadcast}`
+
 # 0.39.0
 
 ### Changed

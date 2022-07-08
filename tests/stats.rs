@@ -28,7 +28,7 @@ async fn message_stats() {
 
     for _ in 0..sent_msgs_count {
         writer
-            .send_direct_message(reader_addr, msg.clone())
+            .unicast(reader_addr, msg.clone())
             .unwrap()
             .await
             .unwrap()

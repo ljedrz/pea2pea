@@ -60,7 +60,7 @@ impl Player {
 
     async fn throw_potato(&self) {
         let message = Message::IHaveThePotato(self.node().name().into());
-        self.send_broadcast(message).unwrap();
+        self.broadcast(message).unwrap();
 
         let (new_carrier_name, new_carrier_addr) = self
             .other_players
@@ -73,7 +73,7 @@ impl Player {
         info!(parent: self.node().span(), "throwing the potato to player {}!", new_carrier_name);
 
         let _ = self
-            .send_direct_message(new_carrier_addr, Message::HotPotato)
+            .unicast(new_carrier_addr, Message::HotPotato)
             .unwrap()
             .await;
     }

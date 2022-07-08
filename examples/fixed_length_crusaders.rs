@@ -113,7 +113,7 @@ impl Reading for JoJoNode {
             warn!(parent: self.node().span(), "{:?}!", reply);
         };
 
-        let _ = self.send_direct_message(source, reply).unwrap().await;
+        let _ = self.unicast(source, reply).unwrap().await;
 
         Ok(())
     }
@@ -155,10 +155,7 @@ async fn main() {
 
     sleep(Duration::from_secs(3)).await;
 
-    let _ = jotaro
-        .send_direct_message(dio_addr, BattleCry::Ora)
-        .unwrap()
-        .await;
+    let _ = jotaro.unicast(dio_addr, BattleCry::Ora).unwrap().await;
 
     sleep(Duration::from_secs(3)).await;
 }

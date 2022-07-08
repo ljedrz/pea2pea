@@ -20,11 +20,11 @@ impl Pea2Pea for TestNode {
     }
 }
 
-/// A helper trait to shorten the calls to `Writing::send_direct_message` in tests.
+/// A helper trait to shorten the calls to `Writing::unicast` in tests.
 #[async_trait::async_trait]
 pub trait WritingExt: Writing {
     async fn send_dm(&self, addr: SocketAddr, msg: <Self as Writing>::Message) -> io::Result<()> {
-        self.send_direct_message(addr, msg)?.await.unwrap()
+        self.unicast(addr, msg)?.await.unwrap()
     }
 }
 

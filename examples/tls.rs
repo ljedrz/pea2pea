@@ -149,15 +149,12 @@ async fn main() {
 
     // send a message from connector to acceptor
     let _ = connector
-        .send_direct_message(acceptor.node().listening_addr().unwrap(), msg.clone())
+        .unicast(acceptor.node().listening_addr().unwrap(), msg.clone())
         .unwrap()
         .await;
 
     // send a message from acceptor to connector
-    let _ = acceptor
-        .send_direct_message(connector_addr, msg)
-        .unwrap()
-        .await;
+    let _ = acceptor.unicast(connector_addr, msg).unwrap().await;
 
     // a small delay to ensure all messages were processed
     sleep(Duration::from_millis(10)).await;

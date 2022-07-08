@@ -91,7 +91,7 @@ impl Libp2pNode {
 
         if let Some(reply_msg) = reply {
             info!(parent: self.node().span(), " sending a {:?}", &reply_msg);
-            let _ = self.send_direct_message(source, reply_msg)?.await;
+            let _ = self.unicast(source, reply_msg)?.await;
         }
 
         Ok(())

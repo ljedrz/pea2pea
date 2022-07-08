@@ -95,7 +95,7 @@ where
     /// - [`io::ErrorKind::NotConnected`] if the node is not connected to the provided address
     /// - [`io::ErrorKind::Other`] if the outbound message queue for this address is full
     /// - [`io::ErrorKind::Unsupported`] if [`Writing::enable_writing`] hadn't been called yet
-    fn send_direct_message(
+    fn unicast(
         &self,
         addr: SocketAddr,
         message: Self::Message,
@@ -121,12 +121,12 @@ where
     /// Broadcasts the provided message to all connected peers. Returns as soon as the message is queued to
     /// be sent to all the peers, without waiting for the actual delivery. This method doesn't provide the
     /// means to check when and if the messages actually get delivered; you can achieve that by calling
-    /// [`Writing::send_direct_message`] for each address returned by [`Node::connected_addrs`].
+    /// [`Writing::unicast`] for each address returned by [`Node::connected_addrs`].
     ///
     /// # Errors
     ///
     /// Returns [`io::ErrorKind::Unsupported`] if [`Writing::enable_writing`] hadn't been called yet.
-    fn send_broadcast(&self, message: Self::Message) -> io::Result<()>
+    fn broadcast(&self, message: Self::Message) -> io::Result<()>
     where
         Self::Message: Clone,
     {

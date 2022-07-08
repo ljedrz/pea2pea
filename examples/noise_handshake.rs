@@ -122,7 +122,7 @@ async fn main() {
         // send a message from initiator to responder
         let msg = b"why hello there, fellow noise protocol user; I'm the initiator";
         let _ = initiator
-            .send_direct_message(
+            .unicast(
                 responder.node().listening_addr().unwrap(),
                 Bytes::from(&msg[..]),
             )
@@ -132,7 +132,7 @@ async fn main() {
         // send a message from responder to initiator
         let msg = b"why hello there, fellow noise protocol user; I'm the responder";
         let _ = responder
-            .send_direct_message(initiator_addr, Bytes::from(&msg[..]))
+            .unicast(initiator_addr, Bytes::from(&msg[..]))
             .unwrap()
             .await;
     }
