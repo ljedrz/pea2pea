@@ -1,6 +1,6 @@
 [package]
 name = "pea2pea"
-version = "0.39.0"
+version = "0.40.0"
 authors = ["ljedrz <ljedrz@gmail.com>"]
 edition = "2021"
 description = "A simple, lightweight P2P library."
