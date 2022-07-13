@@ -476,7 +476,8 @@ async fn main() {
     // note: it's a leaner version of https://docs.rs/libp2p/latest/libp2p/fn.tokio_development_transport.html
     let swarm_keypair = identity::Keypair::generate_ed25519();
     let swarm_peer_id = PeerId::from(swarm_keypair.public());
-    let transport = libp2p::tcp::TokioTcpConfig::new().nodelay(true);
+    let transport =
+        libp2p::tcp::TokioTcpTransport::new(libp2p::tcp::GenTcpConfig::new().nodelay(true));
     let noise_keys = libp2p::noise::Keypair::<libp2p::noise::X25519Spec>::new()
         .into_authentic(&swarm_keypair)
         .unwrap();
