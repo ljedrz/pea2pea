@@ -8,11 +8,11 @@ use common::{noise, yamux};
 
 use bytes::{Bytes, BytesMut};
 use futures_util::{SinkExt, StreamExt, TryStreamExt};
-use libp2p::swarm::Swarm;
-use libp2p::{identity, ping, PeerId, Transport};
+use libp2p::swarm::{Swarm, SwarmEvent};
+use libp2p::{core::multiaddr::Protocol, identity, ping, PeerId, Transport};
 use parking_lot::{Mutex, RwLock};
 use prost::Message;
-use tokio::time::sleep;
+use tokio::{sync::oneshot, time::sleep};
 use tokio_util::codec::{Decoder, Encoder, Framed, FramedParts};
 use tracing::*;
 use tracing_subscriber::filter::LevelFilter;
@@ -494,21 +494,32 @@ async fn main() {
     let mut swarm = Swarm::new(transport, behaviour, swarm_peer_id);
 
     swarm
-        .listen_on("/ip4/127.0.0.1/tcp/30333".parse().unwrap())
+        .listen_on("/ip4/127.0.0.1/tcp/0".parse().unwrap())
         .unwrap();
 
+    // this channel will allow us to discover the swarm's listening port
+    let (tx, rx) = oneshot::channel();
+
     tokio::spawn(async move {
+        let mut tx = Some(tx);
         loop {
             let event = swarm.select_next_some().await;
             debug!("   libp2p node: {:?}", event);
+            if let SwarmEvent::NewListenAddr { address, .. } = event {
+                tx.take().unwrap().send(address).unwrap();
+            }
         }
     });
 
-    // make sure the swarm is ready
-    sleep(Duration::from_millis(100)).await;
+    let mut swarm_addr = rx.await.unwrap();
+    let swarm_port = if let Some(Protocol::Tcp(port)) = swarm_addr.pop() {
+        port
+    } else {
+        panic!("the libp2p swarm did not return a listening TCP port");
+    };
 
     // connect the pea2pea node to the libp2p swarm
-    let swarm_addr: SocketAddr = "127.0.0.1:30333".parse().unwrap();
+    let swarm_addr = format!("127.0.0.1:{}", swarm_port).parse().unwrap();
     pea2pea_node.node().connect(swarm_addr).await.unwrap();
 
     // allow a few messages to be exchanged
