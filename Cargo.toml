@@ -3,7 +3,7 @@ name = "pea2pea"
 version = "0.40.0"
 authors = ["ljedrz <ljedrz@gmail.com>"]
 edition = "2021"
-description = "A simple, lightweight P2P library."
+description = "A simple, low-level, and customizable implementation of a TCP P2P node."
 license = "CC0-1.0"
 repository = "https://github.com/ljedrz/pea2pea"
 documentation = "https://docs.rs/pea2pea"
@@ -44,5 +44,5 @@ test-cert-gen = "0.9"
 tokio = { version = "1.14", features = ["macros", "rt-multi-thread"] }
 tokio-native-tls = "0.3"
 tracing-subscriber = { version = "0.3", default-features = false, features = ["ansi", "env-filter", "fmt", "parking_lot", "smallvec"] }
-pea2pea = { path = ".", features = ["test"] } # a workaround to use the `test` feature in tests by default
 unsigned-varint = { git = "https://github.com/ljedrz/unsigned-varint", branch = "update_tokio_util", features = ["codec", "futures"] }
+pea2pea = { path = ".", features = ["test"] } # a workaround to use the `test` feature in tests by default
