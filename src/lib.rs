@@ -1,11 +1,7 @@
 #![deny(missing_docs)]
 #![deny(unsafe_code)]
 
-//! **pea2pea** is a P2P library designed with the following use cases in mind:
-//! - simple and quick creation of custom P2P networks
-//! - testing/verifying network protocols
-//! - benchmarking and stress-testing P2P nodes (or other network entities)
-//! - substituting other, "heavier" nodes in local network tests
+//! **pea2pea** is a simple, low-level, and customizable implementation of a TCP P2P node.
 
 mod config;
 mod known_peers;

@@ -12,6 +12,9 @@ categories = ["network-programming", "asynchronous"]
 keywords = ["p2p", "peer-to-peer", "networking"]
 rust-version = "1.56"
 
+[badges]
+maintenance = { status = "actively-developed" }
+
 [lib]
 crate-type = ["lib"]
 
