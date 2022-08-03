@@ -45,9 +45,13 @@ async fn node_connect_and_disconnect() {
     wait_until!(1, nodes.iter().all(|n| n.node().num_connected() == 1));
 
     assert!(nodes.iter().all(|n| n.node().num_connecting() == 0));
-    assert!(nodes.chunks(2).into_iter().all(|c| c[0]
+    assert!(nodes.windows(2).all(|pair| pair[0]
         .node()
-        .is_connected(c[1].node().listening_addr().unwrap())));
+        .is_connected(pair[1].node().listening_addr().unwrap())));
+
+    assert!(nodes.windows(2).rev().all(|pair| pair[0]
+        .node()
+        .is_connected(pair[1].node().listening_addr().unwrap())));
 
     assert!(
         nodes[0]
@@ -57,9 +61,12 @@ async fn node_connect_and_disconnect() {
     );
 
     wait_until!(1, nodes[0].node().num_connected() == 0);
-    assert!(nodes.chunks(2).into_iter().all(|c| !c[0]
+    assert!(nodes.windows(2).all(|pair| !pair[0]
         .node()
-        .is_connected(c[1].node().listening_addr().unwrap())));
+        .is_connected(pair[1].node().listening_addr().unwrap())));
+    assert!(nodes.windows(2).rev().all(|pair| !pair[0]
+        .node()
+        .is_connected(pair[1].node().listening_addr().unwrap())));
 
     // node[1] didn't enable reading, so it has no way of knowing
     // that the connection has been broken by node[0]
