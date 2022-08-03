@@ -48,7 +48,6 @@ async fn node_connect_and_disconnect() {
     assert!(nodes.windows(2).all(|pair| pair[0]
         .node()
         .is_connected(pair[1].node().listening_addr().unwrap())));
-
     assert!(nodes.windows(2).rev().all(|pair| pair[0]
         .node()
         .is_connected(pair[1].node().listening_addr().unwrap())));
