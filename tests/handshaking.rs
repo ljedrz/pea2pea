@@ -1,3 +1,4 @@
+use deadline::deadline;
 use parking_lot::RwLock;
 use rand::{rngs::SmallRng, Rng, SeedableRng};
 use tokio::{
@@ -13,7 +14,7 @@ use pea2pea::{
     Config, Connection, ConnectionSide, Node, Pea2Pea,
 };
 
-use std::{collections::HashMap, io, net::SocketAddr, sync::Arc};
+use std::{collections::HashMap, io, net::SocketAddr, sync::Arc, time::Duration};
 
 type Nonce = u64;
 
@@ -109,11 +110,14 @@ async fn handshake_example() {
         .await
         .unwrap();
 
-    wait_until!(
-        1,
-        initiator.peer_nonces.read().keys().next() == Some(&responder.own_nonce)
-            && responder.peer_nonces.read().keys().next() == Some(&initiator.own_nonce)
-    );
+    deadline!(Duration::from_secs(1), move || initiator
+        .peer_nonces
+        .read()
+        .keys()
+        .next()
+        == Some(&responder.own_nonce)
+        && responder.peer_nonces.read().keys().next()
+            == Some(&initiator.own_nonce));
 }
 
 #[tokio::test]
@@ -142,7 +146,11 @@ async fn no_handshake_no_messaging() {
         .await
         .unwrap();
 
-    wait_until!(1, responder.node().num_connected() == 0);
+    let responder_clone = responder.clone();
+    deadline!(Duration::from_secs(1), move || responder_clone
+        .node()
+        .num_connected()
+        == 0);
     assert_eq!(responder.node().stats().received(), (0, 0));
 }
 
@@ -217,10 +225,15 @@ async fn timeout_when_spammed_with_connections() {
         }
     }
 
-    wait_until!(1, victim.node().num_connecting() == NUM_ATTEMPTS as usize);
+    let victim_clone = victim.clone();
+    deadline!(Duration::from_secs(1), move || victim_clone
+        .node()
+        .num_connecting()
+        == NUM_ATTEMPTS as usize);
 
-    wait_until!(
-        1,
-        victim.node().num_connecting() + victim.node().num_connected() == 0
-    );
+    deadline!(Duration::from_secs(1), move || victim
+        .node()
+        .num_connecting()
+        + victim.node().num_connected()
+        == 0);
 }

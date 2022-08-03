@@ -1,4 +1,5 @@
 use bytes::{Buf, Bytes, BytesMut};
+use deadline::deadline;
 use parking_lot::Mutex;
 use tokio_util::codec::Decoder;
 use tracing::*;
@@ -11,7 +12,7 @@ use pea2pea::{
 };
 use TestMessage::*;
 
-use std::{collections::HashSet, io, net::SocketAddr, sync::Arc};
+use std::{collections::HashSet, io, net::SocketAddr, sync::Arc, time::Duration};
 
 #[derive(PartialEq, Eq, Hash, Debug, Clone, Copy)]
 enum TestMessage {
@@ -106,7 +107,11 @@ async fn messaging_example() {
 
     shouter.node().connect(picky_echo_addr).await.unwrap();
 
-    wait_until!(1, picky_echo.node().num_connected() == 1);
+    let picky_echo_clone = picky_echo.clone();
+    deadline!(Duration::from_secs(1), move || picky_echo_clone
+        .node()
+        .num_connected()
+        == 1);
 
     for message in &[Herp, Derp, Herp] {
         let msg = Bytes::copy_from_slice(&[*message as u8]);
@@ -122,7 +127,12 @@ async fn messaging_example() {
         .unwrap();
 
     // check if the shouter heard the (non-duplicate) echoes and the last, non-reply one
-    wait_until!(1, shouter.node().stats().received().0 == 3);
+    deadline!(Duration::from_secs(1), move || shouter
+        .node()
+        .stats()
+        .received()
+        .0
+        == 3);
 }
 
 #[tokio::test]
@@ -136,14 +146,21 @@ async fn drop_connection_on_invalid_message() {
 
     writer.node().connect(reader_addr).await.unwrap();
 
-    wait_until!(1, reader.node().num_connected() == 1);
+    let reader_clone = reader.clone();
+    deadline!(Duration::from_secs(1), move || reader_clone
+        .node()
+        .num_connected()
+        == 1);
 
     // an invalid message: a zero-length payload
     let bad_message = Bytes::from(vec![]);
 
     writer.send_dm(reader_addr, bad_message).await.unwrap();
 
-    wait_until!(1, reader.node().num_connected() == 0);
+    deadline!(Duration::from_secs(1), move || reader
+        .node()
+        .num_connected()
+        == 0);
 }
 
 #[tokio::test]
@@ -157,13 +174,20 @@ async fn drop_connection_on_zero_read() {
         .await
         .unwrap();
 
-    wait_until!(1, reader.node().num_connected() == 1);
+    let reader_clone = reader.clone();
+    deadline!(Duration::from_secs(1), move || reader_clone
+        .node()
+        .num_connected()
+        == 1);
 
     // the peer shuts down, i.e. disconnects
     peer.node().shut_down().await;
 
     // the reader should drop its connection too now
-    wait_until!(1, reader.node().num_connected() == 0);
+    deadline!(Duration::from_secs(1), move || reader
+        .node()
+        .num_connected()
+        == 0);
 }
 
 #[tokio::test]
@@ -176,7 +200,11 @@ async fn no_reading_no_delivery() {
 
     writer.node().connect(reader_addr).await.unwrap();
 
-    wait_until!(1, reader.node().num_connected() == 1);
+    let reader_clone = reader.clone();
+    deadline!(Duration::from_secs(1), move || reader_clone
+        .node()
+        .num_connected()
+        == 1);
 
     // writer sends a message
     writer
@@ -185,7 +213,11 @@ async fn no_reading_no_delivery() {
         .unwrap();
 
     // but the reader didn't enable reading, so it won't receive anything
-    wait_until!(1, reader.node().stats().received() == (0, 0));
+    deadline!(Duration::from_secs(1), move || reader
+        .node()
+        .stats()
+        .received()
+        == (0, 0));
 }
 
 #[tokio::test]
@@ -198,7 +230,11 @@ async fn no_writing_no_delivery() {
 
     writer.node().connect(reader_addr).await.unwrap();
 
-    wait_until!(1, reader.node().num_connected() == 1);
+    let reader_clone = reader.clone();
+    deadline!(Duration::from_secs(1), move || reader_clone
+        .node()
+        .num_connected()
+        == 1);
 
     // writer tries to send a message
     assert!(writer
@@ -207,5 +243,9 @@ async fn no_writing_no_delivery() {
         .is_err());
 
     // the writer didn't enable writing, so the reader won't receive anything
-    wait_until!(1, reader.node().stats().received() == (0, 0));
+    deadline!(Duration::from_secs(1), move || reader
+        .node()
+        .stats()
+        .received()
+        == (0, 0));
 }

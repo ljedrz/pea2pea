@@ -139,23 +139,6 @@ macro_rules! impl_noop_disconnect_and_handshake {
     };
 }
 
-#[macro_export]
-macro_rules! wait_until {
-    ($limit_secs: expr, $condition: expr) => {
-        let now = std::time::Instant::now();
-        loop {
-            if $condition {
-                break;
-            }
-            tokio::time::sleep(std::time::Duration::from_millis(1)).await;
-            assert!(
-                now.elapsed() <= std::time::Duration::from_secs($limit_secs),
-                "timed out!"
-            );
-        }
-    };
-}
-
 pub fn display_bytes(bytes: f64) -> String {
     const GB: f64 = 1_000_000_000.0;
     const MB: f64 = 1_000_000.0;

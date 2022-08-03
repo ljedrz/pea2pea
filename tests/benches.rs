@@ -1,4 +1,5 @@
 use bytes::{Bytes, BytesMut};
+use deadline::deadline;
 use once_cell::sync::Lazy;
 use rand::{distributions::Standard, rngs::SmallRng, Rng, SeedableRng};
 use tokio_util::codec::Decoder;
@@ -10,7 +11,11 @@ use pea2pea::{
     ConnectionSide, Node, Pea2Pea,
 };
 
-use std::{io, net::SocketAddr, time::Instant};
+use std::{
+    io,
+    net::SocketAddr,
+    time::{Duration, Instant},
+};
 
 const NUM_MESSAGES: usize = 10_000;
 const MSG_SIZE: usize = 32 * 1024;
@@ -74,7 +79,11 @@ async fn run_bench_scenario(sender_count: usize) -> f64 {
             .unwrap();
     }
 
-    wait_until!(10, receiver.node().num_connected() == sender_count);
+    let receiver_clone = receiver.clone();
+    deadline!(Duration::from_secs(10), move || receiver_clone
+        .node()
+        .num_connected()
+        == sender_count);
 
     let receiver_addr = receiver.node().listening_addr().unwrap();
 
@@ -90,9 +99,10 @@ async fn run_bench_scenario(sender_count: usize) -> f64 {
         });
     }
 
-    wait_until!(
-        10,
-        receiver.node().stats().received().0 as usize == sender_count * NUM_MESSAGES
+    let receiver_clone = receiver.clone();
+    deadline!(
+        Duration::from_secs(10),
+        move || receiver_clone.node().stats().received().0 as usize == sender_count * NUM_MESSAGES
     );
 
     let time_elapsed = start.elapsed().as_millis();
@@ -156,7 +166,13 @@ async fn bench_connection() {
         let start = std::time::Instant::now();
         initiator.node().connect(responder_addr).await.unwrap();
         avg_conn_time += start.elapsed();
-        wait_until!(1, responder.node().num_connected() == 1);
+
+        let responder_clone = responder.clone();
+        deadline!(Duration::from_secs(1), move || responder_clone
+            .node()
+            .num_connected()
+            == 1);
+
         initiator.node().disconnect(responder_addr).await;
         let initiator_addr = responder.node().connected_addrs()[0];
         responder.node().disconnect(initiator_addr).await;

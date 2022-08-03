@@ -1,3 +1,4 @@
+use deadline::deadline;
 use tokio::{net::TcpListener, time::sleep};
 
 mod common;
@@ -39,10 +40,13 @@ async fn node_creation_used_port_fails() {
 
 #[tokio::test]
 async fn node_connect_and_disconnect() {
-    let nodes = common::start_test_nodes(2).await;
+    let nodes = Arc::new(common::start_test_nodes(2).await);
     connect_nodes(&nodes, Topology::Line).await.unwrap();
 
-    wait_until!(1, nodes.iter().all(|n| n.node().num_connected() == 1));
+    let nodes_clone = nodes.clone();
+    deadline!(Duration::from_secs(1), move || nodes_clone
+        .iter()
+        .all(|n| n.node().num_connected() == 1));
 
     assert!(nodes.iter().all(|n| n.node().num_connecting() == 0));
 
@@ -53,11 +57,16 @@ async fn node_connect_and_disconnect() {
             .await
     );
 
-    wait_until!(1, nodes[0].node().num_connected() == 0);
+    let node0_clone = nodes[0].clone();
+    deadline!(Duration::from_secs(1), move || node0_clone
+        .node()
+        .num_connected()
+        == 0);
 
     // node[1] didn't enable reading, so it has no way of knowing
     // that the connection has been broken by node[0]
-    assert_eq!(nodes[1].node().num_connected(), 1);
+    let node1_clone = nodes[1].clone();
+    assert_eq!(node1_clone.node().num_connected(), 1);
 }
 
 #[tokio::test]
@@ -112,7 +121,8 @@ async fn node_connectee_limit_breach_fails() {
         .unwrap();
 
     // the number of connections on connectee side needs to be checked instead
-    wait_until!(1, connectee.num_connected() == 0);
+    deadline!(Duration::from_secs(1), move || connectee.num_connected()
+        == 0);
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -134,7 +144,8 @@ async fn node_overlapping_duplicate_connection_attempts_fail() {
         });
     }
 
-    wait_until!(1, err_count.load(Relaxed) == NUM_ATTEMPTS - 1);
+    deadline!(Duration::from_secs(1), move || err_count.load(Relaxed)
+        == NUM_ATTEMPTS - 1);
 }
 
 #[tokio::test]

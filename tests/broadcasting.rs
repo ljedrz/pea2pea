@@ -1,4 +1,5 @@
 use bytes::Bytes;
+use deadline::deadline;
 use tokio::time::sleep;
 use tracing::*;
 
@@ -51,10 +52,7 @@ async fn broadcast_example() {
             .unwrap();
     }
 
-    wait_until!(
-        1,
-        random_nodes
-            .iter()
-            .all(|rando| rando.node().stats().received().0 == 2)
-    );
+    deadline!(Duration::from_secs(1), move || random_nodes
+        .iter()
+        .all(|rando| rando.node().stats().received().0 >= 2));
 }

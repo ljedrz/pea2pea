@@ -1,3 +1,4 @@
+use deadline::deadline;
 use tokio::time::sleep;
 use tracing::*;
 
@@ -51,5 +52,6 @@ async fn maintenance_example() {
         .known_peers()
         .register_failure(rando.node().listening_addr().unwrap()); // artificially report an issue with rando
 
-    wait_until!(1, tidy.node().num_connected() == 0);
+    deadline!(Duration::from_secs(1), move || tidy.node().num_connected()
+        == 0);
 }

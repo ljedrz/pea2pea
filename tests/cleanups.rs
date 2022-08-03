@@ -1,4 +1,5 @@
 use bytes::Bytes;
+use deadline::deadline;
 use peak_alloc::PeakAlloc;
 
 mod common;
@@ -8,7 +9,7 @@ use pea2pea::{
     Pea2Pea,
 };
 
-use std::{io, net::SocketAddr};
+use std::{io, net::SocketAddr, time::Duration};
 
 impl_noop_disconnect_and_handshake!(common::TestNode);
 
@@ -54,10 +55,14 @@ async fn check_node_cleanups() {
 
         // this connection direction allows the collection of `KnownPeers` to remain empty
         temp_node.node().connect(persistent_addr).await.unwrap();
-        wait_until!(
-            1,
-            persistent_node.node().num_connected() == 1 && temp_node.node().num_connected() == 1
-        );
+
+        let persistent_node_clone = persistent_node.clone();
+        let temp_node_clone = temp_node.clone();
+        deadline!(Duration::from_secs(1), move || persistent_node_clone
+            .node()
+            .num_connected()
+            == 1
+            && temp_node_clone.node().num_connected() == 1);
         let temporary_addr = persistent_node.node().connected_addrs()[0];
 
         persistent_node
@@ -71,7 +76,12 @@ async fn check_node_cleanups() {
             .unwrap();
 
         temp_node.node().shut_down().await;
-        wait_until!(1, persistent_node.node().num_connected() == 0);
+
+        let persistent_node_clone = persistent_node.clone();
+        deadline!(Duration::from_secs(1), move || persistent_node_clone
+            .node()
+            .num_connected()
+            == 0);
 
         // drop the temporary node to fully relinquish its memory
         drop(temp_node);

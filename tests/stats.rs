@@ -1,4 +1,5 @@
 use bytes::Bytes;
+use deadline::deadline;
 use rand::{rngs::SmallRng, Rng, SeedableRng};
 
 mod common;
@@ -6,6 +7,8 @@ use pea2pea::{
     protocols::{Reading, Writing},
     Pea2Pea,
 };
+
+use std::time::Duration;
 
 #[tokio::test]
 async fn message_stats() {
@@ -42,7 +45,8 @@ async fn message_stats() {
         writer.node().stats().sent(),
         (sent_msgs_count, expected_msgs_size)
     );
-    wait_until!(1, {
+
+    deadline!(Duration::from_secs(1), move || {
         if let Some(stats) = writer.node().known_peers().get(reader_addr) {
             let (sent_msgs, sent_bytes) = stats.sent();
             sent_msgs == sent_msgs_count && sent_bytes == expected_msgs_size
@@ -50,11 +54,15 @@ async fn message_stats() {
             false
         }
     });
-    wait_until!(
-        1,
-        reader.node().stats().received() == (sent_msgs_count, expected_msgs_size)
-    );
-    wait_until!(1, {
+
+    let reader_clone = reader.clone();
+    deadline!(Duration::from_secs(1), move || reader_clone
+        .node()
+        .stats()
+        .received()
+        == (sent_msgs_count, expected_msgs_size));
+
+    deadline!(Duration::from_secs(1), move || {
         if let Some((_, stats)) = reader.node().known_peers().snapshot().iter().next() {
             let (received_msgs, received_bytes) = stats.received();
             received_msgs == sent_msgs_count && received_bytes == expected_msgs_size

@@ -1,4 +1,5 @@
 use bytes::Bytes;
+use deadline::deadline;
 
 mod common;
 use crate::common::WritingExt;
@@ -7,7 +8,7 @@ use pea2pea::{
     Pea2Pea,
 };
 
-use std::net::SocketAddr;
+use std::{net::SocketAddr, time::Duration};
 
 #[async_trait::async_trait]
 impl Disconnect for common::TestNode {
@@ -31,11 +32,20 @@ async fn send_message_before_disconnect() {
 
     connector.node().connect(connectee_addr).await.unwrap();
 
-    wait_until!(1, connectee.node().num_connected() == 1);
+    let connectee_clone = connectee.clone();
+    deadline!(Duration::from_secs(1), move || connectee_clone
+        .node()
+        .num_connected()
+        == 1);
 
     assert_eq!(connectee.node().stats().received().0, 0);
 
     connector.node().disconnect(connectee_addr).await;
 
-    wait_until!(1, connectee.node().stats().received().0 == 1);
+    deadline!(Duration::from_secs(1), move || connectee
+        .node()
+        .stats()
+        .received()
+        .0
+        == 1);
 }
