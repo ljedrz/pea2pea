@@ -33,7 +33,7 @@ tracing = { version = "0.1", default-features = false }
 
 [dev-dependencies]
 bincode = "1"
-deadline = "0.1"
+deadline = "0.2"
 libp2p = { version = "0.46", default-features = false, features = ["noise", "ping", "tcp-tokio", "yamux"] }
 native-tls = "0.2"
 peak_alloc = "0.1"
