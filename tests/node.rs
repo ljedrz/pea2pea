@@ -57,16 +57,10 @@ async fn node_connect_and_disconnect() {
 
     assert!(!nodes[0].node().is_connected(node1_addr));
 
-    let node0_clone = nodes[0].clone();
-    deadline!(Duration::from_secs(1), move || node0_clone
-        .node()
-        .num_connected()
-        == 0);
-
     // node[1] didn't enable reading, so it has no way of knowing
     // that the connection has been broken by node[0]
-    let node1_clone = nodes[1].clone();
-    assert_eq!(node1_clone.node().num_connected(), 1);
+    assert_eq!(nodes[0].node().num_connected(), 0);
+    assert_eq!(nodes[1].node().num_connected(), 1);
 }
 
 #[tokio::test]
