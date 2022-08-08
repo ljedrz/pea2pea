@@ -19,6 +19,24 @@ async fn node_creation_any_port_works() {
     let _node = Node::new(Default::default()).await.unwrap();
 }
 
+#[tokio::test]
+async fn node_name_gets_auto_assigned() {
+    let node = Node::new(Default::default()).await.unwrap();
+    // ensure that a node without a given name get assigned a numeric ID
+    let _: usize = node.config().name.as_ref().unwrap().parse().unwrap();
+}
+
+#[tokio::test]
+async fn node_given_name_remains_unchanged() {
+    let config = Config {
+        name: Some("test".into()),
+        ..Default::default()
+    };
+    let node = Node::new(config).await.unwrap();
+    // ensure that a node with a given name doesn't have it overwritten
+    assert_eq!(node.config().name.as_ref().unwrap(), "test");
+}
+
 #[should_panic]
 #[tokio::test]
 async fn node_creation_bad_params_panic() {
