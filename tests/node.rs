@@ -2,9 +2,10 @@ use deadline::deadline;
 use tokio::{net::TcpListener, time::sleep};
 
 mod common;
-use pea2pea::{connect_nodes, Config, Node, Pea2Pea, Topology};
+use pea2pea::{connect_nodes, protocols::Handshake, Config, Node, Pea2Pea, Topology};
 
 use std::{
+    io,
     net::Ipv4Addr,
     sync::{
         atomic::{AtomicUsize, Ordering::Relaxed},
@@ -61,6 +62,40 @@ async fn node_connect_and_disconnect() {
     // that the connection has been broken by node[0]
     assert_eq!(nodes[0].node().num_connected(), 0);
     assert_eq!(nodes[1].node().num_connected(), 1);
+}
+
+#[tokio::test]
+async fn node_connecting() {
+    #[async_trait::async_trait]
+    impl Handshake for common::TestNode {
+        async fn perform_handshake(
+            &self,
+            conn: pea2pea::Connection,
+        ) -> io::Result<pea2pea::Connection> {
+            sleep(Duration::from_millis(50)).await;
+            Ok(conn)
+        }
+    }
+
+    let nodes = Arc::new(common::start_test_nodes(2).await);
+    let node1_addr = nodes[1].node().listening_addr().unwrap();
+
+    assert!(!nodes[0].node().is_connecting(node1_addr));
+
+    let node0 = nodes[0].clone();
+    tokio::spawn(async move {
+        node0.node().connect(node1_addr).await.unwrap();
+    });
+
+    let node0 = nodes[0].clone();
+    deadline!(Duration::from_millis(100), move || node0
+        .node()
+        .is_connecting(node1_addr));
+
+    let nodes_clone = nodes.clone();
+    deadline!(Duration::from_secs(1), move || nodes_clone
+        .iter()
+        .all(|n| n.node().num_connected() == 1));
 }
 
 #[tokio::test]
