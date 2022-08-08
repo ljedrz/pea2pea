@@ -42,6 +42,7 @@ async fn node_creation_used_port_fails() {
 async fn node_connect_and_disconnect() {
     let nodes = Arc::new(common::start_test_nodes(2).await);
     connect_nodes(&nodes, Topology::Line).await.unwrap();
+    let node1_addr = nodes[1].node().listening_addr().unwrap();
 
     let nodes_clone = nodes.clone();
     deadline!(Duration::from_secs(1), move || nodes_clone
@@ -50,12 +51,11 @@ async fn node_connect_and_disconnect() {
 
     assert!(nodes.iter().all(|n| n.node().num_connecting() == 0));
 
-    assert!(
-        nodes[0]
-            .node()
-            .disconnect(nodes[1].node().listening_addr().unwrap())
-            .await
-    );
+    assert!(nodes[0].node().is_connected(node1_addr));
+
+    assert!(nodes[0].node().disconnect(node1_addr).await);
+
+    assert!(!nodes[0].node().is_connected(node1_addr));
 
     let node0_clone = nodes[0].clone();
     deadline!(Duration::from_secs(1), move || node0_clone
