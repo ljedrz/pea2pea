@@ -168,7 +168,7 @@ impl Encoder<yamux::Frame> for Codec {
 // payloads for Noise handshake messages
 // note: this struct was auto-generated using prost-build based on
 // the proto file from the libp2p-noise repository
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, Eq, ::prost::Message)]
 pub struct NoiseHandshakePayload {
     #[prost(bytes = "vec", tag = "1")]
     pub identity_key: ::prost::alloc::vec::Vec<u8>,
