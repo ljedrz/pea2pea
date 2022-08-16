@@ -25,6 +25,10 @@ impl Connections {
         self.0.read().contains_key(&addr)
     }
 
+    pub(crate) fn connection_side(&self, addr: SocketAddr) -> Option<ConnectionSide> {
+        self.0.read().get(&addr).map(|conn| conn.side())
+    }
+
     pub(crate) fn remove(&self, addr: SocketAddr) -> Option<Connection> {
         self.0.write().remove(&addr)
     }

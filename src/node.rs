@@ -375,6 +375,11 @@ impl Node {
         self.connections.is_connected(addr)
     }
 
+    /// Returns the connection side of the provided address.
+    pub fn connection_side(&self, addr: SocketAddr) -> Option<ConnectionSide> {
+        self.connections.connection_side(addr)
+    }
+
     /// Checks if the node is currently setting up a connection with the provided address.
     pub fn is_connecting(&self, addr: SocketAddr) -> bool {
         self.connecting.lock().contains(&addr)
