@@ -11,6 +11,7 @@ jobs:
     name: check
     runs-on: ubuntu-latest
     steps:
+      - uses: arduino/setup-protoc@v1
       - uses: actions/checkout@v2
       - uses: actions-rs/toolchain@v1
         with:
@@ -42,6 +43,7 @@ jobs:
     name: clippy
     runs-on: ubuntu-latest
     steps:
+      - uses: arduino/setup-protoc@v1
       - uses: actions/checkout@v2
       - uses: actions-rs/toolchain@v1
         with:
