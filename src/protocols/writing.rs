@@ -243,7 +243,7 @@ impl<W: Writing> WritingInternal for W {
 
         // return the Connection to the Node, resuming Node::adapt_stream
         if conn_returner.send(Ok(conn)).is_err() {
-            unreachable!("could't return a Connection to the Node");
+            unreachable!("couldn't return a Connection to the Node");
         }
     }
 }
