@@ -73,7 +73,7 @@ impl Reading for SecureNode {
 
     fn codec(&self, addr: SocketAddr, _side: ConnectionSide) -> Self::Codec {
         let state = self.noise_states.read().get(&addr).cloned().unwrap();
-        noise::Codec::new(state, self.node().span().clone())
+        noise::Codec::new(2, u16::MAX as usize, state, self.node().span().clone())
     }
 
     async fn process_message(&self, source: SocketAddr, message: Self::Message) -> io::Result<()> {
@@ -89,7 +89,7 @@ impl Writing for SecureNode {
 
     fn codec(&self, addr: SocketAddr, _side: ConnectionSide) -> Self::Codec {
         let state = self.noise_states.write().remove(&addr).unwrap();
-        noise::Codec::new(state, self.node().span().clone())
+        noise::Codec::new(2, u16::MAX as usize, state, self.node().span().clone())
     }
 }
 

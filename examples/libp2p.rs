@@ -271,7 +271,12 @@ impl Handshake for Libp2pNode {
         // reconstruct the Framed with the post-handshake noise state
         let mut framed = Framed::new(
             self.borrow_stream(&mut conn),
-            noise::Codec::new(noise_state, self.node().span().clone()),
+            noise::Codec::new(
+                2,
+                u16::MAX as usize,
+                noise_state,
+                self.node().span().clone(),
+            ),
         );
 
         // exchange further protocol params
@@ -350,7 +355,12 @@ impl Reading for Libp2pNode {
         let noise_state = self.noise_states.lock().get(&addr).cloned().unwrap();
 
         Self::Codec::new(
-            noise::Codec::new(noise_state, self.node().span().clone()),
+            noise::Codec::new(
+                2,
+                u16::MAX as usize,
+                noise_state,
+                self.node().span().clone(),
+            ),
             yamux::Codec::new(side, self.node().span().clone()),
         )
     }
@@ -447,7 +457,12 @@ impl Writing for Libp2pNode {
         let noise_state = self.noise_states.lock().remove(&addr).unwrap();
 
         Self::Codec::new(
-            noise::Codec::new(noise_state, self.node().span().clone()),
+            noise::Codec::new(
+                2,
+                u16::MAX as usize,
+                noise_state,
+                self.node().span().clone(),
+            ),
             yamux::Codec::new(side, self.node().span().clone()),
         )
     }
