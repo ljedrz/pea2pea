@@ -39,6 +39,7 @@ native-tls = "0.2"
 peak_alloc = "0.1"
 prost = "0.11"
 rand = { version = "0.8", default-features = false, features = ["getrandom", "small_rng"] }
+rayon = "1"
 serde = { version = "1", default-features = false, features = ["derive"] }
 snow = "0.9"
 test-cert-gen = "0.9"
