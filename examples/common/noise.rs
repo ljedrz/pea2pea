@@ -1,17 +1,13 @@
 //! A `snow`-powered implementation of the noise XX handshake for `pea2pea`.
 
-use bytes::{Buf, BufMut, Bytes, BytesMut};
+use bytes::{BufMut, Bytes, BytesMut};
 use futures_util::{sink::SinkExt, TryStreamExt};
 use tokio_util::codec::{Decoder, Encoder, Framed, FramedParts, LengthDelimitedCodec};
 use tracing::*;
 
 use pea2pea::{protocols::Handshake, Connection, ConnectionSide};
 
-use std::{
-    cmp,
-    io::{self, Read},
-    sync::Arc,
-};
+use std::{io, sync::Arc};
 
 // maximum noise message size, as specified by its protocol
 pub const MAX_MESSAGE_LEN: usize = 65535;
@@ -125,7 +121,7 @@ impl Decoder for Codec {
         }
 
         // obtain the whole encrypted message first, using the length-delimited codec
-        let mut bytes = if let Some(bytes) = self.codec.decode(src)? {
+        let bytes = if let Some(bytes) = self.codec.decode(src)? {
             bytes
         } else {
             return Ok(None);
@@ -147,12 +143,10 @@ impl Decoder for Codec {
             State::PostHandshake(ref mut noise) => {
                 let mut decrypted_msg = BytesMut::new();
 
-                let mut encrypted_chunk = bytes.split_to(cmp::min(bytes.len(), MAX_MESSAGE_LEN));
-
-                while !encrypted_chunk.is_empty() {
+                for encrypted_chunk in bytes.chunks(MAX_MESSAGE_LEN) {
                     let msg_len = noise
                         .state
-                        .read_message(noise.rx_nonce, &encrypted_chunk, &mut self.buffer)
+                        .read_message(noise.rx_nonce, encrypted_chunk, &mut self.buffer)
                         .map_err(|e| {
                             let span = self.span.clone();
                             error!(
@@ -164,8 +158,6 @@ impl Decoder for Codec {
                     noise.rx_nonce += 1;
 
                     decrypted_msg.extend_from_slice(&self.buffer[..msg_len]);
-
-                    encrypted_chunk = bytes.split_to(cmp::min(bytes.len(), MAX_MESSAGE_LEN));
                 }
 
                 Ok(Some(decrypted_msg))
@@ -186,22 +178,16 @@ impl Encoder<Bytes> for Codec {
                     .encode(Bytes::from(self.buffer[..msg_len].to_vec()), dst)
             }
             State::PostHandshake(ref mut noise) => {
-                let mut reader = msg.reader();
-                let mut chunk = [0u8; MAX_MESSAGE_LEN - 16];
                 let mut encrypted_msg = BytesMut::new();
 
-                let mut read_size = reader.read(&mut chunk)?;
-
-                while read_size != 0 {
+                for msg_chunk in msg.chunks(MAX_MESSAGE_LEN - 16) {
                     let msg_len = noise
                         .state
-                        .write_message(noise.tx_nonce, &chunk[..read_size], &mut self.buffer)
+                        .write_message(noise.tx_nonce, msg_chunk, &mut self.buffer)
                         .unwrap();
                     noise.tx_nonce += 1;
 
                     encrypted_msg.put(&self.buffer[..msg_len]);
-
-                    read_size = reader.read(&mut chunk)?;
                 }
 
                 self.codec.encode(encrypted_msg.freeze(), dst)
