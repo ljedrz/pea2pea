@@ -1,6 +1,6 @@
 //! A `snow`-powered implementation of the noise XX handshake for `pea2pea`.
 
-use bytes::{BufMut, Bytes, BytesMut};
+use bytes::{Bytes, BytesMut};
 use futures_util::{sink::SinkExt, TryStreamExt};
 use tokio_util::codec::{Decoder, Encoder, Framed, FramedParts, LengthDelimitedCodec};
 use tracing::*;
@@ -187,7 +187,7 @@ impl Encoder<Bytes> for Codec {
                         .unwrap();
                     noise.tx_nonce += 1;
 
-                    encrypted_msg.put(&self.buffer[..msg_len]);
+                    encrypted_msg.extend_from_slice(&self.buffer[..msg_len]);
                 }
 
                 self.codec.encode(encrypted_msg.freeze(), dst)
