@@ -1,15 +1,14 @@
 #![allow(dead_code)]
 
-use bytes::{Bytes, BytesMut};
-use tokio_util::codec::{Decoder, Encoder, LengthDelimitedCodec};
-use tracing::*;
+use std::{io, marker::PhantomData, net::SocketAddr};
 
+use bytes::{Bytes, BytesMut};
 use pea2pea::{
     protocols::{Reading, Writing},
     Node, Pea2Pea,
 };
-
-use std::{io, marker::PhantomData, net::SocketAddr};
+use tokio_util::codec::{Decoder, Encoder, LengthDelimitedCodec};
+use tracing::*;
 
 #[derive(Clone)]
 pub struct TestNode(pub Node);

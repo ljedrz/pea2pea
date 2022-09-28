@@ -2,12 +2,12 @@
 //! node's lifetime and handles a specific functionality. The communication with these tasks is done via dedicated
 //! handler objects.
 
-use crate::connections::Connection;
+use std::{io, net::SocketAddr};
 
 use once_cell::race::OnceBox;
 use tokio::sync::{mpsc, oneshot};
 
-use std::{io, net::SocketAddr};
+use crate::connections::Connection;
 
 mod disconnect;
 mod handshake;

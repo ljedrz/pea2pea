@@ -1,10 +1,4 @@
-use crate::{
-    protocols::{ProtocolHandler, ReturnableConnection},
-    ConnectionSide, Node, Pea2Pea,
-};
-
-#[cfg(doc)]
-use crate::{protocols::Handshake, Config};
+use std::{io, net::SocketAddr};
 
 use async_trait::async_trait;
 use bytes::BytesMut;
@@ -16,7 +10,12 @@ use tokio::{
 use tokio_util::codec::{Decoder, FramedRead};
 use tracing::*;
 
-use std::{io, net::SocketAddr};
+#[cfg(doc)]
+use crate::{protocols::Handshake, Config};
+use crate::{
+    protocols::{ProtocolHandler, ReturnableConnection},
+    ConnectionSide, Node, Pea2Pea,
+};
 
 /// Can be used to specify and enable reading, i.e. receiving inbound messages. If the [`Handshake`]
 /// protocol is enabled too, it goes into force only after the handshake has been concluded.

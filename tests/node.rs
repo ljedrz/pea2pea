@@ -2,8 +2,6 @@ use deadline::deadline;
 use tokio::{net::TcpListener, time::sleep};
 
 mod common;
-use pea2pea::{connect_nodes, protocols::Handshake, Config, Node, Pea2Pea, Topology};
-
 use std::{
     io,
     net::Ipv4Addr,
@@ -13,6 +11,8 @@ use std::{
     },
     time::Duration,
 };
+
+use pea2pea::{connect_nodes, protocols::Handshake, Config, Node, Pea2Pea, Topology};
 
 #[tokio::test]
 async fn node_creation_any_port_works() {

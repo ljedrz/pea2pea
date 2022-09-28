@@ -1,7 +1,6 @@
 //! Objects associated with connection handling.
 
-#[cfg(doc)]
-use crate::protocols::{Handshake, Reading, Writing};
+use std::{collections::HashMap, net::SocketAddr, ops::Not};
 
 use parking_lot::RwLock;
 use tokio::{
@@ -11,7 +10,8 @@ use tokio::{
     task::JoinHandle,
 };
 
-use std::{collections::HashMap, net::SocketAddr, ops::Not};
+#[cfg(doc)]
+use crate::protocols::{Handshake, Reading, Writing};
 
 #[derive(Default)]
 pub(crate) struct Connections(RwLock<HashMap<SocketAddr, Connection>>);

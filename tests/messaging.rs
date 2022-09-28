@@ -5,14 +5,15 @@ use tokio_util::codec::Decoder;
 use tracing::*;
 
 mod common;
-use crate::common::WritingExt;
+use std::{collections::HashSet, io, net::SocketAddr, sync::Arc, time::Duration};
+
 use pea2pea::{
     protocols::{Reading, Writing},
     Config, ConnectionSide, Node, Pea2Pea,
 };
 use TestMessage::*;
 
-use std::{collections::HashSet, io, net::SocketAddr, sync::Arc, time::Duration};
+use crate::common::WritingExt;
 
 #[derive(PartialEq, Eq, Hash, Debug, Clone, Copy)]
 enum TestMessage {

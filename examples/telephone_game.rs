@@ -2,17 +2,16 @@
 
 mod common;
 
-use tokio::time::sleep;
-use tracing::*;
-use tracing_subscriber::filter::LevelFilter;
+use std::{io, net::SocketAddr, time::Duration};
 
 use pea2pea::{
     connect_nodes,
     protocols::{Reading, Writing},
     ConnectionSide, Node, Pea2Pea, Topology,
 };
-
-use std::{io, net::SocketAddr, time::Duration};
+use tokio::time::sleep;
+use tracing::*;
+use tracing_subscriber::filter::LevelFilter;
 
 #[derive(Clone)]
 struct Player(Node);

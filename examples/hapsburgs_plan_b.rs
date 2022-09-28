@@ -2,16 +2,15 @@
 
 mod common;
 
-use tokio::time::sleep;
-use tracing::*;
-use tracing_subscriber::filter::LevelFilter;
+use std::{io, net::SocketAddr, time::Duration};
 
 use pea2pea::{
     protocols::{Disconnect, Handshake, Reading, Writing},
     Config, Connection, ConnectionSide, Node, Pea2Pea,
 };
-
-use std::{io, net::SocketAddr, time::Duration};
+use tokio::time::sleep;
+use tracing::*;
+use tracing_subscriber::filter::LevelFilter;
 
 #[derive(Clone)]
 struct NakedNode(Node);

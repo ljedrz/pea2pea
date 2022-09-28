@@ -2,20 +2,19 @@
 
 mod common;
 
+use std::{io, net::SocketAddr, time::Duration};
+
 use bytes::{Bytes, BytesMut};
 use native_tls::{Certificate, Identity};
+use pea2pea::{
+    protocols::{Handshake, Reading, Writing},
+    Config, Connection, ConnectionSide, Node, Pea2Pea,
+};
 use tokio::time::sleep;
 use tokio_native_tls::{TlsAcceptor, TlsConnector};
 use tokio_util::codec::BytesCodec;
 use tracing::*;
 use tracing_subscriber::filter::LevelFilter;
-
-use pea2pea::{
-    protocols::{Handshake, Reading, Writing},
-    Config, Connection, ConnectionSide, Node, Pea2Pea,
-};
-
-use std::{io, net::SocketAddr, time::Duration};
 
 #[derive(Clone)]
 struct TlsNode {

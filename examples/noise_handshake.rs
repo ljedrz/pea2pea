@@ -2,20 +2,18 @@
 
 mod common;
 
-use common::noise;
+use std::{collections::HashMap, io, net::SocketAddr, str, sync::Arc, time::Duration};
 
 use bytes::{Bytes, BytesMut};
+use common::noise;
 use parking_lot::RwLock;
-use tokio::time::sleep;
-use tracing::*;
-use tracing_subscriber::filter::LevelFilter;
-
 use pea2pea::{
     protocols::{Handshake, Reading, Writing},
     Config, Connection, ConnectionSide, Node, Pea2Pea,
 };
-
-use std::{collections::HashMap, io, net::SocketAddr, str, sync::Arc, time::Duration};
+use tokio::time::sleep;
+use tracing::*;
+use tracing_subscriber::filter::LevelFilter;
 
 #[derive(Clone)]
 struct SecureNode {

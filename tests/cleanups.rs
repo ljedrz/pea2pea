@@ -3,13 +3,14 @@ use deadline::deadline;
 use peak_alloc::PeakAlloc;
 
 mod common;
-use crate::common::WritingExt;
+use std::{io, net::SocketAddr, time::Duration};
+
 use pea2pea::{
     protocols::{Disconnect, Handshake, Reading, Writing},
     Pea2Pea,
 };
 
-use std::{io, net::SocketAddr, time::Duration};
+use crate::common::WritingExt;
 
 impl_noop_disconnect_and_handshake!(common::TestNode);
 

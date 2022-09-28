@@ -2,25 +2,6 @@
 
 mod common;
 
-use bytes::BytesMut;
-use once_cell::sync::Lazy;
-use parking_lot::Mutex;
-use rand::{rngs::SmallRng, seq::IteratorRandom, Rng, SeedableRng};
-use serde::{Deserialize, Serialize};
-use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
-    time::sleep,
-};
-use tokio_util::codec::{Decoder, Encoder};
-use tracing::*;
-use tracing_subscriber::filter::LevelFilter;
-
-use pea2pea::{
-    connect_nodes,
-    protocols::{Handshake, Reading, Writing},
-    Connection, ConnectionSide, Node, Pea2Pea, Topology,
-};
-
 use std::{
     collections::HashMap,
     io,
@@ -31,6 +12,24 @@ use std::{
     },
     time::Duration,
 };
+
+use bytes::BytesMut;
+use once_cell::sync::Lazy;
+use parking_lot::Mutex;
+use pea2pea::{
+    connect_nodes,
+    protocols::{Handshake, Reading, Writing},
+    Connection, ConnectionSide, Node, Pea2Pea, Topology,
+};
+use rand::{rngs::SmallRng, seq::IteratorRandom, Rng, SeedableRng};
+use serde::{Deserialize, Serialize};
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    time::sleep,
+};
+use tokio_util::codec::{Decoder, Encoder};
+use tracing::*;
+use tracing_subscriber::filter::LevelFilter;
 
 static RNG: Lazy<Mutex<SmallRng>> = Lazy::new(|| Mutex::new(SmallRng::from_entropy()));
 

@@ -1,10 +1,4 @@
-use crate::{
-    protocols::{Protocol, ProtocolHandler, ReturnableConnection},
-    Connection, ConnectionSide, Pea2Pea,
-};
-
-#[cfg(doc)]
-use crate::{protocols::Handshake, Config, Node};
+use std::{any::Any, collections::HashMap, io, net::SocketAddr, sync::Arc};
 
 use async_trait::async_trait;
 use futures_util::sink::SinkExt;
@@ -16,7 +10,12 @@ use tokio::{
 use tokio_util::codec::{Encoder, FramedWrite};
 use tracing::*;
 
-use std::{any::Any, collections::HashMap, io, net::SocketAddr, sync::Arc};
+#[cfg(doc)]
+use crate::{protocols::Handshake, Config, Node};
+use crate::{
+    protocols::{Protocol, ProtocolHandler, ReturnableConnection},
+    Connection, ConnectionSide, Pea2Pea,
+};
 
 type WritingSenders = Arc<RwLock<HashMap<SocketAddr, mpsc::Sender<WrappedMessage>>>>;
 

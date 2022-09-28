@@ -1,12 +1,11 @@
 //! A simple implementation of the Yamux multiplexer.
 
+use std::{fmt, io};
+
 use bytes::{Buf, BufMut, Bytes, BytesMut};
+use pea2pea::ConnectionSide;
 use tokio_util::codec::{Decoder, Encoder, LengthDelimitedCodec};
 use tracing::*;
-
-use pea2pea::ConnectionSide;
-
-use std::{fmt, io};
 
 // the version used in Yamux message headers
 pub const VERSION: u8 = 0;

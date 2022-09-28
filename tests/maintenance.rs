@@ -3,9 +3,9 @@ use tokio::time::sleep;
 use tracing::*;
 
 mod common;
-use pea2pea::Pea2Pea;
-
 use std::time::Duration;
+
+use pea2pea::Pea2Pea;
 
 impl common::TestNode {
     fn perform_periodic_maintenance(&self) {

@@ -1,13 +1,12 @@
 //! A `snow`-powered implementation of the noise XX handshake for `pea2pea`.
 
+use std::{io, sync::Arc};
+
 use bytes::{Bytes, BytesMut};
 use futures_util::{sink::SinkExt, TryStreamExt};
+use pea2pea::{protocols::Handshake, Connection, ConnectionSide};
 use tokio_util::codec::{Decoder, Encoder, Framed, FramedParts, LengthDelimitedCodec};
 use tracing::*;
-
-use pea2pea::{protocols::Handshake, Connection, ConnectionSide};
-
-use std::{io, sync::Arc};
 
 // maximum noise message size, as specified by its protocol
 pub const MAX_MESSAGE_LEN: usize = 65535;

@@ -1,6 +1,6 @@
-use parking_lot::RwLock;
-
 use std::{collections::HashMap, net::SocketAddr, sync::Arc};
+
+use parking_lot::RwLock;
 
 use crate::Stats;
 

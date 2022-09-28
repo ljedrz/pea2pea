@@ -1,10 +1,10 @@
 #![allow(clippy::blocks_in_if_conditions)]
 
 mod common;
+use std::time::Duration;
+
 use deadline::deadline;
 use pea2pea::{connect_nodes, Pea2Pea, Topology};
-
-use std::time::Duration;
 
 // the number of nodes spawned for each topology test
 const N: usize = 10;

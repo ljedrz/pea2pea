@@ -3,12 +3,12 @@ use deadline::deadline;
 use rand::{rngs::SmallRng, Rng, SeedableRng};
 
 mod common;
+use std::time::Duration;
+
 use pea2pea::{
     protocols::{Reading, Writing},
     Pea2Pea,
 };
-
-use std::time::Duration;
 
 #[tokio::test]
 async fn message_stats() {

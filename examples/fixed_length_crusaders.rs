@@ -2,18 +2,17 @@
 
 mod common;
 
-use bytes::{Buf, BufMut, BytesMut};
-use tokio::time::sleep;
-use tokio_util::codec::{Decoder, Encoder};
-use tracing::*;
-use tracing_subscriber::filter::LevelFilter;
+use std::{io, net::SocketAddr, time::Duration};
 
+use bytes::{Buf, BufMut, BytesMut};
 use pea2pea::{
     protocols::{Handshake, Reading, Writing},
     Config, Connection, ConnectionSide, Node, Pea2Pea,
 };
-
-use std::{io, net::SocketAddr, time::Duration};
+use tokio::time::sleep;
+use tokio_util::codec::{Decoder, Encoder};
+use tracing::*;
+use tracing_subscriber::filter::LevelFilter;
 
 #[derive(Clone)]
 struct JoJoNode(Node);

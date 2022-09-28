@@ -1,7 +1,4 @@
-use crate::{
-    protocols::{ProtocolHandler, ReturnableConnection},
-    Connection, Pea2Pea,
-};
+use std::{io, time::Duration};
 
 use tokio::{
     io::{split, AsyncRead, AsyncWrite},
@@ -11,7 +8,10 @@ use tokio::{
 };
 use tracing::*;
 
-use std::{io, time::Duration};
+use crate::{
+    protocols::{ProtocolHandler, ReturnableConnection},
+    Connection, Pea2Pea,
+};
 
 /// Can be used to specify and enable network handshakes. Upon establishing a connection, both sides will
 /// need to adhere to the specified handshake rules in order to finalize the connection and be able to send

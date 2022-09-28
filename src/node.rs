@@ -1,7 +1,12 @@
-use crate::{
-    connections::{Connection, ConnectionSide, Connections},
-    protocols::{Protocol, Protocols},
-    Config, KnownPeers, Stats,
+use std::{
+    collections::HashSet,
+    io,
+    net::SocketAddr,
+    ops::Deref,
+    sync::{
+        atomic::{AtomicUsize, Ordering::*},
+        Arc,
+    },
 };
 
 use parking_lot::Mutex;
@@ -13,15 +18,10 @@ use tokio::{
 };
 use tracing::*;
 
-use std::{
-    collections::HashSet,
-    io,
-    net::SocketAddr,
-    ops::Deref,
-    sync::{
-        atomic::{AtomicUsize, Ordering::*},
-        Arc,
-    },
+use crate::{
+    connections::{Connection, ConnectionSide, Connections},
+    protocols::{Protocol, Protocols},
+    Config, KnownPeers, Stats,
 };
 
 macro_rules! enable_protocol {

@@ -1,6 +1,6 @@
-use crate::Pea2Pea;
-
 use std::{collections::HashSet, io};
+
+use crate::Pea2Pea;
 
 /// The way in which nodes are connected to each other; used in [`connect_nodes`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

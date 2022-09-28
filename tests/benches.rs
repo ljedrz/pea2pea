@@ -5,17 +5,18 @@ use rand::{distributions::Standard, rngs::SmallRng, Rng, SeedableRng};
 use tokio_util::codec::Decoder;
 
 mod common;
-use crate::common::WritingExt;
-use pea2pea::{
-    protocols::{Disconnect, Handshake, Reading, Writing},
-    ConnectionSide, Node, Pea2Pea,
-};
-
 use std::{
     io,
     net::SocketAddr,
     time::{Duration, Instant},
 };
+
+use pea2pea::{
+    protocols::{Disconnect, Handshake, Reading, Writing},
+    ConnectionSide, Node, Pea2Pea,
+};
+
+use crate::common::WritingExt;
 
 const NUM_MESSAGES: usize = 10_000;
 const MSG_SIZE: usize = 32 * 1024;

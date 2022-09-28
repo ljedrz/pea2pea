@@ -4,26 +4,24 @@
 
 mod common;
 
-use common::{noise, yamux};
+use std::{cmp, collections::HashMap, io, net::SocketAddr, sync::Arc, time::Duration};
 
 use bytes::{Bytes, BytesMut};
+use common::{noise, yamux};
 use futures_util::{SinkExt, StreamExt, TryStreamExt};
 use libp2p::swarm::{Swarm, SwarmEvent};
 use libp2p::{core::multiaddr::Protocol, identity, ping, PeerId, Transport};
 use parking_lot::{Mutex, RwLock};
+use pea2pea::{
+    protocols::{Disconnect, Handshake, Reading, Writing},
+    Connection, ConnectionSide, Node, Pea2Pea,
+};
 use prost::Message;
 use tokio::{sync::oneshot, time::sleep};
 use tokio_util::codec::{Decoder, Encoder, Framed, FramedParts};
 use tracing::*;
 use tracing_subscriber::filter::LevelFilter;
 use unsigned_varint::codec::UviBytes;
-
-use pea2pea::{
-    protocols::{Disconnect, Handshake, Reading, Writing},
-    Connection, ConnectionSide, Node, Pea2Pea,
-};
-
-use std::{cmp, collections::HashMap, io, net::SocketAddr, sync::Arc, time::Duration};
 
 // the protocol string of libp2p::ping
 const PROTOCOL_PING: &[u8] = b"\x13/multistream/1.0.0\n\x11/ipfs/ping/1.0.0\n";

@@ -4,12 +4,12 @@ use tokio::time::sleep;
 use tracing::*;
 
 mod common;
+use std::time::Duration;
+
 use pea2pea::{
     protocols::{Reading, Writing},
     Pea2Pea,
 };
-
-use std::time::Duration;
 
 impl common::TestNode {
     fn send_periodic_broadcasts(&self) {

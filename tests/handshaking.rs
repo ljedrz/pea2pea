@@ -8,13 +8,14 @@ use tokio::{
 use tracing::*;
 
 mod common;
-use crate::common::WritingExt;
+use std::{collections::HashMap, io, net::SocketAddr, sync::Arc, time::Duration};
+
 use pea2pea::{
     protocols::{Handshake, Reading, Writing},
     Config, Connection, ConnectionSide, Node, Pea2Pea,
 };
 
-use std::{collections::HashMap, io, net::SocketAddr, sync::Arc, time::Duration};
+use crate::common::WritingExt;
 
 type Nonce = u64;
 

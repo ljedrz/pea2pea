@@ -1,10 +1,10 @@
-#[cfg(doc)]
-use crate::protocols::{self, Handshake, Reading, Writing};
-
 use std::{
     io::{self, ErrorKind::*},
     net::{IpAddr, Ipv4Addr},
 };
+
+#[cfg(doc)]
+use crate::protocols::{self, Handshake, Reading, Writing};
 
 /// The node's configuration. See the source of [`Config::default`] for the defaults.
 #[derive(Debug, Clone)]

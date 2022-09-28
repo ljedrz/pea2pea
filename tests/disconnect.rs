@@ -2,13 +2,14 @@ use bytes::Bytes;
 use deadline::deadline;
 
 mod common;
-use crate::common::WritingExt;
+use std::{net::SocketAddr, time::Duration};
+
 use pea2pea::{
     protocols::{Disconnect, Reading, Writing},
     Pea2Pea,
 };
 
-use std::{net::SocketAddr, time::Duration};
+use crate::common::WritingExt;
 
 #[async_trait::async_trait]
 impl Disconnect for common::TestNode {
