@@ -9,8 +9,8 @@ use std::{cmp, collections::HashMap, io, net::SocketAddr, sync::Arc, time::Durat
 use bytes::{Bytes, BytesMut};
 use common::{noise, yamux};
 use futures_util::{SinkExt, StreamExt, TryStreamExt};
-use libp2p::swarm::{Swarm, SwarmEvent};
-use libp2p::{core::multiaddr::Protocol, identity, ping, PeerId, Transport};
+use libp2p::swarm::{keep_alive, Swarm, SwarmEvent};
+use libp2p::{core::multiaddr::Protocol, identity, ping, NetworkBehaviour, PeerId, Transport};
 use parking_lot::{Mutex, RwLock};
 use pea2pea::{
     protocols::{Disconnect, Handshake, Reading, Writing},
@@ -473,6 +473,12 @@ impl Disconnect for Libp2pNode {
     }
 }
 
+#[derive(NetworkBehaviour, Default)]
+struct Behaviour {
+    keep_alive: keep_alive::Behaviour,
+    ping: ping::Behaviour,
+}
+
 #[tokio::main(flavor = "multi_thread")]
 async fn main() {
     common::start_logger(LevelFilter::DEBUG);
@@ -499,12 +505,7 @@ async fn main() {
         .authenticate(libp2p::noise::NoiseConfig::xx(noise_keys).into_authenticated())
         .multiplex(libp2p::yamux::YamuxConfig::default())
         .boxed();
-    let behaviour = ping::Behaviour::new(
-        ping::Config::new()
-            .with_keep_alive(true)
-            .with_interval(Duration::from_secs(5)),
-    );
-    let mut swarm = Swarm::new(transport, behaviour, swarm_peer_id);
+    let mut swarm = Swarm::new(transport, Behaviour::default(), swarm_peer_id);
 
     swarm
         .listen_on("/ip4/127.0.0.1/tcp/0".parse().unwrap())
@@ -536,5 +537,5 @@ async fn main() {
     pea2pea_node.node().connect(swarm_addr).await.unwrap();
 
     // allow a few messages to be exchanged
-    sleep(Duration::from_secs(30)).await;
+    sleep(Duration::from_secs(60)).await;
 }
