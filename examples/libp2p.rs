@@ -9,8 +9,8 @@ use std::{cmp, collections::HashMap, io, net::SocketAddr, sync::Arc, time::Durat
 use bytes::{Bytes, BytesMut};
 use common::{noise, yamux};
 use futures_util::{SinkExt, StreamExt, TryStreamExt};
-use libp2p::swarm::{keep_alive, Swarm, SwarmEvent};
-use libp2p::{core::multiaddr::Protocol, identity, ping, NetworkBehaviour, PeerId, Transport};
+use libp2p::swarm::{keep_alive, NetworkBehaviour, Swarm, SwarmEvent};
+use libp2p::{core::multiaddr::Protocol, identity, ping, PeerId, Transport};
 use parking_lot::{Mutex, RwLock};
 use pea2pea::{
     protocols::{Disconnect, Handshake, Reading, Writing},
@@ -495,8 +495,7 @@ async fn main() {
     // note: it's a leaner version of https://docs.rs/libp2p/latest/libp2p/fn.tokio_development_transport.html
     let swarm_keypair = identity::Keypair::generate_ed25519();
     let swarm_peer_id = PeerId::from(swarm_keypair.public());
-    let transport =
-        libp2p::tcp::TokioTcpTransport::new(libp2p::tcp::GenTcpConfig::new().nodelay(true));
+    let transport = libp2p::tcp::tokio::Transport::new(libp2p::tcp::Config::new().nodelay(true));
     let noise_keys = libp2p::noise::Keypair::<libp2p::noise::X25519Spec>::new()
         .into_authentic(&swarm_keypair)
         .unwrap();
@@ -505,7 +504,7 @@ async fn main() {
         .authenticate(libp2p::noise::NoiseConfig::xx(noise_keys).into_authenticated())
         .multiplex(libp2p::yamux::YamuxConfig::default())
         .boxed();
-    let mut swarm = Swarm::new(transport, Behaviour::default(), swarm_peer_id);
+    let mut swarm = Swarm::with_tokio_executor(transport, Behaviour::default(), swarm_peer_id);
 
     swarm
         .listen_on("/ip4/127.0.0.1/tcp/0".parse().unwrap())
