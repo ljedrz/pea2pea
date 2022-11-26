@@ -10,20 +10,20 @@
 
 The core library only provides the most basic functionalities like starting, ending and maintaining connections; the rest is up to a few
 low-level, opt-in [protocols](https://docs.rs/pea2pea/latest/pea2pea/protocols/index.html):
-- [`Handshake`](https://docs.rs/pea2pea/latest/pea2pea/protocols/trait.Handshake.html) requires connections to adhere to a handshake protocol before finalizing connections
+- [`Handshake`](https://docs.rs/pea2pea/latest/pea2pea/protocols/trait.Handshake.html) requires connections to adhere to the given handshake logic before anything else can be done with them
 - [`Reading`](https://docs.rs/pea2pea/latest/pea2pea/protocols/trait.Reading.html) enables the node to receive messages based on the user-supplied [Decoder](https://docs.rs/tokio-util/latest/tokio_util/codec/trait.Decoder.html)
 - [`Writing`](https://docs.rs/pea2pea/latest/pea2pea/protocols/trait.Writing.html) enables the node to send messages based on the user-supplied [Encoder](https://docs.rs/tokio-util/latest/tokio_util/codec/trait.Encoder.html)
-- [`Disconnect`](https://docs.rs/pea2pea/latest/pea2pea/protocols/trait.Disconnect.html) allows the node to perform specified actions whenever a peer disconnects
+- [`Disconnect`](https://docs.rs/pea2pea/latest/pea2pea/protocols/trait.Disconnect.html) makes the node perform specified actions whenever a connection with a peer is severed
 
 ## goals
 - small, simple, non-framework codebase: the entire library is ~1k LOC and there are few dependencies
 - ease of use: few objects and traits, no "turboeels" or generics/references that would force all parent objects to adapt
 - correctness: builds with stable Rust, there is no `unsafe` code, there's more code in `tests` than in the actual library
-- low-level oriented: the user has full control over all connections and every byte sent or received
+- low-level: the user has full control over all connections and every byte sent or received
 - good performance: over 10GB/s in favorable scenarios, small memory footprint
 
 ## how to use it
-1. define a clonable struct containing a [`Node`](https://docs.rs/pea2pea/latest/pea2pea/struct.Node.html) and any extra state you'd like to carry
+1. define a clonable struct containing a [`Node`](https://docs.rs/pea2pea/latest/pea2pea/struct.Node.html) and any extra state you'd like to carry alongside it
 2. implement the trivial [`Pea2Pea`](https://docs.rs/pea2pea/latest/pea2pea/trait.Pea2Pea.html) trait for it
 3. make it implement any/all of the [protocols](https://docs.rs/pea2pea/latest/pea2pea/protocols/index.html)
 4. create that struct (or as many of them as you like)
