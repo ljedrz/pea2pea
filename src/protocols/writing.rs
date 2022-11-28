@@ -230,12 +230,13 @@ impl<W: Writing> WritingInternal for W {
                         let is_fatal = node.config().fatal_io_errors.contains(&e.kind());
                         let _ = wrapped_msg.delivery_notification.send(Err(e));
                         if is_fatal {
-                            node.disconnect(addr).await;
                             break;
                         }
                     }
                 }
             }
+
+            let _ = node.disconnect(addr).await;
         });
         let _ = rx_writer.await;
         conn.tasks.push(writer_task);
