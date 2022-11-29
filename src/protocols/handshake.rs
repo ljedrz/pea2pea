@@ -72,7 +72,7 @@ where
 
                     // return the Connection to the Node, resuming Node::adapt_stream
                     if result_sender.send(ret).is_err() {
-                        unreachable!("couldn't return a Connection to the Node");
+                        error!(parent: node.node().span(), "couldn't return a Connection with {} from the Handshake handler", addr);
                     }
                 });
             }
