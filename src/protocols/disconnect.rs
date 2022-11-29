@@ -5,12 +5,19 @@ use tracing::*;
 
 use crate::{protocols::ProtocolHandler, Pea2Pea};
 #[cfg(doc)]
-use crate::{protocols::Writing, Connection};
+use crate::{
+    protocols::{Reading, Writing},
+    Connection,
+};
 
 /// Can be used to automatically perform some extra actions when the node disconnects from its
 /// peer, which is especially practical if the disconnect is triggered automatically, e.g. due
 /// to the peer exceeding the allowed number of failures or severing its connection with the node
 /// on its own.
+///
+/// note: the node can only tell that a peer disconnected from it if it is actively trying to read
+/// from the associated connection (i.e. [`Reading`] is enabled) or if it attempts to send a message
+/// to it (i.e. one of the [`Writing`] methods is called).
 #[async_trait::async_trait]
 pub trait Disconnect: Pea2Pea
 where
