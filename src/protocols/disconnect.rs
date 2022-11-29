@@ -29,7 +29,10 @@ where
         let self_clone = self.clone();
         let disconnect_task = tokio::spawn(async move {
             trace!(parent: self_clone.node().span(), "spawned the Disconnect handler task");
-            tx.send(()).unwrap(); // safe; the channel was just opened
+            if tx.send(()).is_err() {
+                error!(parent: self_clone.node().span(), "Disconnect handler creation interrupted; shutting down its task");
+                return;
+            }
 
             while let Some((addr, notifier)) = from_node_receiver.recv().await {
                 let self_clone2 = self_clone.clone();

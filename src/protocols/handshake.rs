@@ -38,7 +38,10 @@ where
         let self_clone = self.clone();
         let handshake_task = tokio::spawn(async move {
             trace!(parent: self_clone.node().span(), "spawned the Handshake handler task");
-            tx.send(()).unwrap(); // safe; the channel was just opened
+            if tx.send(()).is_err() {
+                error!(parent: self_clone.node().span(), "Handshake handler creation interrupted; shutting down its task");
+                return;
+            }
 
             while let Some((conn, result_sender)) = from_node_receiver.recv().await {
                 let addr = conn.addr();

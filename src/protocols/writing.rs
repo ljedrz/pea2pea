@@ -57,7 +57,10 @@ where
         let self_clone = self.clone();
         let writing_task = tokio::spawn(async move {
             trace!(parent: self_clone.node().span(), "spawned the Writing handler task");
-            tx_writing.send(()).unwrap(); // safe; the channel was just opened
+            if tx_writing.send(()).is_err() {
+                error!(parent: self_clone.node().span(), "Writing handler creation interrupted; shutting down its task");
+                return;
+            }
 
             // these objects are sent from `Node::adapt_stream`
             while let Some(returnable_conn) = conn_receiver.recv().await {
@@ -209,7 +212,10 @@ impl<W: Writing> WritingInternal for W {
         let writer_task = tokio::spawn(async move {
             let node = self_clone.node();
             trace!(parent: node.span(), "spawned a task for writing messages to {}", addr);
-            tx_writer.send(()).unwrap(); // safe; the channel was just opened
+            if tx_writer.send(()).is_err() {
+                error!(parent: node.span(), "Writing for {} was interrupted; shutting down its task", addr);
+                return;
+            }
 
             // move the cleanup into the task that gets aborted on disconnect
             let _auto_cleanup = auto_cleanup;

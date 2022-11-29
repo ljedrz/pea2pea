@@ -149,7 +149,10 @@ impl Node {
             let node_clone = node.clone();
             let listening_task = tokio::spawn(async move {
                 trace!(parent: node_clone.span(), "spawned the listening task");
-                tx.send(()).unwrap(); // safe; the channel was just opened
+                if tx.send(()).is_err() {
+                    error!(parent: node_clone.span(), "node creation interrupted; shutting down the listening task");
+                    return;
+                }
 
                 loop {
                     match listener.accept().await {

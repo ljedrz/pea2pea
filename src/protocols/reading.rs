@@ -59,7 +59,10 @@ where
         let self_clone = self.clone();
         let reading_task = tokio::spawn(async move {
             trace!(parent: self_clone.node().span(), "spawned the Reading handler task");
-            tx_reading.send(()).unwrap(); // safe; the channel was just opened
+            if tx_reading.send(()).is_err() {
+                error!(parent: self_clone.node().span(), "Reading handler creation interrupted; shutting down its task");
+                return;
+            }
 
             // these objects are sent from `Node::adapt_stream`
             while let Some(returnable_conn) = conn_receiver.recv().await {
@@ -127,7 +130,10 @@ impl<R: Reading> ReadingInternal for R {
         let inbound_processing_task = tokio::spawn(async move {
             let node = self_clone.node();
             trace!(parent: node.span(), "spawned a task for processing messages from {}", addr);
-            tx_processing.send(()).unwrap(); // safe; the channel was just opened
+            if tx_processing.send(()).is_err() {
+                error!(parent: node.span(), "Reading (processing) for {} was interrupted; shutting down its task", addr);
+                return;
+            }
 
             while let Some(msg) = inbound_message_receiver.recv().await {
                 if let Err(e) = self_clone.process_message(addr, msg).await {
@@ -146,7 +152,10 @@ impl<R: Reading> ReadingInternal for R {
         let node = self.node().clone();
         let reader_task = tokio::spawn(async move {
             trace!(parent: node.span(), "spawned a task for reading messages from {}", addr);
-            tx_reader.send(()).unwrap(); // safe; the channel was just opened
+            if tx_reader.send(()).is_err() {
+                error!(parent: node.span(), "Reading (IO) for {} was interrupted; shutting down its task", addr);
+                return;
+            }
 
             // postpone reads until the connection is fully established; if the process fails,
             // this task gets aborted, so there is no need for a dedicated timeout
