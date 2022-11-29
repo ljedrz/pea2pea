@@ -58,7 +58,8 @@ where
         let writing_task = tokio::spawn(async move {
             trace!(parent: self_clone.node().span(), "spawned the Writing handler task");
             if tx_writing.send(()).is_err() {
-                error!(parent: self_clone.node().span(), "Writing handler creation interrupted; shutting down its task");
+                error!(parent: self_clone.node().span(), "Writing handler creation interrupted! shutting down the node");
+                self_clone.node().shut_down().await;
                 return;
             }
 

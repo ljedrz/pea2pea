@@ -60,7 +60,8 @@ where
         let reading_task = tokio::spawn(async move {
             trace!(parent: self_clone.node().span(), "spawned the Reading handler task");
             if tx_reading.send(()).is_err() {
-                error!(parent: self_clone.node().span(), "Reading handler creation interrupted; shutting down its task");
+                error!(parent: self_clone.node().span(), "Reading handler creation interrupted! shutting down the node");
+                self_clone.node().shut_down().await;
                 return;
             }
 

@@ -30,7 +30,8 @@ where
         let disconnect_task = tokio::spawn(async move {
             trace!(parent: self_clone.node().span(), "spawned the Disconnect handler task");
             if tx.send(()).is_err() {
-                error!(parent: self_clone.node().span(), "Disconnect handler creation interrupted; shutting down its task");
+                error!(parent: self_clone.node().span(), "Disconnect handler creation interrupted! shutting down the node");
+                self_clone.node().shut_down().await;
                 return;
             }
 

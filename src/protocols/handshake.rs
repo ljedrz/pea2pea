@@ -39,7 +39,8 @@ where
         let handshake_task = tokio::spawn(async move {
             trace!(parent: self_clone.node().span(), "spawned the Handshake handler task");
             if tx.send(()).is_err() {
-                error!(parent: self_clone.node().span(), "Handshake handler creation interrupted; shutting down its task");
+                error!(parent: self_clone.node().span(), "Handshake handler creation interrupted! shutting down the node");
+                self_clone.node().shut_down().await;
                 return;
             }
 
