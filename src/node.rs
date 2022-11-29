@@ -356,7 +356,7 @@ impl Node {
 
             debug!(parent: self.span(), "disconnected from {}", addr);
         } else {
-            warn!(parent: self.span(), "wasn't connected to {}", addr);
+            debug!(parent: self.span(), "wasn't connected to {}", addr);
         }
 
         conn.is_some()
