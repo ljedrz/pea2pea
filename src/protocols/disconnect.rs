@@ -10,10 +10,10 @@ use crate::{
     Connection,
 };
 
-/// Can be used to automatically perform some extra actions when the node disconnects from its
-/// peer, which is especially practical if the disconnect is triggered automatically, e.g. due
-/// to the peer exceeding the allowed number of failures or severing its connection with the node
-/// on its own.
+/// Can be used to automatically perform some extra actions when the connection with a peer is
+/// severed, which is especially practical if the disconnect is triggered automatically, e.g. due
+/// to the peer sending a noncompliant message or when the peer is the one to shut down the
+/// connection with the node.
 ///
 /// note: the node can only tell that a peer disconnected from it if it is actively trying to read
 /// from the associated connection (i.e. [`Reading`] is enabled) or if it attempts to send a message
