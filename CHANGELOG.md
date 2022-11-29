@@ -1,3 +1,15 @@
+# 0.41.0
+
+### Changed
+
+- downgraded the `WARN` log in case `Node::disconnect` is called on a nonexistent connection to `DEBUG` and made it more clear
+
+### Fixed
+
+- `Reading` no longer triggers an additional noop call to disconnect in case of read errors
+- in some rare cases, it was possible for protocol handler tasks to not be able to notify their owning tasks that they were complete; this is now handled gracefully
+- the same was done with connection handlers
+
 # 0.40.0
 
 ### Changed
