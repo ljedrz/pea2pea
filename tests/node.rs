@@ -37,6 +37,32 @@ async fn node_given_name_remains_unchanged() {
     assert_eq!(node.config().name.as_ref().unwrap(), "test");
 }
 
+#[tokio::test]
+async fn node_bound_addr_is_used() {
+    let config = Config {
+        bound_addr: Some("127.0.0.77:0".parse().unwrap()),
+        ..Default::default()
+    };
+    let connector = Node::new(config).await.unwrap();
+
+    let connectee = Node::new(Default::default()).await.unwrap();
+
+    connector
+        .connect(connectee.listening_addr().unwrap())
+        .await
+        .unwrap();
+
+    let connectee_clone = connectee.clone();
+    deadline!(Duration::from_secs(1), move || connectee_clone
+        .num_connected()
+        == 1);
+
+    assert_eq!(
+        connectee.connected_addrs()[0].ip(),
+        "127.0.0.77".parse::<Ipv4Addr>().unwrap()
+    );
+}
+
 #[should_panic]
 #[tokio::test]
 async fn node_creation_bad_params_panic() {

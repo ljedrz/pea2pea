@@ -12,7 +12,7 @@ use std::{
 use parking_lot::Mutex;
 use tokio::{
     io::split,
-    net::{TcpListener, TcpStream},
+    net::{TcpListener, TcpSocket, TcpStream},
     sync::oneshot,
     task::JoinHandle,
 };
@@ -282,6 +282,22 @@ impl Node {
         Ok(())
     }
 
+    // A helper method to facilitate a common potential disconnect at the callsite.
+    async fn create_stream(&self, addr: SocketAddr) -> io::Result<TcpStream> {
+        if let Some(bound_addr) = self.config().bound_addr {
+            let socket = match bound_addr {
+                SocketAddr::V4(_) => TcpSocket::new_v4()?,
+                SocketAddr::V6(_) => TcpSocket::new_v6()?,
+            };
+
+            socket.bind(bound_addr)?;
+
+            socket.connect(addr).await
+        } else {
+            TcpStream::connect(addr).await
+        }
+    }
+
     /// Connects to the provided `SocketAddr`.
     pub async fn connect(&self, addr: SocketAddr) -> io::Result<()> {
         if let Ok(listening_addr) = self.listening_addr() {
@@ -308,7 +324,7 @@ impl Node {
             return Err(io::ErrorKind::AlreadyExists.into());
         }
 
-        let stream = TcpStream::connect(addr).await.map_err(|e| {
+        let stream = self.create_stream(addr).await.map_err(|e| {
             self.connecting.lock().remove(&addr);
             e
         })?;
