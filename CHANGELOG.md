@@ -1,3 +1,9 @@
+# 0.42.0
+
+### Added
+
+- `Config::bound_addr`
+
 # 0.41.0
 
 ### Changed
@@ -6,7 +12,7 @@
 
 ### Fixed
 
-- `Reading` no longer triggers an additional noop call to disconnect in case of read errors
+- `Reading` no longer triggers an additional noop call to `Node::disconnect` in case of read errors
 - in some rare cases, it was possible for protocol handler tasks to not be able to notify their owning tasks that they were complete; this is now handled gracefully
 - the same was done with connection handlers
 
