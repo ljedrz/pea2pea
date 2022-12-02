@@ -1,5 +1,8 @@
 use deadline::deadline;
-use tokio::{net::TcpListener, time::sleep};
+use tokio::{
+    net::{TcpListener, TcpSocket},
+    time::sleep,
+};
 
 mod common;
 use std::{
@@ -38,17 +41,15 @@ async fn node_given_name_remains_unchanged() {
 }
 
 #[tokio::test]
-async fn node_bound_addr_is_used() {
-    let config = Config {
-        bound_addr: Some("127.0.0.77:0".parse().unwrap()),
-        ..Default::default()
-    };
-    let connector = Node::new(config).await.unwrap();
-
+async fn node_use_provided_socket() {
+    let connector = Node::new(Default::default()).await.unwrap();
     let connectee = Node::new(Default::default()).await.unwrap();
 
+    let socket = TcpSocket::new_v4().unwrap();
+    socket.bind("127.0.0.77:0".parse().unwrap()).unwrap();
+
     connector
-        .connect(connectee.listening_addr().unwrap())
+        .connect_using_socket(connectee.listening_addr().unwrap(), socket)
         .await
         .unwrap();
 

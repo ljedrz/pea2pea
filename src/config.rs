@@ -1,6 +1,6 @@
 use std::{
     io::{self, ErrorKind::*},
-    net::{IpAddr, Ipv4Addr, SocketAddr},
+    net::{IpAddr, Ipv4Addr},
 };
 
 #[cfg(doc)]
@@ -14,10 +14,6 @@ pub struct Config {
     ///
     /// note: If set to `None`, the node will automatically be assigned a sequential, zero-based numeric identifier.
     pub name: Option<String>,
-    /// The IP address the node's outbound connections should bind to.
-    ///
-    /// note: If set to `None`, it will be determined by the OS.
-    pub bound_addr: Option<SocketAddr>,
     /// The IP address the node's connection listener should bind to.
     ///
     /// note: If set to `None`, the node will not listen for inbound connections at all.
@@ -56,7 +52,6 @@ impl Default for Config {
 
         Self {
             name: None,
-            bound_addr: None,
             listener_ip: default_ip(),
             desired_listening_port: None,
             allow_random_port: true,

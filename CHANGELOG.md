@@ -1,3 +1,13 @@
+# 0.43.0
+
+### Added
+
+- `Node::connect_using_socket`
+
+### Removed
+
+- `Config::bound_addr` (`Node::connect_using_socket` is much more versatile)
+
 # 0.42.0
 
 ### Added

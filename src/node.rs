@@ -283,15 +283,12 @@ impl Node {
     }
 
     // A helper method to facilitate a common potential disconnect at the callsite.
-    async fn create_stream(&self, addr: SocketAddr) -> io::Result<TcpStream> {
-        if let Some(bound_addr) = self.config().bound_addr {
-            let socket = match bound_addr {
-                SocketAddr::V4(_) => TcpSocket::new_v4()?,
-                SocketAddr::V6(_) => TcpSocket::new_v6()?,
-            };
-
-            socket.bind(bound_addr)?;
-
+    async fn create_stream(
+        &self,
+        addr: SocketAddr,
+        socket: Option<TcpSocket>,
+    ) -> io::Result<TcpStream> {
+        if let Some(socket) = socket {
             socket.connect(addr).await
         } else {
             TcpStream::connect(addr).await
@@ -300,6 +297,20 @@ impl Node {
 
     /// Connects to the provided `SocketAddr`.
     pub async fn connect(&self, addr: SocketAddr) -> io::Result<()> {
+        self.connect_inner(addr, None).await
+    }
+
+    /// Connects to a `SocketAddr` using the provided `TcpSocket`.
+    pub async fn connect_using_socket(
+        &self,
+        addr: SocketAddr,
+        socket: TcpSocket,
+    ) -> io::Result<()> {
+        self.connect_inner(addr, Some(socket)).await
+    }
+
+    /// Connects to the provided `SocketAddr` using an optional `TcpSocket`.
+    async fn connect_inner(&self, addr: SocketAddr, socket: Option<TcpSocket>) -> io::Result<()> {
         if let Ok(listening_addr) = self.listening_addr() {
             if addr == listening_addr
                 || addr.ip().is_loopback() && addr.port() == listening_addr.port()
@@ -324,7 +335,7 @@ impl Node {
             return Err(io::ErrorKind::AlreadyExists.into());
         }
 
-        let stream = self.create_stream(addr).await.map_err(|e| {
+        let stream = self.create_stream(addr, socket).await.map_err(|e| {
             self.connecting.lock().remove(&addr);
             e
         })?;
