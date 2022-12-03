@@ -49,11 +49,11 @@ impl Pea2Pea for Libp2pNode {
 }
 
 impl Libp2pNode {
-    async fn new() -> Self {
+    fn new() -> Self {
         let keypair = identity::Keypair::generate_ed25519();
         let peer_id = keypair.public().to_peer_id();
 
-        let node = Node::new(Default::default()).await.unwrap();
+        let node = Node::new(Default::default());
 
         info!(parent: node.span(), "started a node with PeerId {}", peer_id);
 
@@ -484,7 +484,7 @@ async fn main() {
     common::start_logger(LevelFilter::DEBUG);
 
     // prepare the pea2pea node
-    let pea2pea_node = Libp2pNode::new().await;
+    let pea2pea_node = Libp2pNode::new();
 
     // enable the pea2pea protocols
     pea2pea_node.enable_handshake().await;

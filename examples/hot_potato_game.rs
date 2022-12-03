@@ -49,9 +49,9 @@ struct Player {
 }
 
 impl Player {
-    async fn new() -> Self {
+    fn new() -> Self {
         Self {
-            node: Node::new(Default::default()).await.unwrap(),
+            node: Node::new(Default::default()),
             other_players: Default::default(),
             potato_count: Default::default(),
         }
@@ -217,13 +217,14 @@ async fn main() {
 
     let mut players = Vec::with_capacity(NUM_PLAYERS);
     for _ in 0..NUM_PLAYERS {
-        players.push(Player::new().await);
+        players.push(Player::new());
     }
 
     for player in &players {
         player.enable_handshake().await;
         player.enable_reading().await;
         player.enable_writing().await;
+        player.node().start_listening().await.unwrap();
     }
     connect_nodes(&players, Topology::Mesh).await.unwrap();
 

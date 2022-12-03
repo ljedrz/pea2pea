@@ -135,14 +135,14 @@ async fn main() {
         name: Some("Jotaro".into()),
         ..Default::default()
     };
-    let jotaro = JoJoNode(Node::new(config).await.unwrap());
+    let jotaro = JoJoNode(Node::new(config));
 
     let config = Config {
         name: Some("Dio".into()),
         ..Default::default()
     };
-    let dio = JoJoNode(Node::new(config).await.unwrap());
-    let dio_addr = dio.node().listening_addr().unwrap();
+    let dio = JoJoNode(Node::new(config));
+    let dio_addr = dio.node().start_listening().await.unwrap();
 
     for node in &[&jotaro, &dio] {
         node.enable_handshake().await;

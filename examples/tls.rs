@@ -24,7 +24,7 @@ struct TlsNode {
 }
 
 impl TlsNode {
-    async fn new<T: Into<String>>(name: T) -> Self {
+    fn new<T: Into<String>>(name: T) -> Self {
         // node config
         let config = Config {
             name: Some(name.into()),
@@ -53,7 +53,7 @@ impl TlsNode {
         let connector = TlsConnector::from(inner_connector);
 
         Self {
-            node: Node::new(config).await.unwrap(),
+            node: Node::new(config),
             acceptor,
             connector,
         }
@@ -123,8 +123,9 @@ async fn main() {
     common::start_logger(LevelFilter::TRACE);
 
     // start the TLS-capable nodes; note: both can initiate and accept connections
-    let connector = TlsNode::new("connector").await;
-    let acceptor = TlsNode::new("acceptor").await;
+    let connector = TlsNode::new("connector");
+    let acceptor = TlsNode::new("acceptor");
+    let acceptor_addr = acceptor.node().start_listening().await.unwrap();
 
     for node in &[&connector, &acceptor] {
         node.enable_handshake().await;
@@ -133,11 +134,7 @@ async fn main() {
     }
 
     // connect the connector to the acceptor
-    connector
-        .node()
-        .connect(acceptor.node().listening_addr().unwrap())
-        .await
-        .unwrap();
+    connector.node().connect(acceptor_addr).await.unwrap();
 
     // determine the connector's address first
     sleep(Duration::from_millis(10)).await;

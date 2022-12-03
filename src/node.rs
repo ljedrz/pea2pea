@@ -1,7 +1,7 @@
 use std::{
     collections::HashSet,
     io,
-    net::SocketAddr,
+    net::{IpAddr, SocketAddr},
     ops::Deref,
     sync::{
         atomic::{AtomicUsize, Ordering::*},
@@ -9,6 +9,7 @@ use std::{
     },
 };
 
+use once_cell::sync::OnceCell;
 use parking_lot::Mutex;
 use tokio::{
     io::split,
@@ -64,7 +65,7 @@ pub struct InnerNode {
     /// The node's configuration.
     config: Config,
     /// The node's listening address.
-    listening_addr: Option<SocketAddr>,
+    listening_addr: OnceCell<SocketAddr>,
     /// Contains objects used by the protocols implemented by the node.
     pub(crate) protocols: Protocols,
     /// A list of connections that have not been finalized yet.
@@ -81,7 +82,7 @@ pub struct InnerNode {
 
 impl Node {
     /// Creates a new [`Node`] using the given [`Config`].
-    pub async fn new(mut config: Config) -> io::Result<Self> {
+    pub fn new(mut config: Config) -> Self {
         // if there is no pre-configured name, assign a sequential numeric identifier
         if config.name.is_none() {
             config.name = Some(SEQUENTIAL_NODE_ID.fetch_add(1, SeqCst).to_string());
@@ -90,50 +91,10 @@ impl Node {
         // create a tracing span containing the node's name
         let span = create_span(config.name.as_deref().unwrap());
 
-        // procure a listening address
-        let listener = if let Some(listener_ip) = config.listener_ip {
-            let listener = if let Some(port) = config.desired_listening_port {
-                let desired_listening_addr = SocketAddr::new(listener_ip, port);
-                match TcpListener::bind(desired_listening_addr).await {
-                    Ok(listener) => listener,
-                    Err(e) => {
-                        if config.allow_random_port {
-                            warn!(
-                                parent: &span,
-                                "trying any port, the desired one is unavailable: {}", e
-                            );
-                            let random_available_addr = SocketAddr::new(listener_ip, 0);
-                            TcpListener::bind(random_available_addr).await?
-                        } else {
-                            error!(parent: &span, "the desired port is unavailable: {}", e);
-                            return Err(e);
-                        }
-                    }
-                }
-            } else if config.allow_random_port {
-                let random_available_addr = SocketAddr::new(listener_ip, 0);
-                TcpListener::bind(random_available_addr).await?
-            } else {
-                panic!("you must either provide a desired port or allow a random one");
-            };
-
-            Some(listener)
-        } else {
-            None
-        };
-
-        let listening_addr = if let Some(ref listener) = listener {
-            let ip = config.listener_ip.unwrap(); // safe; listener.is_some() => config.listener_ip.is_some()
-            let port = listener.local_addr()?.port(); // discover the port if it was unspecified
-            Some((ip, port).into())
-        } else {
-            None
-        };
-
         let node = Node(Arc::new(InnerNode {
             span,
             config,
-            listening_addr,
+            listening_addr: Default::default(),
             protocols: Default::default(),
             connecting: Default::default(),
             connections: Default::default(),
@@ -142,56 +103,109 @@ impl Node {
             tasks: Default::default(),
         }));
 
-        if let Some(listener) = listener {
+        debug!(parent: node.span(), "the node is ready");
+
+        node
+    }
+
+    async fn create_listener(&self, listener_ip: IpAddr) -> io::Result<TcpListener> {
+        let listener = if let Some(port) = self.config().desired_listening_port {
+            let desired_listening_addr = SocketAddr::new(listener_ip, port);
+            match TcpListener::bind(desired_listening_addr).await {
+                Ok(listener) => listener,
+                Err(e) => {
+                    if self.config().allow_random_port {
+                        warn!(
+                            parent: self.span(),
+                            "trying any port, the desired one is unavailable: {}", e
+                        );
+                        let random_available_addr = SocketAddr::new(listener_ip, 0);
+                        TcpListener::bind(random_available_addr).await?
+                    } else {
+                        error!(parent: self.span(), "the desired port is unavailable: {}", e);
+                        return Err(e);
+                    }
+                }
+            }
+        } else if self.config().allow_random_port {
+            let random_available_addr = SocketAddr::new(listener_ip, 0);
+            TcpListener::bind(random_available_addr).await?
+        } else {
+            panic!("you must either provide a desired port or allow a random one");
+        };
+
+        Ok(listener)
+    }
+
+    /// Makes the node listen for inbound connections; returns the associated socket address, which will
+    /// correspond to [`Config::listener_ip`] and either [`Config::desired_listening_port`] or the port
+    /// provided by the OS.
+    pub async fn start_listening(&self) -> io::Result<SocketAddr> {
+        if let Some(listening_addr) = self.listening_addr.get() {
+            panic!(
+                "the node already has a listening address associated with it: {}",
+                listening_addr
+            );
+        } else {
+            let listener_ip = self
+                .config()
+                .listener_ip
+                .expect("Node::start_listening was called, but Config::listener_ip is not set");
+            let listener = self.create_listener(listener_ip).await?;
+            let port = listener.local_addr()?.port(); // discover the port if it was unspecified
+            let listening_addr = (listener_ip, port).into();
+
+            self.listening_addr
+                .set(listening_addr)
+                .expect("the node's listener was started more than once");
+
             // use a channel to know when the listening task is ready
             let (tx, rx) = oneshot::channel();
 
-            let node_clone = node.clone();
+            let node = self.clone();
             let listening_task = tokio::spawn(async move {
-                trace!(parent: node_clone.span(), "spawned the listening task");
+                trace!(parent: node.span(), "spawned the listening task");
                 if tx.send(()).is_err() {
-                    error!(parent: node_clone.span(), "node creation interrupted; shutting down the listening task");
+                    error!(parent: node.span(), "node creation interrupted; shutting down the listening task");
                     return;
                 }
 
                 loop {
                     match listener.accept().await {
                         Ok((stream, addr)) => {
-                            debug!(parent: node_clone.span(), "tentatively accepted a connection from {}", addr);
+                            debug!(parent: node.span(), "tentatively accepted a connection from {}", addr);
 
-                            if !node_clone.can_add_connection() {
-                                debug!(parent: node_clone.span(), "rejecting the connection from {}", addr);
+                            if !node.can_add_connection() {
+                                debug!(parent: node.span(), "rejecting the connection from {}", addr);
                                 continue;
                             }
 
-                            node_clone.connecting.lock().insert(addr);
+                            node.connecting.lock().insert(addr);
 
-                            let node_clone2 = node_clone.clone();
+                            let node2 = node.clone();
                             tokio::spawn(async move {
-                                if let Err(e) = node_clone2
+                                if let Err(e) = node2
                                     .adapt_stream(stream, addr, ConnectionSide::Responder)
                                     .await
                                 {
-                                    node_clone2.connecting.lock().remove(&addr);
-                                    node_clone2.known_peers().register_failure(addr);
-                                    error!(parent: node_clone2.span(), "couldn't accept a connection: {}", e);
+                                    node2.connecting.lock().remove(&addr);
+                                    node2.known_peers().register_failure(addr);
+                                    error!(parent: node2.span(), "couldn't accept a connection: {}", e);
                                 }
                             });
                         }
                         Err(e) => {
-                            error!(parent: node_clone.span(), "couldn't accept a connection: {}", e);
+                            error!(parent: node.span(), "couldn't accept a connection: {}", e);
                         }
                     }
                 }
             });
-            node.tasks.lock().push(listening_task);
+            self.tasks.lock().push(listening_task);
             let _ = rx.await;
-            debug!(parent: node.span(), "listening on {}", node.listening_addr.unwrap());
+            debug!(parent: self.span(), "listening on {}", listening_addr);
+
+            Ok(listening_addr)
         }
-
-        debug!(parent: node.span(), "the node is ready");
-
-        Ok(node)
     }
 
     /// Returns the name assigned to the node.
@@ -220,9 +234,11 @@ impl Node {
     }
 
     /// Returns the node's listening address; returns an error if the node was configured
-    /// to not listen for inbound connections.
+    /// to not listen for inbound connections or if the listener hasn't been started yet.
     pub fn listening_addr(&self) -> io::Result<SocketAddr> {
         self.listening_addr
+            .get()
+            .copied()
             .ok_or_else(|| io::ErrorKind::AddrNotAvailable.into())
     }
 

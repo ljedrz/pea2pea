@@ -69,15 +69,12 @@ async fn run_bench_scenario(sender_count: usize) -> f64 {
         sender.enable_writing().await;
     }
 
-    let receiver = BenchNode(Node::new(Default::default()).await.unwrap());
+    let receiver = BenchNode(Node::new(Default::default()));
     receiver.enable_reading().await;
+    let receiver_addr = receiver.node().start_listening().await.unwrap();
 
     for sender in &senders {
-        sender
-            .node()
-            .connect(receiver.node().listening_addr().unwrap())
-            .await
-            .unwrap();
+        sender.node().connect(receiver_addr).await.unwrap();
     }
 
     let receiver_clone = receiver.clone();
@@ -85,8 +82,6 @@ async fn run_bench_scenario(sender_count: usize) -> f64 {
         .node()
         .num_connected()
         == sender_count);
-
-    let receiver_addr = receiver.node().listening_addr().unwrap();
 
     let start = Instant::now();
     for sender in senders {
@@ -146,6 +141,8 @@ async fn bench_node_startup() {
         temp_node.enable_reading().await;
         temp_node.enable_writing().await;
         temp_node.enable_disconnect().await;
+        temp_node.node().start_listening().await.unwrap();
+
         avg_start_up_time += start.elapsed();
     }
     avg_start_up_time /= NUM_ITERATIONS as u32;
@@ -160,7 +157,7 @@ async fn bench_connection() {
 
     let initiator = test_node!("initiator");
     let responder = test_node!("responder");
-    let responder_addr = responder.node().listening_addr().unwrap();
+    let responder_addr = responder.node().start_listening().await.unwrap();
 
     let mut avg_conn_time = std::time::Duration::new(0, 0);
     for _ in 0..NUM_ITERATIONS {

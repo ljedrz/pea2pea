@@ -36,7 +36,7 @@ macro_rules! test_node {
             name: Some($name.into()),
             ..Default::default()
         };
-        common::TestNode(pea2pea::Node::new(config).await.unwrap())
+        common::TestNode(pea2pea::Node::new(config))
     }};
 }
 
@@ -44,7 +44,9 @@ pub async fn start_test_nodes(count: usize) -> Vec<TestNode> {
     let mut nodes = Vec::with_capacity(count);
 
     for _ in 0..count {
-        nodes.push(TestNode(Node::new(Default::default()).await.unwrap()));
+        let test_node = TestNode(Node::new(Default::default()));
+        test_node.node().start_listening().await.unwrap();
+        nodes.push(test_node);
     }
 
     nodes

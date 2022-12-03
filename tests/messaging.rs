@@ -92,19 +92,20 @@ async fn messaging_example() {
     let shouter = crate::test_node!("shout");
     shouter.enable_reading().await;
     shouter.enable_writing().await;
+    shouter.node().start_listening().await.unwrap();
 
     let picky_echo_config = Config {
         name: Some("picky_echo".into()),
         ..Default::default()
     };
     let picky_echo = EchoNode {
-        node: Node::new(picky_echo_config).await.unwrap(),
+        node: Node::new(picky_echo_config),
         echoed: Default::default(),
     };
     picky_echo.enable_reading().await;
     picky_echo.enable_writing().await;
 
-    let picky_echo_addr = picky_echo.node().listening_addr().unwrap();
+    let picky_echo_addr = picky_echo.node().start_listening().await.unwrap();
 
     shouter.node().connect(picky_echo_addr).await.unwrap();
 
@@ -139,8 +140,8 @@ async fn messaging_example() {
 #[tokio::test]
 async fn drop_connection_on_invalid_message() {
     let reader = crate::test_node!("reader");
-    let reader_addr = reader.node().listening_addr().unwrap();
     reader.enable_reading().await;
+    let reader_addr = reader.node().start_listening().await.unwrap();
 
     let writer = crate::test_node!("writer");
     writer.enable_writing().await;
@@ -168,12 +169,11 @@ async fn drop_connection_on_invalid_message() {
 async fn drop_connection_on_zero_read() {
     let reader = crate::test_node!("reader");
     reader.enable_reading().await;
+    let reader_addr = reader.node().start_listening().await.unwrap();
+
     let peer = crate::test_node!("peer");
 
-    peer.node()
-        .connect(reader.node().listening_addr().unwrap())
-        .await
-        .unwrap();
+    peer.node().connect(reader_addr).await.unwrap();
 
     let reader_clone = reader.clone();
     deadline!(Duration::from_secs(1), move || reader_clone
@@ -194,7 +194,7 @@ async fn drop_connection_on_zero_read() {
 #[tokio::test]
 async fn no_reading_no_delivery() {
     let reader = crate::test_node!("defunct reader");
-    let reader_addr = reader.node().listening_addr().unwrap();
+    let reader_addr = reader.node().start_listening().await.unwrap();
 
     let writer = crate::test_node!("writer");
     writer.enable_writing().await;
@@ -224,8 +224,8 @@ async fn no_reading_no_delivery() {
 #[tokio::test]
 async fn no_writing_no_delivery() {
     let reader = crate::test_node!("reader");
-    let reader_addr = reader.node().listening_addr().unwrap();
     reader.enable_reading().await;
+    let reader_addr = reader.node().start_listening().await.unwrap();
 
     let writer = crate::test_node!("defunct writer");
 

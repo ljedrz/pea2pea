@@ -27,9 +27,9 @@ struct HandshakingNode {
 }
 
 impl HandshakingNode {
-    async fn new() -> Self {
+    fn new() -> Self {
         Self {
-            node: Node::new(Default::default()).await.unwrap(),
+            node: Node::new(Default::default()),
             own_nonce: SmallRng::from_entropy().gen(),
             peer_nonces: Default::default(),
         }
@@ -94,8 +94,8 @@ crate::impl_messaging!(HandshakingNode);
 
 #[tokio::test]
 async fn handshake_example() {
-    let initiator = HandshakingNode::new().await;
-    let responder = HandshakingNode::new().await;
+    let initiator = HandshakingNode::new();
+    let responder = HandshakingNode::new();
 
     // Reading and Writing are not required for the handshake; they are enabled only so that their relationship
     // with the handshake protocol can be tested too; they should kick in only after the handshake concludes
@@ -103,6 +103,7 @@ async fn handshake_example() {
         node.enable_reading().await;
         node.enable_writing().await;
         node.enable_handshake().await;
+        node.node().start_listening().await.unwrap();
     }
 
     initiator
@@ -123,29 +124,23 @@ async fn handshake_example() {
 
 #[tokio::test]
 async fn no_handshake_no_messaging() {
-    let initiator = HandshakingNode::new().await;
-    let responder = HandshakingNode::new().await;
+    let initiator = HandshakingNode::new();
+    let responder = HandshakingNode::new();
 
     initiator.enable_writing().await;
     responder.enable_reading().await;
+    let responder_addr = responder.node().start_listening().await.unwrap();
 
     // the initiator doesn't enable handshakes
     responder.enable_handshake().await;
 
-    initiator
-        .node()
-        .connect(responder.node().listening_addr().unwrap())
-        .await
-        .unwrap();
+    initiator.node().connect(responder_addr).await.unwrap();
 
     let message = b"this won't get through, as there was no handshake"
         .to_vec()
         .into();
 
-    initiator
-        .send_dm(responder.node().listening_addr().unwrap(), message)
-        .await
-        .unwrap();
+    initiator.send_dm(responder_addr, message).await.unwrap();
 
     let responder_clone = responder.clone();
     deadline!(Duration::from_secs(1), move || responder_clone
@@ -183,18 +178,15 @@ impl Handshake for Wrap {
 
 #[tokio::test]
 async fn hung_handshake_fails() {
-    let connector = Wrap(Node::new(Default::default()).await.unwrap());
-    let connectee = Wrap(Node::new(Default::default()).await.unwrap());
+    let connector = Wrap(Node::new(Default::default()));
+    let connectee = Wrap(Node::new(Default::default()));
 
     // note: the connector does NOT enable handshakes
     connectee.enable_handshake().await;
+    let connectee_addr = connectee.node().start_listening().await.unwrap();
 
     // the connection attempt should register just fine for the connector, as it doesn't expect a handshake
-    assert!(connector
-        .node()
-        .connect(connectee.node().listening_addr().unwrap())
-        .await
-        .is_ok());
+    assert!(connector.node().connect(connectee_addr).await.is_ok());
 
     // the TCP connection itself has been established, and with no reading, the connector doesn't know
     // that the connectee has already disconnected from it by now
@@ -214,9 +206,9 @@ async fn timeout_when_spammed_with_connections() {
         max_connections: NUM_ATTEMPTS,
         ..Default::default()
     };
-    let victim = Wrap(Node::new(config).await.unwrap());
+    let victim = Wrap(Node::new(config));
     victim.enable_handshake().await;
-    let victim_addr = victim.node().listening_addr().unwrap();
+    let victim_addr = victim.node().start_listening().await.unwrap();
 
     let mut sockets = Vec::with_capacity(NUM_ATTEMPTS as usize);
 

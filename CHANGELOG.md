@@ -2,7 +2,13 @@
 
 ### Added
 
-- `Node::connect_using_socket`
+- `Node::connect_using_socket`, which can be used to create outbound connections using pre-configured, user-supplied sockets
+- `Node::start_listening` which makes the node listen for inbound connections
+
+### Changed
+
+- the nodes no longer start listening for inbound connections automatically
+- `Node::new` is no longer `async` and doesn't return an `io::Result` anymore
 
 ### Removed
 

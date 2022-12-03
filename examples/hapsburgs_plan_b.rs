@@ -16,13 +16,13 @@ use tracing_subscriber::filter::LevelFilter;
 struct NakedNode(Node);
 
 impl NakedNode {
-    async fn new<T: Into<String>>(name: T) -> Self {
+    fn new<T: Into<String>>(name: T) -> Self {
         let config = Config {
             name: Some(name.into()),
             ..Default::default()
         };
 
-        Self(Node::new(config).await.unwrap())
+        Self(Node::new(config))
     }
 }
 
@@ -101,18 +101,17 @@ async fn main() {
 
     const NUM_THUGS: usize = 10;
 
-    let drebin = NakedNode::new("Drebin").await;
-    let drebin_addr = drebin.node().listening_addr().unwrap();
-
+    let drebin = NakedNode::new("Drebin");
     drebin.enable_handshake().await;
     drebin.enable_reading().await;
     drebin.enable_writing().await;
     drebin.enable_disconnect().await;
+    let drebin_addr = drebin.node().start_listening().await.unwrap();
 
     info!(parent: drebin.node().span(), "Where's Hapsburg?");
 
     for i in 0..NUM_THUGS {
-        let hapsburgs_thug = NakedNode::new(format!("thug {}", i)).await;
+        let hapsburgs_thug = NakedNode::new(format!("thug {}", i));
 
         hapsburgs_thug.enable_handshake().await;
         hapsburgs_thug.enable_reading().await;

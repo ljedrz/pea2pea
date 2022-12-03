@@ -25,7 +25,7 @@ async fn check_node_cleanups() {
     let initial_heap_use = PEAK_ALLOC.current_usage();
 
     let persistent_node = crate::test_node!("persistent");
-    let persistent_addr = persistent_node.node().listening_addr().unwrap();
+    let persistent_addr = persistent_node.node().start_listening().await.unwrap();
 
     // measure the size of a node with no protocols enabled
     let idle_node_size = (PEAK_ALLOC.current_usage() - initial_heap_use) / 1000;
@@ -53,6 +53,7 @@ async fn check_node_cleanups() {
         temp_node.enable_reading().await;
         temp_node.enable_writing().await;
         temp_node.enable_disconnect().await;
+        temp_node.node().start_listening().await.unwrap();
 
         // this connection direction allows the collection of `KnownPeers` to remain empty
         temp_node.node().connect(persistent_addr).await.unwrap();

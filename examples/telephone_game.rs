@@ -70,7 +70,7 @@ async fn main() {
 
     let mut players = Vec::with_capacity(NUM_PLAYERS);
     for _ in 0..NUM_PLAYERS {
-        let player = Player(Node::new(Default::default()).await.unwrap());
+        let player = Player(Node::new(Default::default()));
         players.push(player);
     }
 
@@ -78,6 +78,7 @@ async fn main() {
     for player in &players {
         player.enable_reading().await;
         player.enable_writing().await;
+        player.node().start_listening().await.unwrap();
     }
     connect_nodes(&players, Topology::Line).await.unwrap();
 

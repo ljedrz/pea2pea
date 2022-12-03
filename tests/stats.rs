@@ -15,7 +15,7 @@ async fn message_stats() {
     let mut rng = SmallRng::from_entropy();
 
     let reader = crate::test_node!("reader");
-    let reader_addr = reader.node().listening_addr().unwrap();
+    let reader_addr = reader.node().start_listening().await.unwrap();
     reader.enable_reading().await;
 
     let writer = crate::test_node!("writer");

@@ -41,16 +41,12 @@ impl common::TestNode {
 async fn maintenance_example() {
     let tidy = crate::test_node!("tidyboi");
     let rando = crate::test_node!("rando");
+    let rando_addr = rando.node().start_listening().await.unwrap();
 
-    tidy.node()
-        .connect(rando.node().listening_addr().unwrap())
-        .await
-        .unwrap();
+    tidy.node().connect(rando_addr).await.unwrap();
 
     tidy.perform_periodic_maintenance();
-    tidy.node()
-        .known_peers()
-        .register_failure(rando.node().listening_addr().unwrap()); // artificially report an issue with rando
+    tidy.node().known_peers().register_failure(rando_addr); // artificially report an issue with rando
 
     deadline!(Duration::from_secs(1), move || tidy.node().num_connected()
         == 0);

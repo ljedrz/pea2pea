@@ -29,17 +29,17 @@ impl Pea2Pea for SecureNode {
 
 impl SecureNode {
     // create a SecureNode
-    async fn new(name: &str) -> io::Result<Self> {
+    fn new(name: &str) -> Self {
         let config = Config {
             name: Some(name.into()),
             ..Default::default()
         };
-        let node = Node::new(config).await?;
+        let node = Node::new(config);
 
-        Ok(Self {
+        Self {
             node,
             noise_states: Default::default(),
-        })
+        }
     }
 }
 
@@ -95,8 +95,8 @@ impl Writing for SecureNode {
 async fn main() {
     common::start_logger(LevelFilter::TRACE);
 
-    let initiator = SecureNode::new("initiator").await.unwrap();
-    let responder = SecureNode::new("responder").await.unwrap();
+    let initiator = SecureNode::new("initiator");
+    let responder = SecureNode::new("responder");
 
     for node in &[&initiator, &responder] {
         node.enable_handshake().await; // enable the pre-defined handshakes
@@ -104,12 +104,10 @@ async fn main() {
         node.enable_writing().await; // enable the writing protocol
     }
 
+    let responder_addr = responder.node().start_listening().await.unwrap();
+
     // connect the initiator to the responder
-    initiator
-        .node()
-        .connect(responder.node().listening_addr().unwrap())
-        .await
-        .unwrap();
+    initiator.node().connect(responder_addr).await.unwrap();
 
     // determine the initiator's address first
     sleep(Duration::from_millis(10)).await;
