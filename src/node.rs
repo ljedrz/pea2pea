@@ -109,10 +109,9 @@ impl Node {
     }
 
     async fn create_listener(&self, listener_ip: IpAddr) -> io::Result<TcpListener> {
-        let listener = if let Some(port) = self.config().desired_listening_port {
+        if let Some(port) = self.config().desired_listening_port {
             let desired_listening_addr = SocketAddr::new(listener_ip, port);
             match TcpListener::bind(desired_listening_addr).await {
-                Ok(listener) => listener,
                 Err(e) => {
                     if self.config().allow_random_port {
                         warn!(
@@ -120,21 +119,20 @@ impl Node {
                             "trying any port, the desired one is unavailable: {}", e
                         );
                         let random_available_addr = SocketAddr::new(listener_ip, 0);
-                        TcpListener::bind(random_available_addr).await?
+                        TcpListener::bind(random_available_addr).await
                     } else {
                         error!(parent: self.span(), "the desired port is unavailable: {}", e);
-                        return Err(e);
+                        Err(e)
                     }
                 }
+                listener => listener,
             }
         } else if self.config().allow_random_port {
             let random_available_addr = SocketAddr::new(listener_ip, 0);
-            TcpListener::bind(random_available_addr).await?
+            TcpListener::bind(random_available_addr).await
         } else {
-            panic!("you must either provide a desired port or allow a random one");
-        };
-
-        Ok(listener)
+            panic!("you must either provide a desired listening port or allow a random one");
+        }
     }
 
     /// Makes the node listen for inbound connections; returns the associated socket address, which will
@@ -182,15 +180,15 @@ impl Node {
 
                             node.connecting.lock().insert(addr);
 
-                            let node2 = node.clone();
+                            let node = node.clone();
                             tokio::spawn(async move {
-                                if let Err(e) = node2
+                                if let Err(e) = node
                                     .adapt_stream(stream, addr, ConnectionSide::Responder)
                                     .await
                                 {
-                                    node2.connecting.lock().remove(&addr);
-                                    node2.known_peers().register_failure(addr);
-                                    error!(parent: node2.span(), "couldn't accept a connection: {}", e);
+                                    node.connecting.lock().remove(&addr);
+                                    node.known_peers().register_failure(addr);
+                                    error!(parent: node.span(), "couldn't accept a connection: {}", e);
                                 }
                             });
                         }

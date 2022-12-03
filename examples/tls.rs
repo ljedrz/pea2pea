@@ -125,13 +125,14 @@ async fn main() {
     // start the TLS-capable nodes; note: both can initiate and accept connections
     let connector = TlsNode::new("connector");
     let acceptor = TlsNode::new("acceptor");
-    let acceptor_addr = acceptor.node().start_listening().await.unwrap();
 
     for node in &[&connector, &acceptor] {
         node.enable_handshake().await;
         node.enable_reading().await;
         node.enable_writing().await;
     }
+
+    let acceptor_addr = acceptor.node().start_listening().await.unwrap();
 
     // connect the connector to the acceptor
     connector.node().connect(acceptor_addr).await.unwrap();
@@ -144,10 +145,7 @@ async fn main() {
     let msg = Bytes::from(b"herp derp".to_vec());
 
     // send a message from connector to acceptor
-    let _ = connector
-        .unicast(acceptor.node().listening_addr().unwrap(), msg.clone())
-        .unwrap()
-        .await;
+    let _ = connector.unicast(acceptor_addr, msg.clone()).unwrap().await;
 
     // send a message from acceptor to connector
     let _ = acceptor.unicast(connector_addr, msg).unwrap().await;
