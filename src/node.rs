@@ -170,28 +170,7 @@ impl Node {
 
                 loop {
                     match listener.accept().await {
-                        Ok((stream, addr)) => {
-                            debug!(parent: node.span(), "tentatively accepted a connection from {}", addr);
-
-                            if !node.can_add_connection() {
-                                debug!(parent: node.span(), "rejecting the connection from {}", addr);
-                                continue;
-                            }
-
-                            node.connecting.lock().insert(addr);
-
-                            let node = node.clone();
-                            tokio::spawn(async move {
-                                if let Err(e) = node
-                                    .adapt_stream(stream, addr, ConnectionSide::Responder)
-                                    .await
-                                {
-                                    node.connecting.lock().remove(&addr);
-                                    node.known_peers().register_failure(addr);
-                                    error!(parent: node.span(), "couldn't accept a connection: {}", e);
-                                }
-                            });
-                        }
+                        Ok((stream, addr)) => node.handle_connection_request(stream, addr).await,
                         Err(e) => {
                             error!(parent: node.span(), "couldn't accept a connection: {}", e);
                         }
@@ -204,6 +183,29 @@ impl Node {
 
             Ok(listening_addr)
         }
+    }
+
+    async fn handle_connection_request(&self, stream: TcpStream, addr: SocketAddr) {
+        debug!(parent: self.span(), "tentatively accepted a connection from {}", addr);
+
+        if !self.can_add_connection() {
+            debug!(parent: self.span(), "rejecting the connection from {}", addr);
+            return;
+        }
+
+        self.connecting.lock().insert(addr);
+
+        let node = self.clone();
+        tokio::spawn(async move {
+            if let Err(e) = node
+                .adapt_stream(stream, addr, ConnectionSide::Responder)
+                .await
+            {
+                node.connecting.lock().remove(&addr);
+                node.known_peers().register_failure(addr);
+                error!(parent: node.span(), "couldn't accept a connection: {}", e);
+            }
+        });
     }
 
     /// Returns the name assigned to the node.
