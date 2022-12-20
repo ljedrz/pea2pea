@@ -3,7 +3,7 @@
 ### Added
 
 - `ConnectionInfo`, which contains basic information related to an active connection
-- `Node::connection_info`, which returns `ConnectionInfo` for the given address
+- `Node::{connection_info, connection_infos}`, which return `ConnectionInfo` for the given address or for all of the active connections
 - `Stats::created`, which registers the creation time of the node and the connections
 
 ### Changes

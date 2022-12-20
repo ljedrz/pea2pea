@@ -27,6 +27,14 @@ impl Connections {
         self.0.read().get(&addr).map(|conn| conn.info.clone())
     }
 
+    pub(crate) fn infos(&self) -> HashMap<SocketAddr, ConnectionInfo> {
+        self.0
+            .read()
+            .iter()
+            .map(|(addr, conn)| (*addr, conn.info.clone()))
+            .collect()
+    }
+
     pub(crate) fn is_connected(&self, addr: SocketAddr) -> bool {
         self.0.read().contains_key(&addr)
     }

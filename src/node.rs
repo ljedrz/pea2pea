@@ -1,5 +1,5 @@
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     io,
     net::{IpAddr, SocketAddr},
     ops::Deref,
@@ -419,6 +419,11 @@ impl Node {
     /// Returns the basic information related to a connection.
     pub fn connection_info(&self, addr: SocketAddr) -> Option<ConnectionInfo> {
         self.connections.get_info(addr)
+    }
+
+    /// Returns a list of all active connections and their basic information.
+    pub fn connection_infos(&self) -> HashMap<SocketAddr, ConnectionInfo> {
+        self.connections.infos()
     }
 
     /// Checks whether the `Node` can handle an additional connection.
