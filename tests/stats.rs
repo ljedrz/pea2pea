@@ -47,12 +47,9 @@ async fn message_stats() {
     );
 
     deadline!(Duration::from_secs(1), move || {
-        if let Some(stats) = writer.node().known_peers().get(reader_addr) {
-            let (sent_msgs, sent_bytes) = stats.sent();
-            sent_msgs == sent_msgs_count && sent_bytes == expected_msgs_size
-        } else {
-            false
-        }
+        let conn_info = writer.node().connection_info(reader_addr).unwrap();
+        let (sent_msgs, sent_bytes) = conn_info.stats().sent();
+        sent_msgs == sent_msgs_count && sent_bytes == expected_msgs_size
     });
 
     let reader_clone = reader.clone();
@@ -62,12 +59,10 @@ async fn message_stats() {
         .received()
         == (sent_msgs_count, expected_msgs_size));
 
+    let writer_addr = reader.node().connected_addrs()[0];
     deadline!(Duration::from_secs(1), move || {
-        if let Some((_, stats)) = reader.node().known_peers().snapshot().iter().next() {
-            let (received_msgs, received_bytes) = stats.received();
-            received_msgs == sent_msgs_count && received_bytes == expected_msgs_size
-        } else {
-            false
-        }
+        let conn_info = reader.node().connection_info(writer_addr).unwrap();
+        let (received_msgs, received_bytes) = conn_info.stats().received();
+        received_msgs == sent_msgs_count && received_bytes == expected_msgs_size
     });
 }

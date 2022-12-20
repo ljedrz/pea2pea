@@ -139,7 +139,6 @@ impl<R: Reading> ReadingInternal for R {
             while let Some(msg) = inbound_message_receiver.recv().await {
                 if let Err(e) = self_clone.process_message(addr, msg).await {
                     error!(parent: node.span(), "can't process a message from {}: {}", addr, e);
-                    node.known_peers().register_failure(addr);
                 }
             }
         });
@@ -173,7 +172,6 @@ impl<R: Reading> ReadingInternal for R {
                     }
                     Err(e) => {
                         error!(parent: node.span(), "can't read from {}: {}", addr, e);
-                        node.known_peers().register_failure(addr);
                         if node.config().fatal_io_errors.contains(&e.kind()) {
                             break;
                         }
@@ -229,9 +227,9 @@ impl<D: Decoder> Decoder for CountingCodec<D> {
 
             if ret.is_some() {
                 self.acc = 0;
-                self.node
-                    .known_peers()
-                    .register_received_message(self.addr, read_len);
+                if let Some(info) = self.node.connection_info(self.addr) {
+                    info.stats().register_received_message(read_len);
+                }
                 self.node.stats().register_received_message(read_len);
             } else {
                 self.acc = read_len;

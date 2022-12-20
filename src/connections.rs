@@ -1,6 +1,6 @@
 //! Objects associated with connection handling.
 
-use std::{collections::HashMap, net::SocketAddr, ops::Not};
+use std::{collections::HashMap, net::SocketAddr, ops::Not, sync::Arc};
 
 use parking_lot::RwLock;
 use tokio::{
@@ -9,6 +9,8 @@ use tokio::{
     sync::oneshot,
     task::JoinHandle,
 };
+
+use crate::Stats;
 
 #[cfg(doc)]
 use crate::protocols::{Handshake, Reading, Writing};
@@ -19,6 +21,10 @@ pub(crate) struct Connections(RwLock<HashMap<SocketAddr, Connection>>);
 impl Connections {
     pub(crate) fn add(&self, conn: Connection) {
         self.0.write().insert(conn.addr(), conn);
+    }
+
+    pub(crate) fn get_info(&self, addr: SocketAddr) -> Option<ConnectionInfo> {
+        self.0.read().get(&addr).map(|conn| conn.info.clone())
     }
 
     pub(crate) fn is_connected(&self, addr: SocketAddr) -> bool {
@@ -67,11 +73,32 @@ pub(crate) trait AW: AsyncWrite + Unpin + Send + Sync {}
 impl<T: AsyncWrite + Unpin + Send + Sync> AW for T {}
 
 /// Basic information related to a connection.
-struct ConnectionInfo {
+#[derive(Clone)]
+pub struct ConnectionInfo {
     /// The address of the connection.
     addr: SocketAddr,
     /// The connection's side in relation to the node.
     side: ConnectionSide,
+    /// Basic statistics related to a connection.
+    stats: Arc<Stats>,
+}
+
+impl ConnectionInfo {
+    /// Returns the address associated with the connection.
+    pub const fn addr(&self) -> SocketAddr {
+        self.addr
+    }
+
+    /// Returns `Initiator` if the associated peer initiated the connection
+    /// and `Responder` if the connection request was initiated by the node.
+    pub const fn side(&self) -> ConnectionSide {
+        self.side
+    }
+
+    /// Returns basic statistics related to a connection.
+    pub const fn stats(&self) -> &Arc<Stats> {
+        &self.stats
+    }
 }
 
 /// Created for each active connection; used by the protocols to obtain a handle for
@@ -79,7 +106,7 @@ struct ConnectionInfo {
 /// of the connection.
 pub struct Connection {
     /// Basic information related to a connection.
-    info: ConnectionInfo,
+    pub(crate) info: ConnectionInfo,
     /// Available and used only in the [`Handshake`] protocol.
     pub(crate) stream: Option<TcpStream>,
     /// Available and used only in the [`Reading`] protocol.
@@ -95,7 +122,11 @@ pub struct Connection {
 impl Connection {
     /// Creates a [`Connection`] with placeholders for protocol-related objects.
     pub(crate) fn new(addr: SocketAddr, stream: TcpStream, side: ConnectionSide) -> Self {
-        let info = ConnectionInfo { addr, side };
+        let info = ConnectionInfo {
+            addr,
+            side,
+            stats: Default::default(),
+        };
 
         Self {
             info,
@@ -107,14 +138,28 @@ impl Connection {
         }
     }
 
+    /// Returns basic information associated with the connection.
+    #[inline]
+    pub const fn info(&self) -> &ConnectionInfo {
+        &self.info
+    }
+
     /// Returns the address associated with the connection.
-    pub fn addr(&self) -> SocketAddr {
-        self.info.addr
+    #[inline]
+    pub const fn addr(&self) -> SocketAddr {
+        self.info.addr()
     }
 
     /// Returns `Initiator` if the associated peer initiated the connection
     /// and `Responder` if the connection request was initiated by the node.
-    pub fn side(&self) -> ConnectionSide {
-        self.info.side
+    #[inline]
+    pub const fn side(&self) -> ConnectionSide {
+        self.info.side()
+    }
+
+    /// Returns basic statistics related to a connection.
+    #[inline]
+    pub const fn stats(&self) -> &Arc<Stats> {
+        self.info.stats()
     }
 }

@@ -1,3 +1,15 @@
+# 0.44.0
+
+### Added
+
+- `ConnectionInfo`, which contains basic information related to an active connection
+- `Node::connection_info`, which returns `ConnectionInfo` for the given address
+
+### Removed
+
+- `KnownPeers` (in favor of `ConnectionInfo`, which contains `Stats`)
+- `Node::known_peers`
+
 # 0.43.0
 
 ### Added

@@ -20,9 +20,9 @@ use tokio::{
 use tracing::*;
 
 use crate::{
-    connections::{Connection, ConnectionSide, Connections},
+    connections::{Connection, ConnectionInfo, ConnectionSide, Connections},
     protocols::{Protocol, Protocols},
-    Config, KnownPeers, Stats,
+    Config, Stats,
 };
 
 macro_rules! enable_protocol {
@@ -71,9 +71,7 @@ pub struct InnerNode {
     /// A list of connections that have not been finalized yet.
     connecting: Mutex<HashSet<SocketAddr>>,
     /// Contains objects related to the node's active connections.
-    connections: Connections,
-    /// Collects statistics related to the node's peers.
-    known_peers: KnownPeers,
+    pub(crate) connections: Connections,
     /// Collects statistics related to the node itself.
     stats: Stats,
     /// The node's tasks.
@@ -98,7 +96,6 @@ impl Node {
             protocols: Default::default(),
             connecting: Default::default(),
             connections: Default::default(),
-            known_peers: Default::default(),
             stats: Default::default(),
             tasks: Default::default(),
         }));
@@ -202,7 +199,6 @@ impl Node {
                 .await
             {
                 node.connecting.lock().remove(&addr);
-                node.known_peers().register_failure(addr);
                 error!(parent: node.span(), "couldn't accept a connection: {}", e);
             }
         });
@@ -265,8 +261,6 @@ impl Node {
         peer_addr: SocketAddr,
         own_side: ConnectionSide,
     ) -> io::Result<()> {
-        self.known_peers.add(peer_addr);
-
         // register the port seen by the peer
         if own_side == ConnectionSide::Initiator {
             if let Ok(addr) = stream.local_addr() {
@@ -362,7 +356,6 @@ impl Node {
 
         if let Err(ref e) = ret {
             self.connecting.lock().remove(&addr);
-            self.known_peers().register_failure(addr);
             error!(parent: self.span(), "couldn't initiate a connection with {}: {}", addr, e);
         }
 
@@ -390,13 +383,6 @@ impl Node {
                 task.abort();
             }
 
-            // if the (owning) node was not the initiator of the connection, it doesn't know the listening address
-            // of the associated peer, so the related stats are unreliable; the next connection initiated by the
-            // peer could be bound to an entirely different port number
-            if conn.side() == ConnectionSide::Initiator {
-                self.known_peers().remove(conn.addr());
-            }
-
             debug!(parent: self.span(), "disconnected from {}", addr);
         } else {
             debug!(parent: self.span(), "couldn't disconnect from {}, as it wasn't connected", addr);
@@ -408,12 +394,6 @@ impl Node {
     /// Returns a list containing addresses of active connections.
     pub fn connected_addrs(&self) -> Vec<SocketAddr> {
         self.connections.addrs()
-    }
-
-    /// Returns a reference to the collection of statistics of node's known peers.
-    #[inline]
-    pub fn known_peers(&self) -> &KnownPeers {
-        &self.known_peers
     }
 
     /// Checks whether the provided address is connected.
@@ -434,6 +414,11 @@ impl Node {
     /// Returns the number of connections that are currently being set up.
     pub fn num_connecting(&self) -> usize {
         self.connecting.lock().len()
+    }
+
+    /// Returns the basic information related to a connection.
+    pub fn connection_info(&self, addr: SocketAddr) -> Option<ConnectionInfo> {
+        self.connections.get_info(addr)
     }
 
     /// Checks whether the `Node` can handle an additional connection.
