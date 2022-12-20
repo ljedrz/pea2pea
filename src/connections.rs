@@ -18,7 +18,7 @@ pub(crate) struct Connections(RwLock<HashMap<SocketAddr, Connection>>);
 
 impl Connections {
     pub(crate) fn add(&self, conn: Connection) {
-        self.0.write().insert(conn.addr, conn);
+        self.0.write().insert(conn.addr(), conn);
     }
 
     pub(crate) fn is_connected(&self, addr: SocketAddr) -> bool {
@@ -66,14 +66,20 @@ impl<T: AsyncRead + Unpin + Send + Sync> AR for T {}
 pub(crate) trait AW: AsyncWrite + Unpin + Send + Sync {}
 impl<T: AsyncWrite + Unpin + Send + Sync> AW for T {}
 
-/// Created for each active connection; used by the protocols to obtain a handle for
-/// reading and writing, and keeps track of tasks that have been spawned for the purposes
-/// of the connection.
-pub struct Connection {
+/// Basic information related to a connection.
+struct ConnectionInfo {
     /// The address of the connection.
     addr: SocketAddr,
     /// The connection's side in relation to the node.
     side: ConnectionSide,
+}
+
+/// Created for each active connection; used by the protocols to obtain a handle for
+/// reading and writing, and keeps track of tasks that have been spawned for the purposes
+/// of the connection.
+pub struct Connection {
+    /// Basic information related to a connection.
+    info: ConnectionInfo,
     /// Available and used only in the [`Handshake`] protocol.
     pub(crate) stream: Option<TcpStream>,
     /// Available and used only in the [`Reading`] protocol.
@@ -89,25 +95,26 @@ pub struct Connection {
 impl Connection {
     /// Creates a [`Connection`] with placeholders for protocol-related objects.
     pub(crate) fn new(addr: SocketAddr, stream: TcpStream, side: ConnectionSide) -> Self {
+        let info = ConnectionInfo { addr, side };
+
         Self {
-            addr,
+            info,
             stream: Some(stream),
             reader: None,
             writer: None,
             readiness_notifier: None,
-            side,
             tasks: Default::default(),
         }
     }
 
     /// Returns the address associated with the connection.
     pub fn addr(&self) -> SocketAddr {
-        self.addr
+        self.info.addr
     }
 
     /// Returns `Initiator` if the associated peer initiated the connection
     /// and `Responder` if the connection request was initiated by the node.
     pub fn side(&self) -> ConnectionSide {
-        self.side
+        self.info.side
     }
 }
