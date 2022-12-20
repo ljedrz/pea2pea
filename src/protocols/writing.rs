@@ -110,7 +110,6 @@ where
                 let (msg, delivery) = WrappedMessage::new(Box::new(message));
                 sender.try_send(msg).map_err(|e| {
                     error!(parent: self.node().span(), "can't send a message to {}: {}", addr, e);
-                    self.node().stats().register_failure();
                     io::ErrorKind::Other.into()
                 }).map(|_| delivery)
             } else {
@@ -140,7 +139,6 @@ where
                 let (msg, _delivery) = WrappedMessage::new(Box::new(message.clone()));
                 let _ = message_sender.try_send(msg).map_err(|e| {
                     error!(parent: self.node().span(), "can't send a message to {}: {}", addr, e);
-                    self.node().stats().register_failure();
                 });
             }
 

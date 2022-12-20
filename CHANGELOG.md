@@ -5,10 +5,15 @@
 - `ConnectionInfo`, which contains basic information related to an active connection
 - `Node::connection_info`, which returns `ConnectionInfo` for the given address
 
+### Changes
+
+- the `Stats` no longer track generic failures
+
 ### Removed
 
 - `KnownPeers` (in favor of `ConnectionInfo`, which contains `Stats`)
 - `Node::known_peers`
+- `Stats::failures`
 
 # 0.43.0
 

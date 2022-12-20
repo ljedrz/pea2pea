@@ -167,7 +167,6 @@ impl<R: Reading> ReadingInternal for R {
                         // send the message for further processing
                         if let Err(e) = inbound_message_sender.try_send(msg) {
                             error!(parent: node.span(), "can't process a message from {}: {}", addr, e);
-                            node.stats().register_failure();
                         }
                     }
                     Err(e) => {

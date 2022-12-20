@@ -11,8 +11,6 @@ pub struct Stats {
     bytes_sent: AtomicU64,
     /// The number of all bytes received.
     bytes_received: AtomicU64,
-    /// The number of failures.
-    failures: AtomicU64,
 }
 
 impl Stats {
@@ -26,11 +24,6 @@ impl Stats {
     pub fn register_received_message(&self, size: usize) {
         self.msgs_received.fetch_add(1, Relaxed);
         self.bytes_received.fetch_add(size as u64, Relaxed);
-    }
-
-    /// Registers a failure.
-    pub fn register_failure(&self) {
-        self.failures.fetch_add(1, Relaxed);
     }
 
     /// Returns the number of sent messages and their collective size in bytes.
@@ -47,10 +40,5 @@ impl Stats {
         let bytes = self.bytes_received.load(Relaxed);
 
         (msgs, bytes)
-    }
-
-    /// Returns the number of failures.
-    pub fn failures(&self) -> u64 {
-        self.failures.load(Relaxed)
     }
 }
