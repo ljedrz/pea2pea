@@ -208,6 +208,7 @@ impl<W: Writing> WritingInternal for W {
 
         // the task for writing outbound messages
         let self_clone = self.clone();
+        let conn_stats = conn.stats().clone();
         let writer_task = tokio::spawn(async move {
             let node = self_clone.node();
             trace!(parent: node.span(), "spawned a task for writing messages to {}", addr);
@@ -225,9 +226,7 @@ impl<W: Writing> WritingInternal for W {
                 match self_clone.write_to_stream(*msg, &mut framed).await {
                     Ok(len) => {
                         let _ = wrapped_msg.delivery_notification.send(Ok(()));
-                        if let Some(info) = node.connection_info(addr) {
-                            info.stats().register_sent_message(len)
-                        }
+                        conn_stats.register_sent_message(len);
                         node.stats().register_sent_message(len);
                         trace!(parent: node.span(), "sent {}B to {}", len, addr);
                     }

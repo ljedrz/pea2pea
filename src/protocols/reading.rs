@@ -1,4 +1,4 @@
-use std::{io, net::SocketAddr};
+use std::{io, net::SocketAddr, sync::Arc};
 
 use async_trait::async_trait;
 use bytes::BytesMut;
@@ -14,7 +14,7 @@ use tracing::*;
 use crate::{protocols::Handshake, Config};
 use crate::{
     protocols::{ProtocolHandler, ReturnableConnection},
-    ConnectionSide, Node, Pea2Pea,
+    ConnectionInfo, ConnectionSide, Node, Pea2Pea, Stats,
 };
 
 /// Can be used to specify and enable reading, i.e. receiving inbound messages. If the [`Handshake`]
@@ -99,7 +99,7 @@ trait ReadingInternal: Reading {
     fn map_codec<T: AsyncRead>(
         &self,
         framed: FramedRead<T, Self::Codec>,
-        addr: SocketAddr,
+        info: &ConnectionInfo,
     ) -> FramedRead<T, CountingCodec<Self::Codec>>;
 }
 
@@ -110,7 +110,7 @@ impl<R: Reading> ReadingInternal for R {
         let codec = self.codec(addr, !conn.side());
         let reader = conn.reader.take().expect("missing connection reader!");
         let framed = FramedRead::new(reader, codec);
-        let mut framed = self.map_codec(framed, addr);
+        let mut framed = self.map_codec(framed, conn.info());
 
         // the connection will notify the reading task once it's fully ready
         let (tx_conn_ready, rx_conn_ready) = oneshot::channel();
@@ -192,12 +192,13 @@ impl<R: Reading> ReadingInternal for R {
     fn map_codec<T: AsyncRead>(
         &self,
         framed: FramedRead<T, Self::Codec>,
-        addr: SocketAddr,
+        info: &ConnectionInfo,
     ) -> FramedRead<T, CountingCodec<Self::Codec>> {
         framed.map_decoder(|codec| CountingCodec {
             codec,
             node: self.node().clone(),
-            addr,
+            addr: info.addr(),
+            stats: info.stats().clone(),
             acc: 0,
         })
     }
@@ -208,6 +209,7 @@ struct CountingCodec<D: Decoder> {
     codec: D,
     node: Node,
     addr: SocketAddr,
+    stats: Arc<Stats>,
     acc: usize,
 }
 
@@ -226,9 +228,7 @@ impl<D: Decoder> Decoder for CountingCodec<D> {
 
             if ret.is_some() {
                 self.acc = 0;
-                if let Some(info) = self.node.connection_info(self.addr) {
-                    info.stats().register_received_message(read_len);
-                }
+                self.stats.register_received_message(read_len);
                 self.node.stats().register_received_message(read_len);
             } else {
                 self.acc = read_len;
