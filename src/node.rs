@@ -416,7 +416,7 @@ impl Node {
         self.connecting.lock().len()
     }
 
-    /// Returns the basic information related to a connection.
+    /// Returns basic information related to a connection.
     pub fn connection_info(&self, addr: SocketAddr) -> Option<ConnectionInfo> {
         self.connections.get_info(addr)
     }
