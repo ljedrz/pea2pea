@@ -4,6 +4,7 @@
 
 - `ConnectionInfo`, which contains basic information related to an active connection
 - `Node::connection_info`, which returns `ConnectionInfo` for the given address
+- `Stats::created`, which registers the creation time of the node and the connections
 
 ### Changes
 
