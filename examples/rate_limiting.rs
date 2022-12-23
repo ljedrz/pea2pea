@@ -100,11 +100,11 @@ async fn main() {
             let conn_rates: Vec<(f64, f64)> = conn_infos
                 .iter()
                 .map(|(_addr, info)| {
-                    let lifetime = info.stats().created().elapsed().as_secs();
+                    let lifetime = info.stats().created().elapsed().as_millis();
                     let recv = info.stats().received();
 
-                    let msg_rate = recv.0 as f64 / lifetime as f64;
-                    let byte_rate = recv.1 as f64 / lifetime as f64;
+                    let msg_rate = recv.0 as f64 / lifetime as f64 * 1000.0;
+                    let byte_rate = recv.1 as f64 / lifetime as f64 * 1000.0;
 
                     (msg_rate, byte_rate)
                 })
@@ -120,8 +120,8 @@ async fn main() {
                     (sum_msg_rate, sum_byte_rate)
                 },
             );
-            let avg_msg_rate = sum_msg_rate / (NUM_PEERS - 1) as f64;
-            let avg_byte_rate = sum_byte_rate / (NUM_PEERS - 1) as f64;
+            let avg_msg_rate = sum_msg_rate / conn_infos.len() as f64;
+            let avg_byte_rate = sum_byte_rate / conn_infos.len() as f64;
 
             if avg_msg_rate.is_normal() && avg_byte_rate.is_normal() {
                 info!(
@@ -150,7 +150,7 @@ async fn main() {
     });
 
     // a generic message that the peers of the first node will be sending to it periodically
-    let msg = Bytes::from(&b"herp derp"[..]);
+    let msg = Bytes::from(&b"HerpDerp"[..]);
 
     // first node's peers will be sending messages to it with the same frequency, except for the last one skipped here
     for node in nodes.iter().skip(1).take(NUM_PEERS - 2) {
