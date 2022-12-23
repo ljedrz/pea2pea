@@ -124,14 +124,23 @@ async fn main() {
             let avg_byte_rate = sum_byte_rate / (NUM_PEERS - 1) as f64;
 
             if avg_msg_rate.is_normal() && avg_byte_rate.is_normal() {
-                info!(parent: recipient.node().span(), "[spam check] avg. msg/s: {:>6.2}; avg. bytes/s: {:>6.2}", avg_msg_rate, avg_byte_rate);
+                info!(
+                    parent: recipient.node().span(),
+                    "[spam check] avg. msg/s: {:>6.2}; avg. bytes/s: {:>6.2}",
+                    avg_msg_rate,
+                    avg_byte_rate,
+                );
 
                 // disconnect from nodes with a msg/s rate greater than the average by a factor of 3x or more
                 if let Some(idx) = conn_rates
                     .iter()
                     .position(|(msg_rate, _)| *msg_rate > avg_msg_rate * 3.0)
                 {
-                    warn!(parent: recipient.node().span(), "[spam check] found a potential spammer ({:.2} msg/s, over 3x the average)! disconnecting", conn_rates[idx].0);
+                    warn!(
+                        parent: recipient.node().span(),
+                        "[spam check] found a potential spammer ({:.2} msg/s, over 3x the average)! disconnecting",
+                        conn_rates[idx].0,
+                    );
                     recipient.node().disconnect(conn_infos[idx].0).await;
                 }
             }
