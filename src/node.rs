@@ -25,6 +25,7 @@ use crate::{
     Config, Stats,
 };
 
+// Starts the selected protocol handler for a new connection
 macro_rules! enable_protocol {
     ($handler_type: ident, $node:expr, $conn: expr) => {
         if let Some(handler) = $node.protocols.$handler_type.get() {
@@ -43,9 +44,10 @@ macro_rules! enable_protocol {
     };
 }
 
-// A seuential numeric identifier assigned to `Node`s that were not provided with a name.
+/// A seuential numeric identifier assigned to `Node`s that were not provided with a name.
 static SEQUENTIAL_NODE_ID: AtomicUsize = AtomicUsize::new(0);
 
+/// The types of long-running tasks supported by the Node.
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum NodeTask {
     Listener,
@@ -67,6 +69,7 @@ impl Deref for Node {
     }
 }
 
+/// The actual node object that gets wrapped in an Arc in the Node.
 #[doc(hidden)]
 pub struct InnerNode {
     /// The tracing span.
@@ -114,6 +117,7 @@ impl Node {
         node
     }
 
+    /// Creates a TCP listener object; only used in [`Node::start_listening`].
     async fn create_listener(&self, listener_ip: IpAddr) -> io::Result<TcpListener> {
         if let Some(port) = self.config().desired_listening_port {
             let desired_listening_addr = SocketAddr::new(listener_ip, port);
@@ -191,22 +195,27 @@ impl Node {
         }
     }
 
+    /// Processes a single inbound connection request. Only used in [`Node::start_listening`].
     async fn handle_connection_request(&self, stream: TcpStream, addr: SocketAddr) {
         debug!(parent: self.span(), "tentatively accepted a connection from {}", addr);
 
+        // check if no connection-related limits are breached
         if !self.can_add_connection() {
             debug!(parent: self.span(), "rejecting the connection from {}", addr);
             return;
         }
 
+        // register the address as connecting
         self.connecting.lock().insert(addr);
 
+        // finalize the connection asynchronously
         let node = self.clone();
         tokio::spawn(async move {
             if let Err(e) = node
                 .adapt_stream(stream, addr, ConnectionSide::Responder)
                 .await
             {
+                // if the connection fails to finalize, remove the address from the list of connecting ones
                 node.connecting.lock().remove(&addr);
                 error!(parent: node.span(), "couldn't accept a connection: {}", e);
             }
@@ -247,6 +256,7 @@ impl Node {
             .ok_or_else(|| io::ErrorKind::AddrNotAvailable.into())
     }
 
+    /// Enable the applicable protocols for a new connection.
     async fn enable_protocols(&self, conn: Connection) -> io::Result<Connection> {
         let mut conn = enable_protocol!(handshake, self, conn);
 
@@ -330,6 +340,7 @@ impl Node {
 
     /// Connects to the provided `SocketAddr` using an optional `TcpSocket`.
     async fn connect_inner(&self, addr: SocketAddr, socket: Option<TcpSocket>) -> io::Result<()> {
+        // a simple self-connect attempt check
         if let Ok(listening_addr) = self.listening_addr() {
             if addr == listening_addr
                 || addr.ip().is_loopback() && addr.port() == listening_addr.port()
@@ -339,30 +350,37 @@ impl Node {
             }
         }
 
+        // make sure connection-related limits are not breached
         if !self.can_add_connection() {
             error!(parent: self.span(), "too many connections; refusing to connect to {}", addr);
             return Err(io::ErrorKind::PermissionDenied.into());
         }
 
+        // make sure the address is not already connected to
         if self.connections.is_connected(addr) {
             warn!(parent: self.span(), "already connected to {}", addr);
             return Err(io::ErrorKind::AlreadyExists.into());
         }
 
+        // register the address as connecting, bailing if it's already marked as such
         if !self.connecting.lock().insert(addr) {
             warn!(parent: self.span(), "already connecting to {}", addr);
             return Err(io::ErrorKind::AlreadyExists.into());
         }
 
+        // attempt to physically connect to the specified address
         let stream = self.create_stream(addr, socket).await.map_err(|e| {
+            // if the attempt failed, perform a cleanup
             self.connecting.lock().remove(&addr);
             e
         })?;
 
+        // attempt to finalize the connection
         let ret = self
             .adapt_stream(stream, addr, ConnectionSide::Initiator)
             .await;
 
+        // if the connection fails to finalize, remove the address from the list of connecting ones
         if let Err(ref e) = ret {
             self.connecting.lock().remove(&addr);
             error!(parent: self.span(), "couldn't initiate a connection with {}: {}", addr, e);
@@ -371,17 +389,23 @@ impl Node {
         ret
     }
 
-    /// Disconnects from the provided `SocketAddr`.
+    /// Disconnects from the provided `SocketAddr`; returns `true` if an actual disconnect took place.
     pub async fn disconnect(&self, addr: SocketAddr) -> bool {
+        // if the Disconnect protocol is enabled, trigger it
         if let Some(handler) = self.protocols.disconnect.get() {
+            // only do so if the connection is still present; this check is necessary, because Node::disconnect
+            // can be called manually and triggered by both the Reading and Writing protocols
             if self.is_connected(addr) {
                 let (sender, receiver) = oneshot::channel();
 
                 handler.trigger((addr, sender));
+                // wait for the Disconnect protocol to perform its specified actions
                 let _ = receiver.await; // can't really fail
             }
         }
 
+        // as soon as the Disconnect protocol does its job, remove the connection from the list of the active
+        // ones; this is only done here, because Disconnect might attempt to send a message to the peer
         let conn = self.connections.remove(addr);
 
         if let Some(ref conn) = conn {
