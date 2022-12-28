@@ -25,16 +25,16 @@ async fn check_node_cleanups() {
     let initial_heap_use = PEAK_ALLOC.current_usage();
 
     let persistent_node = crate::test_node!("persistent");
-    let persistent_addr = persistent_node.node().start_listening().await.unwrap();
 
-    // measure the size of a node with no protocols enabled
-    let idle_node_size = (PEAK_ALLOC.current_usage() - initial_heap_use) / 1000;
+    // measure the size of a node with no functionalities enabled
+    let idle_node_size = PEAK_ALLOC.current_usage() - initial_heap_use;
 
-    // enable all the protocols to check for any leaks there too
+    // enable all the protocols and the listener to check for any leaks there too
     persistent_node.enable_handshake().await;
     persistent_node.enable_reading().await;
     persistent_node.enable_writing().await;
     persistent_node.enable_disconnect().await;
+    let persistent_addr = persistent_node.node().start_listening().await.unwrap();
 
     // register heap use after node setup
     let heap_after_node_setup = PEAK_ALLOC.current_usage();
@@ -118,9 +118,9 @@ async fn check_node_cleanups() {
     println!("after 32 connections:  {}kB", heap_after_32_conns / 1000);
     println!("after {} connections: {}kB", NUM_CONNS, final_heap_use_kb);
     println!("average memory use:    {}kB", avg_heap_use / 1000);
-    println!("maximum memory use:    {}kB", max_heap_use); // note: heavily affected by Config::initial_read_buffer_size
+    println!("maximum memory use:    {}kB", max_heap_use); // note: heavily affected by Reading::INITIAL_BUFFER_SIZE
     println!();
-    println!("idle node size: {}kB", idle_node_size);
+    println!("idle node size: {}B", idle_node_size);
     println!("full node size: {}kB", single_node_size);
     println!("leaked memory:  {}B", heap_growth);
     println!();

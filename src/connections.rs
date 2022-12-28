@@ -133,14 +133,12 @@ pub struct Connection {
 impl Connection {
     /// Creates a [`Connection`] with placeholders for protocol-related objects.
     pub(crate) fn new(addr: SocketAddr, stream: TcpStream, side: ConnectionSide) -> Self {
-        let info = ConnectionInfo {
-            addr,
-            side,
-            stats: Default::default(),
-        };
-
         Self {
-            info,
+            info: ConnectionInfo {
+                addr,
+                side,
+                stats: Default::default(),
+            },
             stream: Some(stream),
             reader: None,
             writer: None,
