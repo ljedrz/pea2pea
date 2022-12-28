@@ -44,12 +44,12 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         #[cfg(feature = "test")]
-        fn default_ip() -> Option<IpAddr> {
+        const fn default_ip() -> Option<IpAddr> {
             Some(IpAddr::V4(Ipv4Addr::LOCALHOST))
         }
 
         #[cfg(not(feature = "test"))]
-        fn default_ip() -> Option<IpAddr> {
+        const fn default_ip() -> Option<IpAddr> {
             Some(IpAddr::V4(Ipv4Addr::UNSPECIFIED))
         }
 
