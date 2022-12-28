@@ -46,6 +46,15 @@ macro_rules! enable_protocol {
 // A seuential numeric identifier assigned to `Node`s that were not provided with a name.
 static SEQUENTIAL_NODE_ID: AtomicUsize = AtomicUsize::new(0);
 
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) enum NodeTask {
+    Listener,
+    Disconnect,
+    Handshake,
+    Reading,
+    Writing,
+}
+
 /// The central object responsible for handling connections.
 #[derive(Clone)]
 pub struct Node(Arc<InnerNode>);
@@ -75,7 +84,7 @@ pub struct InnerNode {
     /// Collects statistics related to the node itself.
     stats: Stats,
     /// The node's tasks.
-    pub(crate) tasks: Mutex<Vec<JoinHandle<()>>>,
+    pub(crate) tasks: Mutex<HashMap<NodeTask, JoinHandle<()>>>,
 }
 
 impl Node {
@@ -174,7 +183,7 @@ impl Node {
                     }
                 }
             });
-            self.tasks.lock().push(listening_task);
+            self.tasks.lock().insert(NodeTask::Listener, listening_task);
             let _ = rx.await;
             debug!(parent: self.span(), "listening on {}", listening_addr);
 
@@ -442,16 +451,20 @@ impl Node {
     pub async fn shut_down(&self) {
         debug!(parent: self.span(), "shutting down");
 
-        let mut tasks = std::mem::take(&mut *self.tasks.lock()).into_iter();
-        if let Some(listening_task) = tasks.next() {
-            listening_task.abort(); // abort the listening task first
+        let mut tasks = std::mem::take(&mut *self.tasks.lock());
+
+        // abort the listening task first (if it exists)
+        if let Some(listening_task) = tasks.remove(&NodeTask::Listener) {
+            listening_task.abort();
         }
 
+        // disconnect from all the peers
         for addr in self.connected_addrs() {
             self.disconnect(addr).await;
         }
 
-        for handle in tasks {
+        // abort the remaining tasks, which should now be inert
+        for handle in tasks.into_values() {
             handle.abort();
         }
     }

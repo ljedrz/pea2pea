@@ -10,12 +10,13 @@ use tokio::{
 use tokio_util::codec::{Decoder, FramedRead};
 use tracing::*;
 
-#[cfg(doc)]
-use crate::{protocols::Handshake, Config};
 use crate::{
+    node::NodeTask,
     protocols::{ProtocolHandler, ReturnableConnection},
     ConnectionInfo, ConnectionSide, Node, Pea2Pea, Stats,
 };
+#[cfg(doc)]
+use crate::{protocols::Handshake, Config};
 
 /// Can be used to specify and enable reading, i.e. receiving inbound messages. If the [`Handshake`]
 /// protocol is enabled too, it goes into force only after the handshake has been concluded.
@@ -71,7 +72,10 @@ where
             }
         });
         let _ = rx_reading.await;
-        self.node().tasks.lock().push(reading_task);
+        self.node()
+            .tasks
+            .lock()
+            .insert(NodeTask::Reading, reading_task);
 
         // register the Reading handler with the Node
         let hdl = Box::new(ProtocolHandler(conn_sender));

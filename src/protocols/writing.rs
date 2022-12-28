@@ -10,12 +10,13 @@ use tokio::{
 use tokio_util::codec::{Encoder, FramedWrite};
 use tracing::*;
 
-#[cfg(doc)]
-use crate::{protocols::Handshake, Config, Node};
 use crate::{
+    node::NodeTask,
     protocols::{Protocol, ProtocolHandler, ReturnableConnection},
     Connection, ConnectionSide, Pea2Pea,
 };
+#[cfg(doc)]
+use crate::{protocols::Handshake, Config, Node};
 
 type WritingSenders = Arc<RwLock<HashMap<SocketAddr, mpsc::Sender<WrappedMessage>>>>;
 
@@ -71,7 +72,10 @@ where
             }
         });
         let _ = rx_writing.await;
-        self.node().tasks.lock().push(writing_task);
+        self.node()
+            .tasks
+            .lock()
+            .insert(NodeTask::Writing, writing_task);
 
         // register the WritingHandler with the Node
         let hdl = Box::new(WritingHandler {

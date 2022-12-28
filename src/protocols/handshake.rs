@@ -9,6 +9,7 @@ use tokio::{
 use tracing::*;
 
 use crate::{
+    node::NodeTask,
     protocols::{ProtocolHandler, ReturnableConnection},
     Connection, Pea2Pea,
 };
@@ -79,7 +80,10 @@ where
             }
         });
         let _ = rx.await;
-        self.node().tasks.lock().push(handshake_task);
+        self.node()
+            .tasks
+            .lock()
+            .insert(NodeTask::Handshake, handshake_task);
 
         // register the Handshake handler with the Node
         let hdl = Box::new(ProtocolHandler(from_node_sender));

@@ -3,7 +3,7 @@ use std::net::SocketAddr;
 use tokio::sync::{mpsc, oneshot};
 use tracing::*;
 
-use crate::{protocols::ProtocolHandler, Pea2Pea};
+use crate::{node::NodeTask, protocols::ProtocolHandler, Pea2Pea};
 #[cfg(doc)]
 use crate::{
     protocols::{Reading, Writing},
@@ -54,7 +54,10 @@ where
             }
         });
         let _ = rx.await;
-        self.node().tasks.lock().push(disconnect_task);
+        self.node()
+            .tasks
+            .lock()
+            .insert(NodeTask::Disconnect, disconnect_task);
 
         // register the Disconnect handler with the Node
         let hdl = Box::new(ProtocolHandler(from_node_sender));
