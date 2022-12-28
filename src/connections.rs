@@ -93,17 +93,20 @@ pub struct ConnectionInfo {
 
 impl ConnectionInfo {
     /// Returns the address associated with the connection.
+    #[inline]
     pub const fn addr(&self) -> SocketAddr {
         self.addr
     }
 
     /// Returns `Initiator` if the associated peer initiated the connection
     /// and `Responder` if the connection request was initiated by the node.
+    #[inline]
     pub const fn side(&self) -> ConnectionSide {
         self.side
     }
 
     /// Returns basic statistics related to a connection.
+    #[inline]
     pub const fn stats(&self) -> &Arc<Stats> {
         &self.stats
     }
