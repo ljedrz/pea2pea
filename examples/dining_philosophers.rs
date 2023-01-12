@@ -50,8 +50,7 @@ enum State {
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 enum Message {
-    AreYouUsingYourLeftFork,
-    AreYouUsingYourRightFork,
+    AreYouUsingTheSharedFork,
     Yes(Option<Duration>), // eating duration (if the responder is eating)
     No,
 }
@@ -98,7 +97,7 @@ impl Philosopher {
                         let left_neighbor = node.left_neighbor.get().unwrap();
                         debug!(parent: node.node().span(), "asking {} for the fork", left_neighbor.1);
                         drop(state);
-                        node.unicast(left_neighbor.0, Message::AreYouUsingYourRightFork)
+                        node.unicast(left_neighbor.0, Message::AreYouUsingTheSharedFork)
                             .unwrap();
                         sleep(Duration::from_millis(250)).await;
                     }
@@ -106,7 +105,7 @@ impl Philosopher {
                         let right_neighbor = node.right_neighbor.get().unwrap();
                         debug!(parent: node.node().span(), "asking {} for the fork", right_neighbor.1);
                         drop(state);
-                        node.unicast(right_neighbor.0, Message::AreYouUsingYourLeftFork)
+                        node.unicast(right_neighbor.0, Message::AreYouUsingTheSharedFork)
                             .unwrap();
                         sleep(Duration::from_millis(250)).await;
                     }
@@ -170,28 +169,20 @@ impl Reading for Philosopher {
     }
 
     async fn process_message(&self, source: SocketAddr, message: Self::Message) -> io::Result<()> {
-        match message {
-            Message::AreYouUsingYourLeftFork => {
-                let answer = if matches!(*self.state.read().await, State::Thinking) {
-                    debug!(parent: self.node().span(), "giving my left neighbor my left fork");
-                    Message::No
-                } else {
-                    debug!(parent: self.node().span(), "I'm not giving my left fork to my left neighbor yet");
-                    Message::Yes(None)
-                };
+        let (left_neighbor_addr, left_neighbor_name) = self.left_neighbor.get().unwrap();
+        let (neighbor_name, neighbor_side) = if source == *left_neighbor_addr {
+            (left_neighbor_name.to_owned(), "left")
+        } else {
+            (self.right_neighbor.get().unwrap().1.to_owned(), "right")
+        };
 
-                self.unicast(source, answer)
-                    .unwrap()
-                    .await
-                    .unwrap()
-                    .unwrap();
-            }
-            Message::AreYouUsingYourRightFork => {
+        match message {
+            Message::AreYouUsingTheSharedFork => {
                 let answer = if matches!(*self.state.read().await, State::Thinking) {
-                    debug!(parent: self.node().span(), "giving my right neighbor my right fork");
+                    debug!(parent: self.node().span(), "giving {} my {} fork", neighbor_name, neighbor_side);
                     Message::No
                 } else {
-                    debug!(parent: self.node().span(), "I'm not giving my right fork to my right neighbor yet");
+                    debug!(parent: self.node().span(), "I'm not giving {} my {} fork yet", neighbor_name, neighbor_side);
                     Message::Yes(None)
                 };
 
@@ -202,7 +193,7 @@ impl Reading for Philosopher {
                     .unwrap();
             }
             Message::Yes(duration) => {
-                debug!(parent: self.node().span(), "my neighbor won't share their fork yet");
+                debug!(parent: self.node().span(), "{} won't share his fork yet", neighbor_name);
 
                 let state = self.state.read().await;
                 if *state != State::Hungry(true) {
@@ -213,16 +204,12 @@ impl Reading for Philosopher {
                 }
             }
             Message::No => {
+                info!(parent: self.node().span(), "I got the fork from {}", neighbor_name);
+
                 let state = &mut *self.state.write().await;
                 if *state == State::Hungry(false) {
-                    let left_neighbor = self.left_neighbor.get().unwrap().1.clone();
-                    info!(parent: self.node().span(), "I got the fork from {}", left_neighbor);
-
                     *state = State::Hungry(true);
                 } else if *state == State::Hungry(true) {
-                    let right_neighbor = self.right_neighbor.get().unwrap().1.clone();
-                    info!(parent: self.node().span(), "I got the fork from {}", right_neighbor);
-
                     let eating_time = RNG
                         .lock()
                         .gen_range(MIN_EATING_TIME_MS..=MAX_EATING_TIME_MS);
