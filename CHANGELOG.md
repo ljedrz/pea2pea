@@ -1,3 +1,9 @@
+# 0.45.0
+
+### Changed
+
+- increased the minimum required version of `tokio` to `1.24` due to RUSTSEC-2023-0001
+
 # 0.44.0
 
 ### Added
