@@ -34,7 +34,7 @@ tracing = { version = "0.1", default-features = false }
 [dev-dependencies]
 bincode = "1"
 deadline = "0.2"
-libp2p = { version = "0.50", default-features = false, features = ["macros", "noise", "ping", "tcp", "tokio", "yamux"] }
+libp2p = { version = "0.51", default-features = false, features = ["macros", "noise", "ping", "tcp", "tokio", "yamux"] }
 native-tls = "0.2"
 peak_alloc = "0.1"
 prost = "0.11"
