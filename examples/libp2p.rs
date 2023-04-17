@@ -9,7 +9,7 @@ use std::{cmp, collections::HashMap, io, net::SocketAddr, sync::Arc, time::Durat
 use bytes::{Bytes, BytesMut};
 use common::{noise, yamux};
 use futures_util::{SinkExt, StreamExt, TryStreamExt};
-use libp2p::swarm::{keep_alive, NetworkBehaviour, Swarm, SwarmEvent};
+use libp2p::swarm::{keep_alive, NetworkBehaviour, SwarmBuilder, SwarmEvent};
 use libp2p::{core::multiaddr::Protocol, identity, ping, PeerId, Transport};
 use parking_lot::{Mutex, RwLock};
 use pea2pea::{
@@ -504,7 +504,8 @@ async fn main() {
         .authenticate(libp2p::noise::NoiseConfig::xx(noise_keys).into_authenticated())
         .multiplex(libp2p::yamux::YamuxConfig::default())
         .boxed();
-    let mut swarm = Swarm::with_tokio_executor(transport, Behaviour::default(), swarm_peer_id);
+    let mut swarm =
+        SwarmBuilder::with_tokio_executor(transport, Behaviour::default(), swarm_peer_id).build();
 
     swarm
         .listen_on("/ip4/127.0.0.1/tcp/0".parse().unwrap())
