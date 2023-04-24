@@ -1,6 +1,9 @@
 //! Opt-in protocols available to the node; each protocol is expected to spawn its own task that runs throughout the
 //! node's lifetime and handles a specific functionality. The communication with these tasks is done via dedicated
 //! handler objects.
+//!
+//! A flowchart detailing how the protocols interact with a connection during its lifetime can be seen
+//! [here](https://github.com/ljedrz/pea2pea/tree/master/assets/connection_lifetime.png).
 
 use std::{io, net::SocketAddr};
 
