@@ -1,3 +1,9 @@
+# 0.46.0
+
+### Added
+
+- `protocols::OnConnect`
+
 # 0.45.0
 
 ### Changed

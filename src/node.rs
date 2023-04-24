@@ -53,6 +53,7 @@ pub(crate) enum NodeTask {
     Listener,
     Disconnect,
     Handshake,
+    OnConnect,
     Reading,
     Writing,
 }
@@ -306,6 +307,15 @@ impl Node {
         // send the aforementioned notification so that reading from the socket can commence
         if let Some(tx) = conn_ready_tx {
             let _ = tx.send(());
+        }
+
+        // if enabled, enact OnConnect
+        if let Some(handler) = self.protocols.on_connect.get() {
+            let (sender, receiver) = oneshot::channel();
+
+            handler.trigger((peer_addr, sender));
+            // wait for the OnConnect protocol to perform its specified actions
+            let _ = receiver.await; // can't really fail
         }
 
         Ok(())

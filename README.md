@@ -14,6 +14,7 @@ low-level, opt-in [protocols](https://docs.rs/pea2pea/latest/pea2pea/protocols/i
 - [`Reading`](https://docs.rs/pea2pea/latest/pea2pea/protocols/trait.Reading.html) enables the node to receive messages based on the user-supplied [Decoder](https://docs.rs/tokio-util/latest/tokio_util/codec/trait.Decoder.html)
 - [`Writing`](https://docs.rs/pea2pea/latest/pea2pea/protocols/trait.Writing.html) enables the node to send messages based on the user-supplied [Encoder](https://docs.rs/tokio-util/latest/tokio_util/codec/trait.Encoder.html)
 - [`Disconnect`](https://docs.rs/pea2pea/latest/pea2pea/protocols/trait.Disconnect.html) makes the node perform specified actions whenever a connection with a peer is severed
+- [`OnConnect`](https://docs.rs/pea2pea/latest/pea2pea/protocols/trait.OnConnect.html) makes the node perform specified actions whenever a connection with a peer is fully established (post-handshake)
 
 ## goals
 - small, simple, non-framework codebase: the entire library is ~1k LOC and there are few dependencies
