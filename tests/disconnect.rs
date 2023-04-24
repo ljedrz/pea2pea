@@ -6,7 +6,7 @@ mod common;
 use std::{collections::HashSet, net::SocketAddr, sync::Arc, time::Duration};
 
 use pea2pea::{
-    protocols::{Disconnect, Reading, Writing},
+    protocols::{Disconnect, Reading},
     Pea2Pea,
 };
 
@@ -24,7 +24,6 @@ impl Disconnect for common::TestNode {
 #[tokio::test]
 async fn connector_side_disconnect() {
     let connector = crate::test_node!("connector0");
-    connector.enable_writing().await;
     connector.enable_disconnect().await;
 
     let connectee = crate::test_node!("connectee0");
@@ -62,7 +61,6 @@ async fn connectee_side_disconnect() {
     connector.enable_disconnect().await;
 
     let connectee = crate::test_node!("connectee1");
-    connectee.enable_writing().await;
     connectee.enable_disconnect().await;
     let connectee_addr = connectee.node().start_listening().await.unwrap();
 
