@@ -309,6 +309,8 @@ impl Node {
             let _ = tx.send(());
         }
 
+        debug!(parent: self.span(), "fully connected to {}", peer_addr);
+
         // if enabled, enact OnConnect
         if let Some(handler) = self.protocols.on_connect.get() {
             let (sender, receiver) = oneshot::channel();
