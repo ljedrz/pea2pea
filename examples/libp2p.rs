@@ -243,7 +243,7 @@ impl Handshake for Libp2pNode {
         // prepare the expected handshake payload
         let noise_payload = {
             let protobuf_payload = NoiseHandshakePayload {
-                identity_key: self.keypair.public().to_protobuf_encoding(),
+                identity_key: identity::PublicKey::encode_protobuf(&self.keypair.public()),
                 identity_sig: self
                     .keypair
                     .sign(&[&b"noise-libp2p-static-key:"[..], &noise_keypair.public].concat())
@@ -261,7 +261,7 @@ impl Handshake for Libp2pNode {
 
         // obtain the PeerId from the handshake payload
         let secure_payload = NoiseHandshakePayload::decode(&secure_payload[..])?;
-        let peer_key = identity::PublicKey::from_protobuf_encoding(&secure_payload.identity_key)
+        let peer_key = identity::PublicKey::try_decode_protobuf(&secure_payload.identity_key)
             .map_err(|_| io::ErrorKind::InvalidData)?;
         let peer_id = PeerId::from(peer_key);
         info!(parent: self.node().span(), "the PeerId of {} is {}", addr, &peer_id);
@@ -496,13 +496,11 @@ async fn main() {
     let swarm_keypair = identity::Keypair::generate_ed25519();
     let swarm_peer_id = PeerId::from(swarm_keypair.public());
     let transport = libp2p::tcp::tokio::Transport::new(libp2p::tcp::Config::new().nodelay(true));
-    let noise_keys = libp2p::noise::Keypair::<libp2p::noise::X25519Spec>::new()
-        .into_authentic(&swarm_keypair)
-        .unwrap();
+    let noise_config = libp2p::noise::Config::new(&swarm_keypair).unwrap();
     let transport = transport
         .upgrade(libp2p::core::upgrade::Version::V1)
-        .authenticate(libp2p::noise::NoiseConfig::xx(noise_keys).into_authenticated())
-        .multiplex(libp2p::yamux::YamuxConfig::default())
+        .authenticate(noise_config)
+        .multiplex(libp2p::yamux::Config::default())
         .boxed();
     let mut swarm =
         SwarmBuilder::with_tokio_executor(transport, Behaviour::default(), swarm_peer_id).build();
