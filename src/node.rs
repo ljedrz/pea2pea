@@ -7,6 +7,7 @@ use std::{
         atomic::{AtomicUsize, Ordering::*},
         Arc,
     },
+    time::Duration,
 };
 
 use once_cell::sync::OnceCell;
@@ -16,6 +17,7 @@ use tokio::{
     net::{TcpListener, TcpSocket, TcpStream},
     sync::oneshot,
     task::JoinHandle,
+    time::timeout,
 };
 use tracing::*;
 
@@ -325,6 +327,24 @@ impl Node {
 
     // A helper method to facilitate a common potential disconnect at the callsite.
     async fn create_stream(
+        &self,
+        addr: SocketAddr,
+        socket: Option<TcpSocket>,
+    ) -> io::Result<TcpStream> {
+        match timeout(
+            Duration::from_millis(self.config().connection_timeout_ms.into()),
+            self.create_stream_inner(addr, socket),
+        )
+        .await
+        {
+            Ok(Ok(stream)) => Ok(stream),
+            Ok(err) => err,
+            Err(err) => Err(io::Error::new(io::ErrorKind::TimedOut, err)),
+        }
+    }
+
+    /// A wrapper method for greater readability.
+    async fn create_stream_inner(
         &self,
         addr: SocketAddr,
         socket: Option<TcpSocket>,

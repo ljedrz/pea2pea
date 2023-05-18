@@ -1,3 +1,9 @@
+# 0.47.0
+
+### Added
+
+- `Config::connection_timeout_ms`
+
 # 0.46.0
 
 ### Added
