@@ -10,7 +10,7 @@ documentation = "https://docs.rs/pea2pea"
 readme = "README.md"
 categories = ["network-programming", "asynchronous"]
 keywords = ["p2p", "peer-to-peer", "networking"]
-rust-version = "1.60"
+rust-version = "1.70"
 
 [badges]
 maintenance = { status = "actively-developed" }
@@ -25,7 +25,6 @@ test = []
 async-trait = "0.1"
 bytes = "1"
 futures-util = { version = "0.3", features = ["sink"] }
-once_cell = { version = "1", features = ["parking_lot"] }
 parking_lot = "0.12"
 tokio = { version = "1.24", features = ["io-util", "net", "parking_lot", "rt", "sync", "time"] }
 tokio-util = { version = "0.7", features = ["codec"] }
@@ -36,6 +35,7 @@ bincode = "1"
 deadline = "0.2"
 libp2p = { version = "0.52", default-features = false, features = ["macros", "noise", "ping", "tcp", "tokio", "yamux"] }
 native-tls = "0.2"
+once_cell = { version = "1", features = ["parking_lot"] }
 peak_alloc = "0.2"
 prost = "0.11"
 rand = { version = "0.8", default-features = false, features = ["getrandom", "small_rng"] }

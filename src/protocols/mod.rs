@@ -5,9 +5,8 @@
 //! A flowchart detailing how the protocols interact with a connection during its lifetime can be seen
 //! [here](https://github.com/ljedrz/pea2pea/tree/master/assets/connection_lifetime.png).
 
-use std::{io, net::SocketAddr};
+use std::{io, net::SocketAddr, sync::OnceLock};
 
-use once_cell::race::OnceBox;
 use tokio::sync::{mpsc, oneshot};
 
 use crate::connections::Connection;
@@ -26,11 +25,11 @@ pub use writing::Writing;
 
 #[derive(Default)]
 pub(crate) struct Protocols {
-    pub(crate) handshake: OnceBox<ProtocolHandler<Connection, io::Result<Connection>>>,
-    pub(crate) reading: OnceBox<ProtocolHandler<Connection, io::Result<Connection>>>,
-    pub(crate) writing: OnceBox<writing::WritingHandler>,
-    pub(crate) on_connect: OnceBox<ProtocolHandler<SocketAddr, ()>>,
-    pub(crate) disconnect: OnceBox<ProtocolHandler<SocketAddr, ()>>,
+    pub(crate) handshake: OnceLock<ProtocolHandler<Connection, io::Result<Connection>>>,
+    pub(crate) reading: OnceLock<ProtocolHandler<Connection, io::Result<Connection>>>,
+    pub(crate) writing: OnceLock<writing::WritingHandler>,
+    pub(crate) on_connect: OnceLock<ProtocolHandler<SocketAddr, ()>>,
+    pub(crate) disconnect: OnceLock<ProtocolHandler<SocketAddr, ()>>,
 }
 
 /// An object sent to a protocol handler task; the task assumes control of a protocol-relevant item `T`,

@@ -1,3 +1,10 @@
+# 0.48.0
+
+### Changed
+
+- `once_cell` is now only a dev dependency
+- due to the use of `std::sync::OnceLock`, the MSRV is increased to 1.70
+
 # 0.47.0
 
 ### Added

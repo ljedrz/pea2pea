@@ -5,12 +5,11 @@ use std::{
     ops::Deref,
     sync::{
         atomic::{AtomicUsize, Ordering::*},
-        Arc,
+        Arc, OnceLock,
     },
     time::Duration,
 };
 
-use once_cell::sync::OnceCell;
 use parking_lot::Mutex;
 use tokio::{
     io::split,
@@ -80,7 +79,7 @@ pub struct InnerNode {
     /// The node's configuration.
     config: Config,
     /// The node's listening address.
-    listening_addr: OnceCell<SocketAddr>,
+    listening_addr: OnceLock<SocketAddr>,
     /// Contains objects used by the protocols implemented by the node.
     pub(crate) protocols: Protocols,
     /// A list of connections that have not been finalized yet.

@@ -56,7 +56,7 @@ where
             .insert(NodeTask::OnConnect, on_connect_task);
 
         // register the OnConnect handler with the Node
-        let hdl = Box::new(ProtocolHandler(from_node_sender));
+        let hdl = ProtocolHandler(from_node_sender);
         assert!(
             self.node().protocols.on_connect.set(hdl).is_ok(),
             "the OnConnect protocol was enabled more than once!"

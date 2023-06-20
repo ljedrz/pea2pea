@@ -60,7 +60,7 @@ where
             .insert(NodeTask::Disconnect, disconnect_task);
 
         // register the Disconnect handler with the Node
-        let hdl = Box::new(ProtocolHandler(from_node_sender));
+        let hdl = ProtocolHandler(from_node_sender);
         assert!(
             self.node().protocols.disconnect.set(hdl).is_ok(),
             "the Disconnect protocol was enabled more than once!"
