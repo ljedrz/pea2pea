@@ -1,7 +1,7 @@
 # pea2pea
 [![crates.io](https://img.shields.io/crates/v/pea2pea)](https://crates.io/crates/pea2pea)
 [![docs.rs](https://docs.rs/pea2pea/badge.svg)](https://docs.rs/pea2pea)
-[![dependencies](https://deps.rs/repo/github/ljedrz/pea2pea/status.svg)](https://deps.rs/repo/github/ljedrz/pea2pea)
+[![dependencies](https://deps.rs/crate/pea2pea/latest/status.svg)](https://deps.rs/crate/pea2pea)
 [![actively developed](https://img.shields.io/badge/maintenance-actively--developed-brightgreen.svg)](https://gist.github.com/cheerfulstoic/d107229326a01ff0f333a1d3476e068d)
 [![issues](https://img.shields.io/github/issues-raw/ljedrz/pea2pea)](https://github.com/ljedrz/pea2pea/issues)
 
