@@ -52,7 +52,7 @@ static SEQUENTIAL_NODE_ID: AtomicUsize = AtomicUsize::new(0);
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum NodeTask {
     Listener,
-    Disconnect,
+    OnDisconnect,
     Handshake,
     OnConnect,
     Reading,
@@ -422,21 +422,21 @@ impl Node {
 
     /// Disconnects from the provided `SocketAddr`; returns `true` if an actual disconnect took place.
     pub async fn disconnect(&self, addr: SocketAddr) -> bool {
-        // if the Disconnect protocol is enabled, trigger it
-        if let Some(handler) = self.protocols.disconnect.get() {
+        // if the OnDisconnect protocol is enabled, trigger it
+        if let Some(handler) = self.protocols.on_disconnect.get() {
             // only do so if the connection is still present; this check is necessary, because Node::disconnect
             // can be called manually and triggered by both the Reading and Writing protocols
             if self.is_connected(addr) {
                 let (sender, receiver) = oneshot::channel();
 
                 handler.trigger((addr, sender));
-                // wait for the Disconnect protocol to perform its specified actions
+                // wait for the OnDisconnect protocol to perform its specified actions
                 let _ = receiver.await; // can't really fail
             }
         }
 
-        // as soon as the Disconnect protocol does its job, remove the connection from the list of the active
-        // ones; this is only done here, because Disconnect might attempt to send a message to the peer
+        // as soon as the OnDisconnect protocol does its job, remove the connection from the list of the active
+        // ones; this is only done here, because OnDisconnect might attempt to send a message to the peer
         let conn = self.connections.remove(addr);
 
         if let Some(ref conn) = conn {

@@ -12,7 +12,7 @@ use std::{
 };
 
 use pea2pea::{
-    protocols::{Disconnect, Handshake, Reading, Writing},
+    protocols::{Handshake, OnDisconnect, Reading, Writing},
     ConnectionSide, Node, Pea2Pea,
 };
 

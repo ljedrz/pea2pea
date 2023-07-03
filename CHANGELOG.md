@@ -4,6 +4,8 @@
 
 - `once_cell` is now only a dev dependency
 - due to the use of `std::sync::OnceLock`, the MSRV is increased to 1.70
+- `protocols::Disconnect` was renamed to `::OnDisconnect`
+- `Disconnect::handle_disconnect` is now `OnDisconnect::on_disconnect`
 
 # 0.47.0
 

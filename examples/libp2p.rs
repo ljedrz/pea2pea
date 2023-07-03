@@ -13,7 +13,7 @@ use libp2p::swarm::{keep_alive, NetworkBehaviour, SwarmBuilder, SwarmEvent};
 use libp2p::{core::multiaddr::Protocol, identity, ping, PeerId, Transport};
 use parking_lot::{Mutex, RwLock};
 use pea2pea::{
-    protocols::{Disconnect, Handshake, Reading, Writing},
+    protocols::{Handshake, OnDisconnect, Reading, Writing},
     Connection, ConnectionSide, Node, Pea2Pea,
 };
 use prost::Message;
@@ -467,8 +467,8 @@ impl Writing for Libp2pNode {
 }
 
 #[async_trait::async_trait]
-impl Disconnect for Libp2pNode {
-    async fn handle_disconnect(&self, addr: SocketAddr) {
+impl OnDisconnect for Libp2pNode {
+    async fn on_disconnect(&self, addr: SocketAddr) {
         self.peer_states.write().remove(&addr);
     }
 }

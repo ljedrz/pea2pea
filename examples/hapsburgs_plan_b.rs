@@ -1,11 +1,11 @@
-//! An homage to the Naked Gun trilogy, showing the `Disconnect` protocol.
+//! An homage to the Naked Gun trilogy, showing the `OnDisconnect` protocol.
 
 mod common;
 
 use std::{io, net::SocketAddr, time::Duration};
 
 use pea2pea::{
-    protocols::{Disconnect, Handshake, Reading, Writing},
+    protocols::{Handshake, OnDisconnect, Reading, Writing},
     Config, Connection, ConnectionSide, Node, Pea2Pea,
 };
 use tokio::time::sleep;
@@ -85,8 +85,8 @@ impl Writing for NakedNode {
 }
 
 #[async_trait::async_trait]
-impl Disconnect for NakedNode {
-    async fn handle_disconnect(&self, _addr: SocketAddr) {
+impl OnDisconnect for NakedNode {
+    async fn on_disconnect(&self, _addr: SocketAddr) {
         if self.node().name() == "Drebin" {
             info!(parent: self.node().span(), "All right. Who else is almost dead?");
         } else {

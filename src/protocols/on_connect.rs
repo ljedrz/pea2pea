@@ -6,14 +6,14 @@ use tracing::*;
 use crate::{node::NodeTask, protocols::ProtocolHandler, Pea2Pea};
 #[cfg(doc)]
 use crate::{
-    protocols::{Disconnect, Handshake, Reading, Writing},
+    protocols::{Handshake, OnDisconnect, Reading, Writing},
     Connection,
 };
 
 /// Can be used to automatically perform some initial actions when a connection with a peer is
 /// fully established. The reason for its existence (instead of including such behavior in the
 /// [`Handshake`] impl) is that it allows the user to utilize [`Writing`] (if implemented and
-/// enabled) and [`Disconnect`], while [`Handshake`] is very low-level and doesn't provide any
+/// enabled) and [`OnDisconnect`], while [`Handshake`] is very low-level and doesn't provide any
 /// additional functionality - its purpose is only to establish a connection.
 #[async_trait::async_trait]
 pub trait OnConnect: Pea2Pea

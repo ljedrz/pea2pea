@@ -11,15 +11,15 @@ use tokio::sync::{mpsc, oneshot};
 
 use crate::connections::Connection;
 
-mod disconnect;
 mod handshake;
 mod on_connect;
+mod on_disconnect;
 mod reading;
 mod writing;
 
-pub use disconnect::Disconnect;
 pub use handshake::Handshake;
 pub use on_connect::OnConnect;
+pub use on_disconnect::OnDisconnect;
 pub use reading::Reading;
 pub use writing::Writing;
 
@@ -29,7 +29,7 @@ pub(crate) struct Protocols {
     pub(crate) reading: OnceLock<ProtocolHandler<Connection, io::Result<Connection>>>,
     pub(crate) writing: OnceLock<writing::WritingHandler>,
     pub(crate) on_connect: OnceLock<ProtocolHandler<SocketAddr, ()>>,
-    pub(crate) disconnect: OnceLock<ProtocolHandler<SocketAddr, ()>>,
+    pub(crate) on_disconnect: OnceLock<ProtocolHandler<SocketAddr, ()>>,
 }
 
 /// An object sent to a protocol handler task; the task assumes control of a protocol-relevant item `T`,

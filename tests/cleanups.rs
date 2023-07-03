@@ -6,7 +6,7 @@ mod common;
 use std::{io, net::SocketAddr, time::Duration};
 
 use pea2pea::{
-    protocols::{Disconnect, Handshake, Reading, Writing},
+    protocols::{Handshake, OnDisconnect, Reading, Writing},
     Pea2Pea,
 };
 

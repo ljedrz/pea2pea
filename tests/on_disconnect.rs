@@ -6,15 +6,15 @@ mod common;
 use std::{collections::HashSet, net::SocketAddr, sync::Arc, time::Duration};
 
 use pea2pea::{
-    protocols::{Disconnect, Reading},
+    protocols::{OnDisconnect, Reading},
     Pea2Pea,
 };
 
 static DISCONNECT_TRIGGERED: Lazy<Arc<Mutex<HashSet<String>>>> = Lazy::new(Default::default);
 
 #[async_trait::async_trait]
-impl Disconnect for common::TestNode {
-    async fn handle_disconnect(&self, _addr: SocketAddr) {
+impl OnDisconnect for common::TestNode {
+    async fn on_disconnect(&self, _addr: SocketAddr) {
         DISCONNECT_TRIGGERED
             .lock()
             .insert(self.node().name().to_owned());

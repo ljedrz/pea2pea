@@ -134,8 +134,8 @@ macro_rules! impl_noop_disconnect_and_handshake {
         }
 
         #[async_trait::async_trait]
-        impl Disconnect for $target {
-            async fn handle_disconnect(&self, _addr: SocketAddr) {}
+        impl OnDisconnect for $target {
+            async fn on_disconnect(&self, _addr: SocketAddr) {}
         }
     };
 }
