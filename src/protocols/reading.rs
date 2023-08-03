@@ -113,16 +113,12 @@ impl<R: Reading> ReadingInternal for R {
         let addr = conn.addr();
         let codec = self.codec(addr, !conn.side());
         let reader = conn.reader.take().expect("missing connection reader!");
-        let framed = FramedRead::new(reader, codec);
+        let framed = FramedRead::with_capacity(reader, codec, Self::INITIAL_BUFFER_SIZE);
         let mut framed = self.map_codec(framed, conn.info());
 
         // the connection will notify the reading task once it's fully ready
         let (tx_conn_ready, rx_conn_ready) = oneshot::channel();
         conn.readiness_notifier = Some(tx_conn_ready);
-
-        if Self::INITIAL_BUFFER_SIZE != 0 {
-            framed.read_buffer_mut().reserve(Self::INITIAL_BUFFER_SIZE);
-        }
 
         let (inbound_message_sender, mut inbound_message_receiver) =
             mpsc::channel(Self::MESSAGE_QUEUE_DEPTH);

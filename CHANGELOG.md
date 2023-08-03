@@ -1,3 +1,9 @@
+# 0.49.0
+
+### Added
+
+`Writing::INITIAL_BUFFER_SIZE`
+
 # 0.48.0
 
 ### Changed

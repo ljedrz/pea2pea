@@ -34,6 +34,12 @@ where
     /// The default value is 64.
     const MESSAGE_QUEUE_DEPTH: usize = 64;
 
+    /// The initial size of a per-connection buffer for writing outbound messages. Can be set to the maximum expected size
+    /// of the outbound message in order to only allocate it once.
+    ///
+    /// The default value is 64KiB.
+    const INITIAL_BUFFER_SIZE: usize = 64 * 1024;
+
     /// The type of the outbound messages; unless their serialization is expensive and the message
     /// is broadcasted (in which case it would get serialized multiple times), serialization should
     /// be done in the implementation of [`Self::Codec`].
@@ -194,6 +200,10 @@ impl<W: Writing> WritingInternal for W {
         let codec = self.codec(addr, !conn.side());
         let writer = conn.writer.take().expect("missing connection writer!");
         let mut framed = FramedWrite::new(writer, codec);
+
+        if Self::INITIAL_BUFFER_SIZE != 0 {
+            framed.write_buffer_mut().reserve(Self::INITIAL_BUFFER_SIZE);
+        }
 
         let (outbound_message_sender, mut outbound_message_receiver) =
             mpsc::channel(Self::MESSAGE_QUEUE_DEPTH);
