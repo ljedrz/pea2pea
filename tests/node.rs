@@ -82,22 +82,10 @@ async fn node_delayed_listener() {
         == 1);
 }
 
-#[should_panic]
-#[tokio::test]
-async fn node_creation_bad_params_panic() {
-    let config = Config {
-        allow_random_port: false,
-        ..Default::default()
-    };
-    let node = Node::new(config);
-    node.start_listening().await.unwrap();
-}
-
 #[tokio::test]
 async fn node_creation_used_port_fails() {
     let config = Config {
-        desired_listening_port: Some(9), // the official Discard Protocol port
-        allow_random_port: false,
+        listener_addr: Some("127.0.0.1:9".parse().unwrap()), // the official Discard Protocol port
         ..Default::default()
     };
     let node = Node::new(config);

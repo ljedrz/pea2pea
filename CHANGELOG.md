@@ -2,7 +2,15 @@
 
 ### Added
 
-`Writing::INITIAL_BUFFER_SIZE`
+- `Writing::INITIAL_BUFFER_SIZE`
+
+### Changed
+
+- renamed `Config::listener_ip` to `::listener_addr`
+
+### Removed
+
+- `Config::{allow_random_port, desired_listening_port}`
 
 # 0.48.0
 

@@ -1,7 +1,7 @@
 use std::{
     collections::{HashMap, HashSet},
     io,
-    net::{IpAddr, SocketAddr},
+    net::SocketAddr,
     ops::Deref,
     sync::{
         atomic::{AtomicUsize, Ordering::*},
@@ -119,37 +119,8 @@ impl Node {
         node
     }
 
-    /// Creates a TCP listener object; only used in [`Node::start_listening`].
-    async fn create_listener(&self, listener_ip: IpAddr) -> io::Result<TcpListener> {
-        if let Some(port) = self.config().desired_listening_port {
-            let desired_listening_addr = SocketAddr::new(listener_ip, port);
-            match TcpListener::bind(desired_listening_addr).await {
-                Err(e) => {
-                    if self.config().allow_random_port {
-                        warn!(
-                            parent: self.span(),
-                            "trying any port, the desired one is unavailable: {}", e
-                        );
-                        let random_available_addr = SocketAddr::new(listener_ip, 0);
-                        TcpListener::bind(random_available_addr).await
-                    } else {
-                        error!(parent: self.span(), "the desired port is unavailable: {}", e);
-                        Err(e)
-                    }
-                }
-                listener => listener,
-            }
-        } else if self.config().allow_random_port {
-            let random_available_addr = SocketAddr::new(listener_ip, 0);
-            TcpListener::bind(random_available_addr).await
-        } else {
-            panic!("you must either provide a desired listening port or allow a random one");
-        }
-    }
-
-    /// Makes the node listen for inbound connections; returns the associated socket address, which will
-    /// correspond to [`Config::listener_ip`] and either [`Config::desired_listening_port`] or the port
-    /// provided by the OS.
+    /// Makes the node listen for inbound connections; returns the actual bound address, which will
+    /// differ from the one in [`Config::listener_addr`] if that one's port was unspecified (i.e. `0`).
     pub async fn start_listening(&self) -> io::Result<SocketAddr> {
         if let Some(listening_addr) = self.listening_addr.get() {
             panic!(
@@ -157,13 +128,13 @@ impl Node {
                 listening_addr
             );
         } else {
-            let listener_ip = self
+            let listener_addr = self
                 .config()
-                .listener_ip
-                .expect("Node::start_listening was called, but Config::listener_ip is not set");
-            let listener = self.create_listener(listener_ip).await?;
+                .listener_addr
+                .expect("Node::start_listening was called, but Config::listener_addr is not set");
+            let listener = TcpListener::bind(listener_addr).await?;
             let port = listener.local_addr()?.port(); // discover the port if it was unspecified
-            let listening_addr = (listener_ip, port).into();
+            let listening_addr = (listener_addr.ip(), port).into();
 
             self.listening_addr
                 .set(listening_addr)

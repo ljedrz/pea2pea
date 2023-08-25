@@ -1,6 +1,6 @@
 use std::{
     io::{self, ErrorKind::*},
-    net::{IpAddr, Ipv4Addr},
+    net::{IpAddr, Ipv4Addr, SocketAddr},
 };
 
 #[cfg(doc)]
@@ -17,19 +17,10 @@ pub struct Config {
     ///
     /// note: If set to `None`, the node will automatically be assigned a sequential, zero-based numeric identifier.
     pub name: Option<String>,
-    /// The IP address the node's connection listener should bind to.
+    /// The socket address the node's connection listener should bind to.
     ///
     /// note: If set to `None`, the node will not listen for inbound connections at all.
-    pub listener_ip: Option<IpAddr>,
-    /// The desired listening port of the node. If [`Config::allow_random_port`] is set to `true`, the node
-    /// will attempt to bind its listener to a different port if the desired one is not available.
-    ///
-    /// note: [`Config::listener_ip`] must not be `None` in order for it to have any effect.
-    pub desired_listening_port: Option<u16>,
-    /// Allow listening on a different port if [`Config::desired_listening_port`] is unavailable.
-    ///
-    /// note: [`Config::listener_ip`] must not be `None` in order for it to have any effect.
-    pub allow_random_port: bool,
+    pub listener_addr: Option<SocketAddr>,
     /// The list of IO errors considered fatal and causing the connection to be dropped.
     ///
     /// note: The node needs to implement the [`Reading`] and/or [`Writing`] protocol in order for it to have any effect.
@@ -46,20 +37,18 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         #[cfg(feature = "test")]
-        const fn default_ip() -> Option<IpAddr> {
-            Some(IpAddr::V4(Ipv4Addr::LOCALHOST))
+        fn default_addr() -> Option<SocketAddr> {
+            Some((IpAddr::V4(Ipv4Addr::LOCALHOST), 0).into())
         }
 
         #[cfg(not(feature = "test"))]
-        const fn default_ip() -> Option<IpAddr> {
-            Some(IpAddr::V4(Ipv4Addr::UNSPECIFIED))
+        fn default_addr() -> Option<SocketAddr> {
+            Some((IpAddr::V4(Ipv4Addr::UNSPECIFIED), 0).into())
         }
 
         Self {
             name: None,
-            listener_ip: default_ip(),
-            desired_listening_port: None,
-            allow_random_port: true,
+            listener_addr: default_addr(),
             fatal_io_errors: vec![
                 ConnectionReset,
                 ConnectionAborted,
