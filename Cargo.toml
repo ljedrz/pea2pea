@@ -37,7 +37,7 @@ libp2p = { version = "0.52", default-features = false, features = ["macros", "no
 native-tls = "0.2"
 once_cell = { version = "1", features = ["parking_lot"] }
 peak_alloc = "0.2"
-prost = "0.11"
+prost = "0.12"
 rand = { version = "0.8", default-features = false, features = ["getrandom", "small_rng"] }
 serde = { version = "1", default-features = false, features = ["derive"] }
 snow = "0.9"
