@@ -9,8 +9,11 @@ use std::{cmp, collections::HashMap, io, net::SocketAddr, sync::Arc, time::Durat
 use bytes::{Bytes, BytesMut};
 use common::{noise, yamux};
 use futures_util::{SinkExt, StreamExt, TryStreamExt};
-use libp2p::swarm::{keep_alive, NetworkBehaviour, SwarmBuilder, SwarmEvent};
-use libp2p::{core::multiaddr::Protocol, identity, ping, PeerId, Transport};
+use libp2p::{core::multiaddr::Protocol, identity, ping, PeerId};
+use libp2p::{
+    swarm::{NetworkBehaviour, SwarmEvent},
+    SwarmBuilder,
+};
 use parking_lot::{Mutex, RwLock};
 use pea2pea::{
     protocols::{Handshake, OnDisconnect, Reading, Writing},
@@ -475,7 +478,6 @@ impl OnDisconnect for Libp2pNode {
 
 #[derive(NetworkBehaviour, Default)]
 struct Behaviour {
-    keep_alive: keep_alive::Behaviour,
     ping: ping::Behaviour,
 }
 
@@ -492,18 +494,18 @@ async fn main() {
     pea2pea_node.enable_writing().await;
 
     // prepare and start a ping-enabled libp2p swarm
-    // note: it's a leaner version of https://docs.rs/libp2p/latest/libp2p/fn.tokio_development_transport.html
-    let swarm_keypair = identity::Keypair::generate_ed25519();
-    let swarm_peer_id = PeerId::from(swarm_keypair.public());
-    let transport = libp2p::tcp::tokio::Transport::new(libp2p::tcp::Config::new().nodelay(true));
-    let noise_config = libp2p::noise::Config::new(&swarm_keypair).unwrap();
-    let transport = transport
-        .upgrade(libp2p::core::upgrade::Version::V1)
-        .authenticate(noise_config)
-        .multiplex(libp2p::yamux::Config::default())
-        .boxed();
-    let mut swarm =
-        SwarmBuilder::with_tokio_executor(transport, Behaviour::default(), swarm_peer_id).build();
+    let mut swarm = SwarmBuilder::with_new_identity()
+        .with_tokio()
+        .with_tcp(
+            libp2p::tcp::Config::default(),
+            libp2p::noise::Config::new,
+            libp2p::yamux::Config::default,
+        )
+        .unwrap()
+        .with_behaviour(|_| ping::Behaviour::default())
+        .unwrap()
+        .with_swarm_config(|cfg| cfg.with_idle_connection_timeout(Duration::from_secs(u64::MAX)))
+        .build();
 
     swarm
         .listen_on("/ip4/127.0.0.1/tcp/0".parse().unwrap())
