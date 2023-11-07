@@ -33,7 +33,7 @@ tracing = { version = "0.1", default-features = false }
 [dev-dependencies]
 bincode = "1"
 deadline = "0.2"
-libp2p = { version = "0.52", default-features = false, features = ["macros", "noise", "ping", "tcp", "tokio", "yamux"] }
+libp2p = { version = "0.53", default-features = false, features = ["macros", "noise", "ping", "tcp", "tokio", "yamux"] }
 native-tls = "0.2"
 once_cell = { version = "1", features = ["parking_lot"] }
 peak_alloc = "0.2"
@@ -45,5 +45,5 @@ test-cert-gen = "0.9"
 tokio = { version = "1.24", features = ["macros", "rt-multi-thread"] }
 tokio-native-tls = "0.3"
 tracing-subscriber = { version = "0.3", default-features = false, features = ["ansi", "env-filter", "fmt", "parking_lot", "smallvec"] }
-unsigned-varint = { version = "0.7", features = ["codec", "futures"] }
+unsigned-varint = { version = "0.8", features = ["codec", "futures"] }
 pea2pea = { path = ".", features = ["test"] } # a workaround to use the `test` feature in tests by default

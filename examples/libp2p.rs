@@ -10,10 +10,7 @@ use bytes::{Bytes, BytesMut};
 use common::{noise, yamux};
 use futures_util::{SinkExt, StreamExt, TryStreamExt};
 use libp2p::{core::multiaddr::Protocol, identity, ping, PeerId};
-use libp2p::{
-    swarm::{NetworkBehaviour, SwarmEvent},
-    SwarmBuilder,
-};
+use libp2p::{swarm::SwarmEvent, SwarmBuilder};
 use parking_lot::{Mutex, RwLock};
 use pea2pea::{
     protocols::{Handshake, OnDisconnect, Reading, Writing},
@@ -474,11 +471,6 @@ impl OnDisconnect for Libp2pNode {
     async fn on_disconnect(&self, addr: SocketAddr) {
         self.peer_states.write().remove(&addr);
     }
-}
-
-#[derive(NetworkBehaviour, Default)]
-struct Behaviour {
-    ping: ping::Behaviour,
 }
 
 #[tokio::main(flavor = "multi_thread")]
