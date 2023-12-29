@@ -43,7 +43,6 @@ impl SecureNode {
     }
 }
 
-#[async_trait::async_trait]
 impl Handshake for SecureNode {
     async fn perform_handshake(&self, mut conn: Connection) -> io::Result<Connection> {
         // create the noise objects
@@ -64,7 +63,6 @@ impl Handshake for SecureNode {
     }
 }
 
-#[async_trait::async_trait]
 impl Reading for SecureNode {
     type Message = BytesMut;
     type Codec = noise::Codec;

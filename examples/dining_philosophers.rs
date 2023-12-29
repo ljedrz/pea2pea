@@ -159,7 +159,6 @@ impl Encoder<Message> for Codec {
     }
 }
 
-#[async_trait::async_trait]
 impl Reading for Philosopher {
     type Message = Message;
     type Codec = Codec;

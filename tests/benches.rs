@@ -48,7 +48,6 @@ impl Pea2Pea for BenchNode {
     }
 }
 
-#[async_trait::async_trait]
 impl Reading for BenchNode {
     type Message = ();
     type Codec = common::TestCodec<Self::Message>;

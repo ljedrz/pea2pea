@@ -84,7 +84,6 @@ impl Pea2Pea for Player {
     }
 }
 
-#[async_trait::async_trait]
 impl Handshake for Player {
     async fn perform_handshake(&self, mut conn: Connection) -> io::Result<Connection> {
         let mut buffer = [0u8; 16];
@@ -144,7 +143,6 @@ impl Decoder for common::TestCodec<Message> {
     }
 }
 
-#[async_trait::async_trait]
 impl Reading for Player {
     type Message = Message;
     type Codec = common::TestCodec<Self::Message>;

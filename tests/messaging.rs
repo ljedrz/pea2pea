@@ -52,7 +52,6 @@ impl Pea2Pea for EchoNode {
     }
 }
 
-#[async_trait::async_trait]
 impl Reading for EchoNode {
     type Message = TestMessage;
     type Codec = common::TestCodec<Self::Message>;

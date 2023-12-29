@@ -23,7 +23,6 @@ impl Pea2Pea for GenericNode {
     }
 }
 
-#[async_trait::async_trait]
 impl Reading for GenericNode {
     type Message = BytesMut;
     type Codec = common::TestCodec<Self::Message>;
@@ -179,7 +178,7 @@ async fn main() {
     let spammer = nodes[nodes.len() - 1].clone();
     tokio::spawn(async move {
         loop {
-            let recipient_addr = spammer.node().connected_addrs().get(0).copied();
+            let recipient_addr = spammer.node().connected_addrs().first().copied();
             if recipient_addr.is_none() {
                 warn!(parent: spammer.node().span(), "blast! I've been found!");
                 break;

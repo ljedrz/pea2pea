@@ -23,7 +23,6 @@ impl Pea2Pea for JoJoNode {
     }
 }
 
-#[async_trait::async_trait]
 impl Handshake for JoJoNode {
     const TIMEOUT_MS: u64 = 10_000;
 
@@ -87,7 +86,6 @@ impl Encoder<BattleCry> for SingleByteCodec {
     }
 }
 
-#[async_trait::async_trait]
 impl Reading for JoJoNode {
     type Message = BattleCry;
     type Codec = SingleByteCodec;

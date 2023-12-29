@@ -120,7 +120,6 @@ async fn node_connect_and_disconnect() {
 
 #[tokio::test]
 async fn node_connecting() {
-    #[async_trait::async_trait]
     impl Handshake for common::TestNode {
         async fn perform_handshake(
             &self,

@@ -1,6 +1,5 @@
-use std::{any::Any, collections::HashMap, io, net::SocketAddr, sync::Arc};
+use std::{any::Any, collections::HashMap, future::Future, io, net::SocketAddr, sync::Arc};
 
-use async_trait::async_trait;
 use futures_util::sink::SinkExt;
 use parking_lot::RwLock;
 use tokio::{
@@ -22,7 +21,6 @@ type WritingSenders = Arc<RwLock<HashMap<SocketAddr, mpsc::Sender<WrappedMessage
 
 /// Can be used to specify and enable writing, i.e. sending outbound messages. If the [`Handshake`]
 /// protocol is enabled too, it goes into force only after the handshake has been concluded.
-#[async_trait]
 pub trait Writing: Pea2Pea
 where
     Self: Clone + Send + Sync + 'static,
@@ -49,49 +47,51 @@ where
     type Codec: Encoder<Self::Message, Error = io::Error> + Send;
 
     /// Prepares the node to send messages.
-    async fn enable_writing(&self) {
-        let (conn_sender, mut conn_receiver) = mpsc::unbounded_channel();
+    fn enable_writing(&self) -> impl Future<Output = ()> {
+        async {
+            let (conn_sender, mut conn_receiver) = mpsc::unbounded_channel();
 
-        // the conn_senders are used to send messages from the Node to individual connections
-        let conn_senders: WritingSenders = Default::default();
-        // procure a clone to create the WritingHandler with
-        let senders = conn_senders.clone();
+            // the conn_senders are used to send messages from the Node to individual connections
+            let conn_senders: WritingSenders = Default::default();
+            // procure a clone to create the WritingHandler with
+            let senders = conn_senders.clone();
 
-        // use a channel to know when the writing task is ready
-        let (tx_writing, rx_writing) = oneshot::channel();
+            // use a channel to know when the writing task is ready
+            let (tx_writing, rx_writing) = oneshot::channel();
 
-        // the task spawning tasks sending messages to all the streams
-        let self_clone = self.clone();
-        let writing_task = tokio::spawn(async move {
-            trace!(parent: self_clone.node().span(), "spawned the Writing handler task");
-            if tx_writing.send(()).is_err() {
-                error!(parent: self_clone.node().span(), "Writing handler creation interrupted! shutting down the node");
-                self_clone.node().shut_down().await;
-                return;
-            }
+            // the task spawning tasks sending messages to all the streams
+            let self_clone = self.clone();
+            let writing_task = tokio::spawn(async move {
+                trace!(parent: self_clone.node().span(), "spawned the Writing handler task");
+                if tx_writing.send(()).is_err() {
+                    error!(parent: self_clone.node().span(), "Writing handler creation interrupted! shutting down the node");
+                    self_clone.node().shut_down().await;
+                    return;
+                }
 
-            // these objects are sent from `Node::adapt_stream`
-            while let Some(returnable_conn) = conn_receiver.recv().await {
-                self_clone
-                    .handle_new_connection(returnable_conn, &conn_senders)
-                    .await;
-            }
-        });
-        let _ = rx_writing.await;
-        self.node()
-            .tasks
-            .lock()
-            .insert(NodeTask::Writing, writing_task);
+                // these objects are sent from `Node::adapt_stream`
+                while let Some(returnable_conn) = conn_receiver.recv().await {
+                    self_clone
+                        .handle_new_connection(returnable_conn, &conn_senders)
+                        .await;
+                }
+            });
+            let _ = rx_writing.await;
+            self.node()
+                .tasks
+                .lock()
+                .insert(NodeTask::Writing, writing_task);
 
-        // register the WritingHandler with the Node
-        let hdl = WritingHandler {
-            handler: ProtocolHandler(conn_sender),
-            senders,
-        };
-        assert!(
-            self.node().protocols.writing.set(hdl).is_ok(),
-            "the Writing protocol was enabled more than once!"
-        );
+            // register the WritingHandler with the Node
+            let hdl = WritingHandler {
+                handler: ProtocolHandler(conn_sender),
+                senders,
+            };
+            assert!(
+                self.node().protocols.writing.set(hdl).is_ok(),
+                "the Writing protocol was enabled more than once!"
+            );
+        }
     }
 
     /// Creates an [`Encoder`] used to write the outbound messages to the target stream.
@@ -160,7 +160,6 @@ where
 }
 
 /// This trait is used to restrict access to methods that would otherwise be public in [`Writing`].
-#[async_trait]
 trait WritingInternal: Writing {
     /// Writes the given message to the network stream and returns the number of written bytes.
     async fn write_to_stream<W: AsyncWrite + Unpin + Send>(
@@ -172,12 +171,11 @@ trait WritingInternal: Writing {
     /// Applies the [`Writing`] protocol to a single connection.
     async fn handle_new_connection(
         &self,
-        (conn, conn_returner): ReturnableConnection,
+        conn_with_returner: ReturnableConnection,
         conn_senders: &WritingSenders,
     );
 }
 
-#[async_trait]
 impl<W: Writing> WritingInternal for W {
     async fn write_to_stream<A: AsyncWrite + Unpin + Send>(
         &self,

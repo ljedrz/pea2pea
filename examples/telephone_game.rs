@@ -24,7 +24,6 @@ impl Pea2Pea for Player {
 
 const NUM_PLAYERS: usize = 100;
 
-#[async_trait::async_trait]
 impl Reading for Player {
     type Message = String;
     type Codec = common::TestCodec<Self::Message>;

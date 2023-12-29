@@ -10,7 +10,6 @@ use pea2pea::{
 
 use crate::common::WritingExt;
 
-#[async_trait::async_trait]
 impl OnConnect for common::TestNode {
     async fn on_connect(&self, peer_addr: SocketAddr) {
         self.send_dm(peer_addr, "connected".into()).await.unwrap();
