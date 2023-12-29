@@ -20,7 +20,6 @@ impl Pea2Pea for TestNode {
 }
 
 /// A helper trait to shorten the calls to `Writing::unicast` in tests.
-#[async_trait::async_trait]
 pub trait WritingExt: Writing {
     async fn send_dm(&self, addr: SocketAddr, msg: <Self as Writing>::Message) -> io::Result<()> {
         self.unicast(addr, msg)?.await.unwrap()
@@ -91,7 +90,6 @@ impl<M> Encoder<Bytes> for TestCodec<M> {
 #[macro_export]
 macro_rules! impl_messaging {
     ($target: ty) => {
-        #[async_trait::async_trait]
         impl Reading for $target {
             type Message = bytes::BytesMut;
             type Codec = $crate::common::TestCodec<Self::Message>;
@@ -123,7 +121,6 @@ impl_messaging!(TestNode);
 #[macro_export]
 macro_rules! impl_noop_disconnect_and_handshake {
     ($target: ty) => {
-        #[async_trait::async_trait]
         impl Handshake for $target {
             async fn perform_handshake(
                 &self,
@@ -133,7 +130,6 @@ macro_rules! impl_noop_disconnect_and_handshake {
             }
         }
 
-        #[async_trait::async_trait]
         impl OnDisconnect for $target {
             async fn on_disconnect(&self, _addr: SocketAddr) {}
         }

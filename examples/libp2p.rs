@@ -176,7 +176,6 @@ pub struct NoiseHandshakePayload {
     pub data: ::prost::alloc::vec::Vec<u8>,
 }
 
-#[async_trait::async_trait]
 impl Handshake for Libp2pNode {
     const TIMEOUT_MS: u64 = 5_000;
 
@@ -344,7 +343,6 @@ macro_rules! get_streams_mut {
     };
 }
 
-#[async_trait::async_trait]
 impl Reading for Libp2pNode {
     type Message = yamux::Frame;
     type Codec = Codec;
@@ -466,7 +464,6 @@ impl Writing for Libp2pNode {
     }
 }
 
-#[async_trait::async_trait]
 impl OnDisconnect for Libp2pNode {
     async fn on_disconnect(&self, addr: SocketAddr) {
         self.peer_states.write().remove(&addr);

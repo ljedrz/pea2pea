@@ -1,6 +1,5 @@
-use std::{io, net::SocketAddr, sync::Arc};
+use std::{future::Future, io, net::SocketAddr, sync::Arc};
 
-use async_trait::async_trait;
 use bytes::BytesMut;
 use futures_util::StreamExt;
 use tokio::{
@@ -25,7 +24,6 @@ use crate::{protocols::Handshake, Config};
 /// which is immediately queued (with a [`Reading::MESSAGE_QUEUE_DEPTH`] limit) to be processed by
 /// [`Reading::process_message`]. The configured fatal IO errors result in an immediate disconnect
 /// (in order to e.g. avoid accidentally reading "borked" messages).
-#[async_trait]
 pub trait Reading: Pea2Pea
 where
     Self: Clone + Send + Sync + 'static,
@@ -50,39 +48,41 @@ where
     type Codec: Decoder<Item = Self::Message, Error = io::Error> + Send;
 
     /// Prepares the node to receive messages.
-    async fn enable_reading(&self) {
-        let (conn_sender, mut conn_receiver) = mpsc::unbounded_channel();
+    fn enable_reading(&self) -> impl Future<Output = ()> {
+        async {
+            let (conn_sender, mut conn_receiver) = mpsc::unbounded_channel();
 
-        // use a channel to know when the reading task is ready
-        let (tx_reading, rx_reading) = oneshot::channel();
+            // use a channel to know when the reading task is ready
+            let (tx_reading, rx_reading) = oneshot::channel();
 
-        // the main task spawning per-connection tasks reading messages from their streams
-        let self_clone = self.clone();
-        let reading_task = tokio::spawn(async move {
-            trace!(parent: self_clone.node().span(), "spawned the Reading handler task");
-            if tx_reading.send(()).is_err() {
-                error!(parent: self_clone.node().span(), "Reading handler creation interrupted! shutting down the node");
-                self_clone.node().shut_down().await;
-                return;
-            }
+            // the main task spawning per-connection tasks reading messages from their streams
+            let self_clone = self.clone();
+            let reading_task = tokio::spawn(async move {
+                trace!(parent: self_clone.node().span(), "spawned the Reading handler task");
+                if tx_reading.send(()).is_err() {
+                    error!(parent: self_clone.node().span(), "Reading handler creation interrupted! shutting down the node");
+                    self_clone.node().shut_down().await;
+                    return;
+                }
 
-            // these objects are sent from `Node::adapt_stream`
-            while let Some(returnable_conn) = conn_receiver.recv().await {
-                self_clone.handle_new_connection(returnable_conn).await;
-            }
-        });
-        let _ = rx_reading.await;
-        self.node()
-            .tasks
-            .lock()
-            .insert(NodeTask::Reading, reading_task);
+                // these objects are sent from `Node::adapt_stream`
+                while let Some(returnable_conn) = conn_receiver.recv().await {
+                    self_clone.handle_new_connection(returnable_conn).await;
+                }
+            });
+            let _ = rx_reading.await;
+            self.node()
+                .tasks
+                .lock()
+                .insert(NodeTask::Reading, reading_task);
 
-        // register the Reading handler with the Node
-        let hdl = ProtocolHandler(conn_sender);
-        assert!(
-            self.node().protocols.reading.set(hdl).is_ok(),
-            "the Reading protocol was enabled more than once!"
-        );
+            // register the Reading handler with the Node
+            let hdl = ProtocolHandler(conn_sender);
+            assert!(
+                self.node().protocols.reading.set(hdl).is_ok(),
+                "the Reading protocol was enabled more than once!"
+            );
+        }
     }
 
     /// Creates a [`Decoder`] used to interpret messages from the network.
@@ -90,14 +90,20 @@ where
     fn codec(&self, addr: SocketAddr, side: ConnectionSide) -> Self::Codec;
 
     /// Processes an inbound message. Can be used to update state, send replies etc.
-    async fn process_message(&self, source: SocketAddr, message: Self::Message) -> io::Result<()>;
+    fn process_message(
+        &self,
+        source: SocketAddr,
+        message: Self::Message,
+    ) -> impl Future<Output = io::Result<()>> + Send;
 }
 
 /// This trait is used to restrict access to methods that would otherwise be public in [`Reading`].
-#[async_trait]
 trait ReadingInternal: Reading {
     /// Applies the [`Reading`] protocol to a single connection.
-    async fn handle_new_connection(&self, (conn, conn_returner): ReturnableConnection);
+    fn handle_new_connection(
+        &self,
+        conn_with_returner: ReturnableConnection,
+    ) -> impl Future<Output = ()> + Send;
 
     /// Wraps the user-supplied [`Decoder`] ([`Reading::Codec`]) in another one used for message accounting.
     fn map_codec<T: AsyncRead>(
@@ -107,7 +113,6 @@ trait ReadingInternal: Reading {
     ) -> FramedRead<T, CountingCodec<Self::Codec>>;
 }
 
-#[async_trait]
 impl<R: Reading> ReadingInternal for R {
     async fn handle_new_connection(&self, (mut conn, conn_returner): ReturnableConnection) {
         let addr = conn.addr();

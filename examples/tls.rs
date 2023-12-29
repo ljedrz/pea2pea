@@ -66,7 +66,6 @@ impl Pea2Pea for TlsNode {
     }
 }
 
-#[async_trait::async_trait]
 impl Handshake for TlsNode {
     async fn perform_handshake(&self, mut conn: Connection) -> io::Result<Connection> {
         let node_conn_side = !conn.side();
@@ -93,7 +92,6 @@ impl Handshake for TlsNode {
     }
 }
 
-#[async_trait::async_trait]
 impl Reading for TlsNode {
     type Message = BytesMut;
     type Codec = BytesCodec;

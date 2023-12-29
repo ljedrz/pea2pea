@@ -32,7 +32,6 @@ impl Pea2Pea for NakedNode {
     }
 }
 
-#[async_trait::async_trait]
 impl Handshake for NakedNode {
     async fn perform_handshake(&self, conn: Connection) -> io::Result<Connection> {
         if self.node().name() == "Drebin" {
@@ -45,7 +44,6 @@ impl Handshake for NakedNode {
     }
 }
 
-#[async_trait::async_trait]
 impl Reading for NakedNode {
     type Message = String;
     type Codec = common::TestCodec<Self::Message>;
@@ -84,7 +82,6 @@ impl Writing for NakedNode {
     }
 }
 
-#[async_trait::async_trait]
 impl OnDisconnect for NakedNode {
     async fn on_disconnect(&self, _addr: SocketAddr) {
         if self.node().name() == "Drebin" {

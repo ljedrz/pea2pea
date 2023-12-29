@@ -12,7 +12,6 @@ use pea2pea::{
 
 static DISCONNECT_TRIGGERED: Lazy<Arc<Mutex<HashSet<String>>>> = Lazy::new(Default::default);
 
-#[async_trait::async_trait]
 impl OnDisconnect for common::TestNode {
     async fn on_disconnect(&self, _addr: SocketAddr) {
         DISCONNECT_TRIGGERED

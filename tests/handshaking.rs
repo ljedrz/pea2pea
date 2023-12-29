@@ -46,7 +46,6 @@ impl Pea2Pea for HandshakingNode {
     }
 }
 
-#[async_trait::async_trait]
 impl Handshake for HandshakingNode {
     async fn perform_handshake(&self, mut conn: Connection) -> io::Result<Connection> {
         let node_conn_side = !conn.side();
@@ -162,7 +161,6 @@ impl Pea2Pea for Wrap {
 
 // a badly implemented handshake protocol; 1B is expected by both the initiator and the responder (no distinction
 // is even made), but it is never provided by either of them
-#[async_trait::async_trait]
 impl Handshake for Wrap {
     const TIMEOUT_MS: u64 = 100;
 
