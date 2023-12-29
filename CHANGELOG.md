@@ -7,6 +7,8 @@
 ### Changed
 
 - renamed `Config::listener_ip` to `::listener_addr`
+- dropped the dependency on `async_trait` in favor of Rust 1.75 features
+- bumped the MSRV to 1.75
 
 ### Removed
 
