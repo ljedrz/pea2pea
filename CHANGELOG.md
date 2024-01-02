@@ -1,3 +1,9 @@
+# 0.50.0
+
+### Changed
+
+- `OnDisconnect::enable_disconnect` is now `::enable_on_disconnect`
+
 # 0.49.0
 
 ### Added

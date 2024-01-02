@@ -24,7 +24,7 @@ where
 {
     /// Attaches the behavior specified in [`OnDisconnect::on_disconnect`] to every occurrence of the
     /// node disconnecting from a peer.
-    fn enable_disconnect(&self) -> impl Future<Output = ()> {
+    fn enable_on_disconnect(&self) -> impl Future<Output = ()> {
         async {
             let (from_node_sender, mut from_node_receiver) =
                 mpsc::unbounded_channel::<(SocketAddr, oneshot::Sender<()>)>();

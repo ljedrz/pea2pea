@@ -139,7 +139,7 @@ async fn bench_node_startup() {
         temp_node.enable_handshake().await;
         temp_node.enable_reading().await;
         temp_node.enable_writing().await;
-        temp_node.enable_disconnect().await;
+        temp_node.enable_on_disconnect().await;
         temp_node.node().start_listening().await.unwrap();
 
         avg_start_up_time += start.elapsed();

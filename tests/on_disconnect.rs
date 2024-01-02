@@ -23,11 +23,11 @@ impl OnDisconnect for common::TestNode {
 #[tokio::test]
 async fn connector_side_disconnect() {
     let connector = crate::test_node!("connector0");
-    connector.enable_disconnect().await;
+    connector.enable_on_disconnect().await;
 
     let connectee = crate::test_node!("connectee0");
     connectee.enable_reading().await;
-    connectee.enable_disconnect().await;
+    connectee.enable_on_disconnect().await;
     let connectee_addr = connectee.node().start_listening().await.unwrap();
 
     connector.node().connect(connectee_addr).await.unwrap();
@@ -57,10 +57,10 @@ async fn connector_side_disconnect() {
 async fn connectee_side_disconnect() {
     let connector = crate::test_node!("connector1");
     connector.enable_reading().await;
-    connector.enable_disconnect().await;
+    connector.enable_on_disconnect().await;
 
     let connectee = crate::test_node!("connectee1");
-    connectee.enable_disconnect().await;
+    connectee.enable_on_disconnect().await;
     let connectee_addr = connectee.node().start_listening().await.unwrap();
 
     connector.node().connect(connectee_addr).await.unwrap();

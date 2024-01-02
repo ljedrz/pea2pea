@@ -33,7 +33,7 @@ async fn check_node_cleanups() {
     persistent_node.enable_handshake().await;
     persistent_node.enable_reading().await;
     persistent_node.enable_writing().await;
-    persistent_node.enable_disconnect().await;
+    persistent_node.enable_on_disconnect().await;
     let persistent_addr = persistent_node.node().start_listening().await.unwrap();
 
     // register heap use after node setup
@@ -52,7 +52,7 @@ async fn check_node_cleanups() {
         temp_node.enable_handshake().await;
         temp_node.enable_reading().await;
         temp_node.enable_writing().await;
-        temp_node.enable_disconnect().await;
+        temp_node.enable_on_disconnect().await;
         temp_node.node().start_listening().await.unwrap();
 
         // this connection direction allows the collection of `KnownPeers` to remain empty

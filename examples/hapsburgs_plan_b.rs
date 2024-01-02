@@ -102,7 +102,7 @@ async fn main() {
     drebin.enable_handshake().await;
     drebin.enable_reading().await;
     drebin.enable_writing().await;
-    drebin.enable_disconnect().await;
+    drebin.enable_on_disconnect().await;
     let drebin_addr = drebin.node().start_listening().await.unwrap();
 
     info!(parent: drebin.node().span(), "Where's Hapsburg?");
@@ -113,7 +113,7 @@ async fn main() {
         hapsburgs_thug.enable_handshake().await;
         hapsburgs_thug.enable_reading().await;
         hapsburgs_thug.enable_writing().await;
-        hapsburgs_thug.enable_disconnect().await;
+        hapsburgs_thug.enable_on_disconnect().await;
 
         // Habsburg's thugs alert Drebin of their presence
         hapsburgs_thug.node().connect(drebin_addr).await.unwrap();
