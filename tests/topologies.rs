@@ -1,4 +1,4 @@
-#![allow(clippy::blocks_in_if_conditions)]
+#![allow(clippy::blocks_in_conditions)]
 
 mod common;
 use std::time::Duration;
