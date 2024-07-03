@@ -34,7 +34,12 @@ async fn check_node_cleanups() {
     persistent_node.enable_reading().await;
     persistent_node.enable_writing().await;
     persistent_node.enable_on_disconnect().await;
-    let persistent_addr = persistent_node.node().start_listening().await.unwrap();
+    let persistent_addr = persistent_node
+        .node()
+        .toggle_listener()
+        .await
+        .unwrap()
+        .unwrap();
 
     // register heap use after node setup
     let heap_after_node_setup = PEAK_ALLOC.current_usage();
@@ -53,7 +58,7 @@ async fn check_node_cleanups() {
         temp_node.enable_reading().await;
         temp_node.enable_writing().await;
         temp_node.enable_on_disconnect().await;
-        temp_node.node().start_listening().await.unwrap();
+        temp_node.node().toggle_listener().await.unwrap();
 
         // this connection direction allows the collection of `KnownPeers` to remain empty
         temp_node.node().connect(persistent_addr).await.unwrap();

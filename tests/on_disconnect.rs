@@ -28,7 +28,7 @@ async fn connector_side_disconnect() {
     let connectee = crate::test_node!("connectee0");
     connectee.enable_reading().await;
     connectee.enable_on_disconnect().await;
-    let connectee_addr = connectee.node().start_listening().await.unwrap();
+    let connectee_addr = connectee.node().toggle_listener().await.unwrap().unwrap();
 
     connector.node().connect(connectee_addr).await.unwrap();
 
@@ -61,7 +61,7 @@ async fn connectee_side_disconnect() {
 
     let connectee = crate::test_node!("connectee1");
     connectee.enable_on_disconnect().await;
-    let connectee_addr = connectee.node().start_listening().await.unwrap();
+    let connectee_addr = connectee.node().toggle_listener().await.unwrap().unwrap();
 
     connector.node().connect(connectee_addr).await.unwrap();
 

@@ -77,7 +77,7 @@ async fn main() {
     for player in &players {
         player.enable_reading().await;
         player.enable_writing().await;
-        player.node().start_listening().await.unwrap();
+        player.node().toggle_listener().await.unwrap();
     }
     connect_nodes(&players, Topology::Line).await.unwrap();
 
@@ -86,7 +86,7 @@ async fn main() {
     info!(parent: players[0].node().span(), "psst, player {}; \"{}\", pass it on!", players[1].node().name(), message);
     let _ = players[0]
         .unicast(
-            players[1].node().listening_addr().unwrap(),
+            players[1].node().listening_addr().await.unwrap(),
             message.to_string(),
         )
         .unwrap()

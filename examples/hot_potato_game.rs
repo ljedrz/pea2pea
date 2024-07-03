@@ -222,7 +222,7 @@ async fn main() {
         player.enable_handshake().await;
         player.enable_reading().await;
         player.enable_writing().await;
-        player.node().start_listening().await.unwrap();
+        player.node().toggle_listener().await.unwrap();
     }
     connect_nodes(&players, Topology::Mesh).await.unwrap();
 

@@ -47,7 +47,7 @@ async fn broadcast_example() {
     for rando in &random_nodes {
         broadcaster
             .0
-            .connect(rando.node().listening_addr().unwrap())
+            .connect(rando.node().listening_addr().await.unwrap())
             .await
             .unwrap();
     }

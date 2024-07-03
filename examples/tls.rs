@@ -130,7 +130,7 @@ async fn main() {
         node.enable_writing().await;
     }
 
-    let acceptor_addr = acceptor.node().start_listening().await.unwrap();
+    let acceptor_addr = acceptor.node().toggle_listener().await.unwrap().unwrap();
 
     // connect the connector to the acceptor
     connector.node().connect(acceptor_addr).await.unwrap();

@@ -5,7 +5,7 @@ use std::{
     ops::Deref,
     sync::{
         atomic::{AtomicUsize, Ordering::*},
-        Arc, OnceLock,
+        Arc,
     },
     time::Duration,
 };
@@ -14,7 +14,7 @@ use parking_lot::Mutex;
 use tokio::{
     io::split,
     net::{TcpListener, TcpSocket, TcpStream},
-    sync::oneshot,
+    sync::{oneshot, RwLock},
     task::JoinHandle,
     time::timeout,
 };
@@ -78,8 +78,8 @@ pub struct InnerNode {
     span: Span,
     /// The node's configuration.
     config: Config,
-    /// The node's listening address.
-    listening_addr: OnceLock<SocketAddr>,
+    /// The node's current listening address.
+    listening_addr: RwLock<Option<SocketAddr>>,
     /// Contains objects used by the protocols implemented by the node.
     pub(crate) protocols: Protocols,
     /// A list of connections that have not been finalized yet.
@@ -119,35 +119,41 @@ impl Node {
         node
     }
 
-    /// Makes the node listen for inbound connections; returns the actual bound address, which will
+    /// Enables or disables listening for inbound connections; returns the actual bound address, which will
     /// differ from the one in [`Config::listener_addr`] if that one's port was unspecified (i.e. `0`).
-    pub async fn start_listening(&self) -> io::Result<SocketAddr> {
-        if let Some(listening_addr) = self.listening_addr.get() {
-            panic!(
-                "the node already has a listening address associated with it: {}",
-                listening_addr
-            );
+    pub async fn toggle_listener(&self) -> io::Result<Option<SocketAddr>> {
+        // we deliberately maintain the write guard for the entirety of this method
+        let mut listening_addr = self.listening_addr.write().await;
+
+        if let Some(old_listening_addr) = listening_addr.take() {
+            let listener_task = self.tasks.lock().remove(&NodeTask::Listener).unwrap(); // can't fail
+            listener_task.abort();
+            trace!(parent: self.span(), "aborted the listening task");
+            debug!(parent: self.span(), "no longer listening on {}", old_listening_addr);
+            *listening_addr = None;
+
+            Ok(None)
         } else {
             let listener_addr = self
                 .config()
                 .listener_addr
-                .expect("Node::start_listening was called, but Config::listener_addr is not set");
+                .expect("the listener was toggled on, but Config::listener_addr is not set");
             let listener = TcpListener::bind(listener_addr).await?;
             let port = listener.local_addr()?.port(); // discover the port if it was unspecified
-            let listening_addr = (listener_addr.ip(), port).into();
+            let new_listening_addr = (listener_addr.ip(), port).into();
 
-            self.listening_addr
-                .set(listening_addr)
-                .expect("the node's listener was started more than once");
+            // update the node's listening address
+            *listening_addr = Some(new_listening_addr);
 
             // use a channel to know when the listening task is ready
             let (tx, rx) = oneshot::channel();
 
+            // spawn a task responsible for listening for inbound connections
             let node = self.clone();
             let listening_task = tokio::spawn(async move {
                 trace!(parent: node.span(), "spawned the listening task");
                 if tx.send(()).is_err() {
-                    error!(parent: node.span(), "node creation interrupted; shutting down the listening task");
+                    error!(parent: node.span(), "listener setup interrupted; shutting down the listening task");
                     return;
                 }
 
@@ -162,9 +168,9 @@ impl Node {
             });
             self.tasks.lock().insert(NodeTask::Listener, listening_task);
             let _ = rx.await;
-            debug!(parent: self.span(), "listening on {}", listening_addr);
+            debug!(parent: self.span(), "listening on {}", new_listening_addr);
 
-            Ok(listening_addr)
+            Ok(Some(new_listening_addr))
         }
     }
 
@@ -220,11 +226,13 @@ impl Node {
         &self.span
     }
 
-    /// Returns the node's listening address; returns an error if the node was configured
-    /// to not listen for inbound connections or if the listener hasn't been started yet.
-    pub fn listening_addr(&self) -> io::Result<SocketAddr> {
+    /// Returns the node's current listening address; returns an error if the node was configured
+    /// to not listen for inbound connections or if the listener is currently disabled.
+    pub async fn listening_addr(&self) -> io::Result<SocketAddr> {
         self.listening_addr
-            .get()
+            .read()
+            .await
+            .as_ref()
             .copied()
             .ok_or_else(|| io::ErrorKind::AddrNotAvailable.into())
     }
@@ -343,7 +351,7 @@ impl Node {
     /// Connects to the provided `SocketAddr` using an optional `TcpSocket`.
     async fn connect_inner(&self, addr: SocketAddr, socket: Option<TcpSocket>) -> io::Result<()> {
         // a simple self-connect attempt check
-        if let Ok(listening_addr) = self.listening_addr() {
+        if let Ok(listening_addr) = self.listening_addr().await {
             if addr == listening_addr
                 || addr.ip().is_loopback() && addr.port() == listening_addr.port()
             {

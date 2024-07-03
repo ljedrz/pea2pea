@@ -44,7 +44,7 @@ pub async fn start_test_nodes(count: usize) -> Vec<TestNode> {
 
     for _ in 0..count {
         let test_node = TestNode(Node::new(Default::default()));
-        test_node.node().start_listening().await.unwrap();
+        test_node.node().toggle_listener().await.unwrap();
         nodes.push(test_node);
     }
 

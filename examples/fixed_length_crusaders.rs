@@ -140,7 +140,7 @@ async fn main() {
         ..Default::default()
     };
     let dio = JoJoNode(Node::new(config));
-    let dio_addr = dio.node().start_listening().await.unwrap();
+    let dio_addr = dio.node().toggle_listener().await.unwrap().unwrap();
 
     for node in &[&jotaro, &dio] {
         node.enable_handshake().await;

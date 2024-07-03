@@ -102,7 +102,7 @@ async fn main() {
         node.enable_writing().await; // enable the writing protocol
     }
 
-    let responder_addr = responder.node().start_listening().await.unwrap();
+    let responder_addr = responder.node().toggle_listener().await.unwrap().unwrap();
 
     // connect the initiator to the responder
     initiator.node().connect(responder_addr).await.unwrap();
@@ -117,7 +117,7 @@ async fn main() {
         let msg = b"why hello there, fellow noise protocol user; I'm the initiator";
         let _ = initiator
             .unicast(
-                responder.node().listening_addr().unwrap(),
+                responder.node().listening_addr().await.unwrap(),
                 Bytes::from(&msg[..]),
             )
             .unwrap()

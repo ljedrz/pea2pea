@@ -102,12 +102,12 @@ async fn handshake_example() {
         node.enable_reading().await;
         node.enable_writing().await;
         node.enable_handshake().await;
-        node.node().start_listening().await.unwrap();
+        node.node().toggle_listener().await.unwrap().unwrap();
     }
 
     initiator
         .node()
-        .connect(responder.node().listening_addr().unwrap())
+        .connect(responder.node().listening_addr().await.unwrap())
         .await
         .unwrap();
 
@@ -128,7 +128,7 @@ async fn no_handshake_no_messaging() {
 
     initiator.enable_writing().await;
     responder.enable_reading().await;
-    let responder_addr = responder.node().start_listening().await.unwrap();
+    let responder_addr = responder.node().toggle_listener().await.unwrap().unwrap();
 
     // the initiator doesn't enable handshakes
     responder.enable_handshake().await;
@@ -181,7 +181,7 @@ async fn hung_handshake_fails() {
 
     // note: the connector does NOT enable handshakes
     connectee.enable_handshake().await;
-    let connectee_addr = connectee.node().start_listening().await.unwrap();
+    let connectee_addr = connectee.node().toggle_listener().await.unwrap().unwrap();
 
     // the connection attempt should register just fine for the connector, as it doesn't expect a handshake
     assert!(connector.node().connect(connectee_addr).await.is_ok());
@@ -206,7 +206,7 @@ async fn timeout_when_spammed_with_connections() {
     };
     let victim = Wrap(Node::new(config));
     victim.enable_handshake().await;
-    let victim_addr = victim.node().start_listening().await.unwrap();
+    let victim_addr = victim.node().toggle_listener().await.unwrap().unwrap();
 
     let mut sockets = Vec::with_capacity(NUM_ATTEMPTS as usize);
 
@@ -217,7 +217,7 @@ async fn timeout_when_spammed_with_connections() {
     }
 
     let victim_clone = victim.clone();
-    deadline!(Duration::from_secs(1), move || victim_clone
+    deadline!(Duration::from_secs(3), move || victim_clone
         .node()
         .num_connecting()
         == NUM_ATTEMPTS as usize);

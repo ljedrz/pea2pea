@@ -64,7 +64,7 @@ async fn main() {
 
         // the first node will not need to listen for connections
         if i != 0 {
-            node.node().start_listening().await.unwrap();
+            node.node().toggle_listener().await.unwrap();
         }
 
         nodes.push(node);
@@ -74,7 +74,7 @@ async fn main() {
     for node in nodes.iter().skip(1) {
         nodes[0]
             .node()
-            .connect(node.node().listening_addr().unwrap())
+            .connect(node.node().listening_addr().await.unwrap())
             .await
             .unwrap();
     }

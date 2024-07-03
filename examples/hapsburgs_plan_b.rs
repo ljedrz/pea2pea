@@ -103,7 +103,7 @@ async fn main() {
     drebin.enable_reading().await;
     drebin.enable_writing().await;
     drebin.enable_on_disconnect().await;
-    let drebin_addr = drebin.node().start_listening().await.unwrap();
+    let drebin_addr = drebin.node().toggle_listener().await.unwrap().unwrap();
 
     info!(parent: drebin.node().span(), "Where's Hapsburg?");
 

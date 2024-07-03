@@ -44,7 +44,7 @@ async fn node_given_name_remains_unchanged() {
 async fn node_use_provided_socket() {
     let connector = Node::new(Default::default());
     let connectee = Node::new(Default::default());
-    let connectee_addr = connectee.start_listening().await.unwrap();
+    let connectee_addr = connectee.toggle_listener().await.unwrap().unwrap();
 
     let socket = TcpSocket::new_v4().unwrap();
     socket.bind("127.0.0.77:0".parse().unwrap()).unwrap();
@@ -66,20 +66,28 @@ async fn node_use_provided_socket() {
 }
 
 #[tokio::test]
-async fn node_delayed_listener() {
+async fn node_listener_toggling() {
     let connector = Node::new(Default::default());
     let connectee = Node::new(Default::default());
 
-    assert!(connectee.listening_addr().is_err());
+    for _ in 0..3 {
+        assert!(connectee.listening_addr().await.is_err());
 
-    let connectee_addr = connectee.start_listening().await.unwrap();
+        let connectee_addr = connectee.toggle_listener().await.unwrap().unwrap();
 
-    connector.connect(connectee_addr).await.unwrap();
+        connector.connect(connectee_addr).await.unwrap();
 
-    let connectee_clone = connectee.clone();
-    deadline!(Duration::from_secs(1), move || connectee_clone
-        .num_connected()
-        == 1);
+        let connectee_clone = connectee.clone();
+        deadline!(Duration::from_secs(1), move || connectee_clone
+            .num_connected()
+            == 1);
+
+        assert!(connectee.toggle_listener().await.unwrap().is_none());
+        assert!(connectee.listening_addr().await.is_err());
+
+        assert!(connector.disconnect(connectee_addr).await);
+        assert!(connector.connect(connectee_addr).await.is_err());
+    }
 }
 
 #[tokio::test]
@@ -90,14 +98,14 @@ async fn node_creation_used_port_fails() {
     };
     let node = Node::new(config);
 
-    assert!(node.start_listening().await.is_err());
+    assert!(node.toggle_listener().await.is_err());
 }
 
 #[tokio::test]
 async fn node_connect_and_disconnect() {
     let nodes = Arc::new(common::start_test_nodes(2).await);
     connect_nodes(&nodes, Topology::Line).await.unwrap();
-    let node1_addr = nodes[1].node().listening_addr().unwrap();
+    let node1_addr = nodes[1].node().listening_addr().await.unwrap();
 
     let nodes_clone = nodes.clone();
     deadline!(Duration::from_secs(1), move || nodes_clone
@@ -131,7 +139,7 @@ async fn node_connecting() {
     }
 
     let nodes = Arc::new(common::start_test_nodes(2).await);
-    let node1_addr = nodes[1].node().listening_addr().unwrap();
+    let node1_addr = nodes[1].node().listening_addr().await.unwrap();
 
     assert!(!nodes[0].node().is_connecting(node1_addr));
 
@@ -154,7 +162,7 @@ async fn node_connecting() {
 #[tokio::test]
 async fn node_self_connection_fails() {
     let node = Node::new(Default::default());
-    let own_addr = node.start_listening().await.unwrap();
+    let own_addr = node.toggle_listener().await.unwrap().unwrap();
     assert!(node.connect(own_addr).await.is_err());
 }
 
@@ -181,7 +189,7 @@ async fn node_connector_limit_breach_fails() {
     };
     let connector = Node::new(config);
     let connectee = Node::new(Default::default());
-    let connectee_addr = connectee.start_listening().await.unwrap();
+    let connectee_addr = connectee.toggle_listener().await.unwrap().unwrap();
 
     assert!(connector.connect(connectee_addr).await.is_err());
 }
@@ -193,7 +201,7 @@ async fn node_connectee_limit_breach_fails() {
         ..Default::default()
     };
     let connectee = Node::new(config);
-    let connectee_addr = connectee.start_listening().await.unwrap();
+    let connectee_addr = connectee.toggle_listener().await.unwrap().unwrap();
 
     let connector = Node::new(Default::default());
 
@@ -212,7 +220,7 @@ async fn node_overlapping_duplicate_connection_attempts_fail() {
     let connector = Node::new(Default::default());
 
     let connectee = Node::new(Default::default());
-    let connectee_addr = connectee.start_listening().await.unwrap();
+    let connectee_addr = connectee.toggle_listener().await.unwrap().unwrap();
 
     let err_count = Arc::new(AtomicUsize::new(0));
     for _ in 0..NUM_ATTEMPTS {
@@ -232,7 +240,7 @@ async fn node_overlapping_duplicate_connection_attempts_fail() {
 #[tokio::test]
 async fn node_shutdown_closes_the_listener() {
     let node = Node::new(Default::default());
-    let addr = node.start_listening().await.unwrap();
+    let addr = node.toggle_listener().await.unwrap().unwrap();
 
     assert!(TcpListener::bind(addr).await.is_err());
     node.shut_down().await;
@@ -243,7 +251,7 @@ async fn node_shutdown_closes_the_listener() {
 #[tokio::test]
 async fn test_nodes_use_localhost() {
     let node = Node::new(Default::default());
-    let addr = node.start_listening().await.unwrap();
+    let addr = node.toggle_listener().await.unwrap().unwrap();
 
     assert_eq!(addr.ip(), Ipv4Addr::LOCALHOST);
 }

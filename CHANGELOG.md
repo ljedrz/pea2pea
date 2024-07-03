@@ -1,8 +1,17 @@
 # 0.50.0
 
+### Added
+
+- `Node::toggle_listener`
+
 ### Changed
 
 - `OnDisconnect::enable_disconnect` is now `::enable_on_disconnect`
+- `Node::listening_addr` is now an `async fn`
+
+### Removed
+
+- `Node::start_listening` (`::toggle_listener` is now used instead)
 
 # 0.49.0
 

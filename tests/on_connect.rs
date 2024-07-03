@@ -24,7 +24,7 @@ async fn on_connect_message() {
 
     let connectee = crate::test_node!("connectee");
     connectee.enable_reading().await;
-    let connectee_addr = connectee.node().start_listening().await.unwrap();
+    let connectee_addr = connectee.node().toggle_listener().await.unwrap().unwrap();
 
     connector.node().connect(connectee_addr).await.unwrap();
 

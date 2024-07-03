@@ -71,7 +71,7 @@ impl Philosopher {
 
         node.enable_reading().await;
         node.enable_writing().await;
-        node.node().start_listening().await.unwrap();
+        node.node().toggle_listener().await.unwrap();
 
         node
     }
@@ -252,7 +252,7 @@ async fn main() {
             .skip(1)
             .chain(philosophers.iter().next()),
     ) {
-        let right_neighbor_addr = p2.node().listening_addr().unwrap();
+        let right_neighbor_addr = p2.node().listening_addr().await.unwrap();
         let right_neighbor_name = p2.node().name().to_owned();
 
         let both_neighbors = p1.node().connected_addrs();
