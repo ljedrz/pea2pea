@@ -39,7 +39,7 @@ peak_alloc = "0.2"
 prost = "0.12"
 rand = { version = "0.8", default-features = false, features = ["getrandom", "small_rng"] }
 serde = { version = "1", default-features = false, features = ["derive"] }
-snow = "0.9"
+snow = "0.9.6"
 test-cert-gen = "0.9"
 tokio = { version = "1.24", features = ["macros", "rt-multi-thread"] }
 tokio-native-tls = "0.3"
