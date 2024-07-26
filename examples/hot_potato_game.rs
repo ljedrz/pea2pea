@@ -8,13 +8,12 @@ use std::{
     net::SocketAddr,
     sync::{
         atomic::{AtomicUsize, Ordering::Relaxed},
-        Arc,
+        Arc, LazyLock,
     },
     time::Duration,
 };
 
 use bytes::BytesMut;
-use once_cell::sync::Lazy;
 use parking_lot::Mutex;
 use pea2pea::{
     connect_nodes,
@@ -31,7 +30,7 @@ use tokio_util::codec::{Decoder, Encoder};
 use tracing::*;
 use tracing_subscriber::filter::LevelFilter;
 
-static RNG: Lazy<Mutex<SmallRng>> = Lazy::new(|| Mutex::new(SmallRng::from_entropy()));
+static RNG: LazyLock<Mutex<SmallRng>> = LazyLock::new(|| Mutex::new(SmallRng::from_entropy()));
 
 type PlayerName = String;
 

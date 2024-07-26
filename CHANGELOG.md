@@ -1,3 +1,10 @@
+# 0.51.0
+
+### Changed
+
+- dropped the dev-dependency on `once_cell`
+- due to the use of `std::sync::{LazyLock, OnceLock}` in tests and examples, the MSRV is bumped to 1.80
+
 # 0.50.0
 
 ### Added

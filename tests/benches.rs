@@ -1,6 +1,5 @@
 use bytes::{Bytes, BytesMut};
 use deadline::deadline;
-use once_cell::sync::Lazy;
 use rand::{distributions::Standard, rngs::SmallRng, Rng, SeedableRng};
 use tokio_util::codec::Decoder;
 
@@ -8,6 +7,7 @@ mod common;
 use std::{
     io,
     net::SocketAddr,
+    sync::LazyLock,
     time::{Duration, Instant},
 };
 
@@ -21,7 +21,7 @@ use crate::common::WritingExt;
 const NUM_MESSAGES: usize = 10_000;
 const MSG_SIZE: usize = 32 * 1024;
 
-static RANDOM_BYTES: Lazy<Bytes> = Lazy::new(|| {
+static RANDOM_BYTES: LazyLock<Bytes> = LazyLock::new(|| {
     Bytes::from(
         (&mut SmallRng::from_entropy())
             .sample_iter(Standard)

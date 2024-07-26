@@ -1,16 +1,21 @@
 use deadline::deadline;
-use once_cell::sync::Lazy;
 use parking_lot::Mutex;
 
 mod common;
-use std::{collections::HashSet, net::SocketAddr, sync::Arc, time::Duration};
+use std::{
+    collections::HashSet,
+    net::SocketAddr,
+    sync::{Arc, LazyLock},
+    time::Duration,
+};
 
 use pea2pea::{
     protocols::{OnDisconnect, Reading},
     Pea2Pea,
 };
 
-static DISCONNECT_TRIGGERED: Lazy<Arc<Mutex<HashSet<String>>>> = Lazy::new(Default::default);
+static DISCONNECT_TRIGGERED: LazyLock<Arc<Mutex<HashSet<String>>>> =
+    LazyLock::new(Default::default);
 
 impl OnDisconnect for common::TestNode {
     async fn on_disconnect(&self, _addr: SocketAddr) {

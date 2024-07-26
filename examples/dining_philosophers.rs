@@ -2,10 +2,14 @@
 
 mod common;
 
-use std::{io, mem, net::SocketAddr, sync::Arc, time::Duration};
+use std::{
+    io, mem,
+    net::SocketAddr,
+    sync::{Arc, LazyLock, OnceLock},
+    time::Duration,
+};
 
 use bytes::BytesMut;
-use once_cell::sync::{Lazy, OnceCell};
 use pea2pea::{
     connect_nodes,
     protocols::{Reading, Writing},
@@ -18,8 +22,8 @@ use tokio_util::codec::{Decoder, Encoder, LengthDelimitedCodec};
 use tracing::*;
 use tracing_subscriber::filter::LevelFilter;
 
-static RNG: Lazy<parking_lot::Mutex<SmallRng>> =
-    Lazy::new(|| parking_lot::Mutex::new(SmallRng::from_entropy()));
+static RNG: LazyLock<parking_lot::Mutex<SmallRng>> =
+    LazyLock::new(|| parking_lot::Mutex::new(SmallRng::from_entropy()));
 
 const MIN_EATING_TIME_MS: u64 = 500;
 const MAX_EATING_TIME_MS: u64 = 1000;
@@ -31,8 +35,8 @@ const MAX_THINKING_TIME_MS: u64 = 5000;
 struct Philosopher {
     node: Node,
     state: Arc<RwLock<State>>,
-    left_neighbor: Arc<OnceCell<(SocketAddr, String)>>,
-    right_neighbor: Arc<OnceCell<(SocketAddr, String)>>,
+    left_neighbor: Arc<OnceLock<(SocketAddr, String)>>,
+    right_neighbor: Arc<OnceLock<(SocketAddr, String)>>,
 }
 
 impl Pea2Pea for Philosopher {
