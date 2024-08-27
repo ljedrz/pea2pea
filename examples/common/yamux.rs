@@ -4,7 +4,7 @@ use std::{fmt, io};
 
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use pea2pea::ConnectionSide;
-use tokio_util::codec::{Decoder, Encoder, LengthDelimitedCodec};
+use tokio_util::codec::{BytesCodec, Decoder, Encoder};
 use tracing::*;
 
 // the version used in Yamux message headers
@@ -75,7 +75,7 @@ impl Frame {
 
 // a codec used to (de/en)code Yamux frames
 pub struct Codec {
-    codec: LengthDelimitedCodec,
+    codec: BytesCodec,
     // client or server
     #[allow(dead_code)]
     mode: Side,
@@ -92,12 +92,7 @@ impl Codec {
         };
 
         Self {
-            codec: LengthDelimitedCodec::builder()
-                .length_field_offset(8)
-                .length_field_length(4)
-                .length_adjustment(12)
-                .num_skip(0)
-                .new_codec(),
+            codec: BytesCodec::new(),
             mode,
             span,
         }
@@ -237,20 +232,19 @@ impl Decoder for Codec {
     type Error = io::Error;
 
     fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
-        // decode frames based on the length in the Yamux header
-        let mut bytes = if let Some(bytes) = self.codec.decode(src)? {
-            bytes
-        } else {
-            return Ok(None);
-        };
+        // parse the Yamux header
+        let version = src.get_u8();
+        let ty = Ty::try_from(src.get_u8())?;
+        let flags = decode_flags(src.get_u16())?;
+        let stream_id = src.get_u32();
+        let length = src.get_u32();
 
-        // parse the full Yamux message
-        let version = bytes.get_u8();
-        let ty = Ty::try_from(bytes.get_u8())?;
-        let flags = decode_flags(bytes.get_u16())?;
-        let stream_id = bytes.get_u32();
-        let length = bytes.get_u32();
-        let payload = bytes.split_to(length as usize).freeze();
+        let payload = match ty {
+            Ty::Data => src.clone(),
+            Ty::Ping => length.to_be_bytes().as_slice().into(),
+            _ => unimplemented!(),
+        }
+        .freeze();
 
         Ok(Some(Frame {
             header: Header {

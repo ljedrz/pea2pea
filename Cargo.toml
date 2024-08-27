@@ -32,7 +32,7 @@ tracing = { version = "0.1", default-features = false }
 [dev-dependencies]
 bincode = "1"
 deadline = "0.2"
-libp2p = { version = "0.53", default-features = false, features = ["macros", "noise", "ping", "tcp", "tokio", "yamux"] }
+libp2p = { version = "0.54", default-features = false, features = ["macros", "noise", "ping", "tcp", "tokio", "yamux"] }
 native-tls = "0.2"
 once_cell = { version = "1", features = ["parking_lot"] }
 peak_alloc = "0.2"
