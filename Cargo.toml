@@ -35,7 +35,7 @@ deadline = "0.2"
 libp2p = { version = "0.54", default-features = false, features = ["macros", "noise", "ping", "tcp", "tokio", "yamux"] }
 native-tls = "0.2"
 peak_alloc = "0.2"
-prost = "0.12"
+prost = "0.13"
 rand = { version = "0.8", default-features = false, features = ["getrandom", "small_rng"] }
 serde = { version = "1", default-features = false, features = ["derive"] }
 snow = "0.9.6"
