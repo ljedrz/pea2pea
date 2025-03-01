@@ -18,6 +18,8 @@ use pea2pea::{
 
 use crate::common::WritingExt;
 
+impl_noop_disconnect_and_handshake!(common::TestNode);
+
 const NUM_MESSAGES: usize = 10_000;
 const MSG_SIZE: usize = 32 * 1024;
 
@@ -128,8 +130,6 @@ async fn bench_spam_to_one() {
 #[tokio::test]
 async fn bench_node_startup() {
     const NUM_ITERATIONS: usize = 5000;
-
-    impl_noop_disconnect_and_handshake!(common::TestNode);
 
     let mut avg_start_up_time = std::time::Duration::new(0, 0);
     for _ in 0..NUM_ITERATIONS {

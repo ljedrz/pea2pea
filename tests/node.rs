@@ -17,6 +17,16 @@ use std::{
 
 use pea2pea::{connect_nodes, protocols::Handshake, Config, Node, Pea2Pea, Topology};
 
+impl Handshake for common::TestNode {
+    async fn perform_handshake(
+        &self,
+        conn: pea2pea::Connection,
+    ) -> io::Result<pea2pea::Connection> {
+        sleep(Duration::from_millis(50)).await;
+        Ok(conn)
+    }
+}
+
 #[tokio::test]
 async fn node_creation_any_port_works() {
     let _node = Node::new(Default::default());
@@ -128,16 +138,6 @@ async fn node_connect_and_disconnect() {
 
 #[tokio::test]
 async fn node_connecting() {
-    impl Handshake for common::TestNode {
-        async fn perform_handshake(
-            &self,
-            conn: pea2pea::Connection,
-        ) -> io::Result<pea2pea::Connection> {
-            sleep(Duration::from_millis(50)).await;
-            Ok(conn)
-        }
-    }
-
     let nodes = Arc::new(common::start_test_nodes(2).await);
     let node1_addr = nodes[1].node().listening_addr().await.unwrap();
 
