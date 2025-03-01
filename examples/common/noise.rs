@@ -196,10 +196,10 @@ impl Encoder<Bytes> for Codec {
 }
 
 // perform the noise XX handshake
-pub async fn handshake_xx<'a, T: Handshake>(
+pub async fn handshake_xx<T: Handshake>(
     node: &T,
     conn: &mut Connection,
-    noise_builder: snow::Builder<'a>,
+    noise_builder: snow::Builder<'_>,
     payload: Bytes,
 ) -> io::Result<(State, Bytes)> {
     let node_conn_side = !conn.side();

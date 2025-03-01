@@ -379,10 +379,9 @@ impl Node {
         }
 
         // attempt to physically connect to the specified address
-        let stream = self.create_stream(addr, socket).await.map_err(|e| {
+        let stream = self.create_stream(addr, socket).await.inspect_err(|_| {
             // if the attempt failed, perform a cleanup
             self.connecting.lock().remove(&addr);
-            e
         })?;
 
         // attempt to finalize the connection
