@@ -45,7 +45,7 @@ macro_rules! enable_protocol {
     };
 }
 
-/// A seuential numeric identifier assigned to `Node`s that were not provided with a name.
+/// A sequential numeric identifier assigned to `Node`s that were not provided with a name.
 static SEQUENTIAL_NODE_ID: AtomicUsize = AtomicUsize::new(0);
 
 /// The types of long-running tasks supported by the Node.
