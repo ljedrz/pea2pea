@@ -30,7 +30,7 @@ impl HandshakingNode {
     fn new() -> Self {
         Self {
             node: Node::new(Default::default()),
-            own_nonce: SmallRng::from_entropy().gen(),
+            own_nonce: SmallRng::from_os_rng().random(),
             peer_nonces: Default::default(),
         }
     }

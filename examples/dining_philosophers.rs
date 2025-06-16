@@ -9,6 +9,7 @@ use std::{
     time::Duration,
 };
 
+use bincode::{Decode, Encode};
 use bytes::BytesMut;
 use pea2pea::{
     connect_nodes,
@@ -16,14 +17,13 @@ use pea2pea::{
     Config, ConnectionSide, Node, Pea2Pea, Topology,
 };
 use rand::{rngs::SmallRng, Rng, SeedableRng};
-use serde::{Deserialize, Serialize};
 use tokio::{sync::RwLock, time::sleep};
 use tokio_util::codec::{Decoder, Encoder, LengthDelimitedCodec};
 use tracing::*;
 use tracing_subscriber::filter::LevelFilter;
 
 static RNG: LazyLock<parking_lot::Mutex<SmallRng>> =
-    LazyLock::new(|| parking_lot::Mutex::new(SmallRng::from_entropy()));
+    LazyLock::new(|| parking_lot::Mutex::new(SmallRng::from_os_rng()));
 
 const MIN_EATING_TIME_MS: u64 = 500;
 const MAX_EATING_TIME_MS: u64 = 1000;
@@ -52,7 +52,7 @@ enum State {
     Eating(Duration),
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Decode, Encode)]
 enum Message {
     AreYouUsingTheSharedFork,
     Yes(Option<Duration>), // eating duration (if the responder is eating)
@@ -91,7 +91,7 @@ impl Philosopher {
 
                         let thinking_time = RNG
                             .lock()
-                            .gen_range(MIN_THINKING_TIME_MS..=MAX_THINKING_TIME_MS);
+                            .random_range(MIN_THINKING_TIME_MS..=MAX_THINKING_TIME_MS);
                         sleep(Duration::from_millis(thinking_time)).await;
                         drop(state);
                         *node.state.write().await = State::Hungry(false);
@@ -147,8 +147,9 @@ impl Decoder for Codec {
             return Ok(None);
         }
 
-        let message =
-            bincode::deserialize(&bytes.unwrap()).map_err(|_| io::ErrorKind::InvalidData)?;
+        let message = bincode::decode_from_slice(&bytes.unwrap(), bincode::config::standard())
+            .map_err(|_| io::ErrorKind::InvalidData)?
+            .0;
 
         Ok(Some(message))
     }
@@ -158,7 +159,9 @@ impl Encoder<Message> for Codec {
     type Error = io::Error;
 
     fn encode(&mut self, item: Message, dst: &mut BytesMut) -> Result<(), Self::Error> {
-        let bytes = bincode::serialize(&item).unwrap().into();
+        let bytes = bincode::encode_to_vec(item, bincode::config::standard())
+            .unwrap()
+            .into();
         self.0.encode(bytes, dst)
     }
 }
@@ -215,7 +218,7 @@ impl Reading for Philosopher {
                 } else if *state == State::Hungry(true) {
                     let eating_time = RNG
                         .lock()
-                        .gen_range(MIN_EATING_TIME_MS..=MAX_EATING_TIME_MS);
+                        .random_range(MIN_EATING_TIME_MS..=MAX_EATING_TIME_MS);
                     *state = State::Eating(Duration::from_millis(eating_time));
                 }
             }

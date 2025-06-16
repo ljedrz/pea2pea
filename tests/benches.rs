@@ -1,6 +1,6 @@
 use bytes::{Bytes, BytesMut};
 use deadline::deadline;
-use rand::{distributions::Standard, rngs::SmallRng, Rng, SeedableRng};
+use rand::{distr::StandardUniform, rngs::SmallRng, Rng, SeedableRng};
 use tokio_util::codec::Decoder;
 
 mod common;
@@ -25,8 +25,8 @@ const MSG_SIZE: usize = 32 * 1024;
 
 static RANDOM_BYTES: LazyLock<Bytes> = LazyLock::new(|| {
     Bytes::from(
-        (&mut SmallRng::from_entropy())
-            .sample_iter(Standard)
+        (&mut SmallRng::from_os_rng())
+            .sample_iter(StandardUniform)
             .take(MSG_SIZE - 2)
             .collect::<Vec<_>>(),
     )
@@ -129,7 +129,7 @@ async fn bench_spam_to_one() {
 #[ignore]
 #[tokio::test]
 async fn bench_node_startup() {
-    const NUM_ITERATIONS: usize = 5000;
+    const NUM_ITERATIONS: usize = 1000;
 
     let mut avg_start_up_time = std::time::Duration::new(0, 0);
     for _ in 0..NUM_ITERATIONS {

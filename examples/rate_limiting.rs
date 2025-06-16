@@ -53,7 +53,7 @@ async fn main() {
     common::start_logger(LevelFilter::INFO);
 
     // obtain a source of randomness
-    let mut rng = SmallRng::from_entropy();
+    let mut rng = SmallRng::from_os_rng();
 
     // start several nodes
     let mut nodes = Vec::with_capacity(NUM_PEERS);
@@ -171,7 +171,7 @@ async fn main() {
     }
 
     // delay the spam loop by a random value that's small enough to trigger the spam alert
-    let delay = rng.gen_range(0..500);
+    let delay = rng.random_range(0..500);
     sleep(Duration::from_millis(delay)).await;
 
     // the last node will be sending messages with a considerably greater frequency

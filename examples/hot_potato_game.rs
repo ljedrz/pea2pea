@@ -13,6 +13,7 @@ use std::{
     time::Duration,
 };
 
+use bincode::{Decode, Encode};
 use bytes::BytesMut;
 use parking_lot::Mutex;
 use pea2pea::{
@@ -21,7 +22,6 @@ use pea2pea::{
     Connection, ConnectionSide, Node, Pea2Pea, Topology,
 };
 use rand::{rngs::SmallRng, seq::IteratorRandom, Rng, SeedableRng};
-use serde::{Deserialize, Serialize};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     time::sleep,
@@ -30,7 +30,7 @@ use tokio_util::codec::{Decoder, Encoder};
 use tracing::*;
 use tracing_subscriber::filter::LevelFilter;
 
-static RNG: LazyLock<Mutex<SmallRng>> = LazyLock::new(|| Mutex::new(SmallRng::from_entropy()));
+static RNG: LazyLock<Mutex<SmallRng>> = LazyLock::new(|| Mutex::new(SmallRng::from_os_rng()));
 
 type PlayerName = String;
 
@@ -124,7 +124,7 @@ impl Handshake for Player {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Clone, Decode, Encode)]
 enum Message {
     HotPotato,
     IHaveThePotato(PlayerName),
@@ -137,8 +137,12 @@ impl Decoder for common::TestCodec<Message> {
     fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
         self.0
             .decode(src)?
-            .map(|b| bincode::deserialize(&b).map_err(|_| io::ErrorKind::InvalidData.into()))
+            .map(|b| {
+                bincode::borrow_decode_from_slice(&b, bincode::config::standard())
+                    .map_err(|_| io::ErrorKind::InvalidData.into())
+            })
             .transpose()
+            .map(|r| r.map(|t| t.0))
     }
 }
 
@@ -186,7 +190,9 @@ impl<M> Encoder<Message> for common::TestCodec<M> {
     type Error = io::Error;
 
     fn encode(&mut self, item: Message, dst: &mut BytesMut) -> Result<(), Self::Error> {
-        let bytes = bincode::serialize(&item).unwrap().into();
+        let bytes = bincode::encode_to_vec(&item, bincode::config::standard())
+            .unwrap()
+            .into();
         self.0.encode(bytes, dst)
     }
 }
@@ -225,7 +231,7 @@ async fn main() {
     }
     connect_nodes(&players, Topology::Mesh).await.unwrap();
 
-    let first_carrier = RNG.lock().gen_range(0..NUM_PLAYERS);
+    let first_carrier = RNG.lock().random_range(0..NUM_PLAYERS);
     players[first_carrier].potato_count.fetch_add(1, Relaxed);
     players[first_carrier].throw_potato().await;
 

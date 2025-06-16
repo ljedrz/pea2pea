@@ -12,7 +12,7 @@ use pea2pea::{
 
 #[tokio::test]
 async fn message_stats() {
-    let mut rng = SmallRng::from_entropy();
+    let mut rng = SmallRng::from_os_rng();
 
     let reader = crate::test_node!("reader");
     let reader_addr = reader.node().toggle_listener().await.unwrap().unwrap();
@@ -23,8 +23,8 @@ async fn message_stats() {
 
     writer.node().connect(reader_addr).await.unwrap();
 
-    let sent_msgs_count = rng.gen_range(2..=64); // shouldn't exceed the outbound queue depth
-    let mut msg = vec![0u8; rng.gen_range(1..=4096)];
+    let sent_msgs_count = rng.random_range(2..=64); // shouldn't exceed the outbound queue depth
+    let mut msg = vec![0u8; rng.random_range(1..=4096)];
     rng.fill(&mut msg[..]);
 
     let msg = Bytes::from(msg);

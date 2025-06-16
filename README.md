@@ -20,7 +20,7 @@ low-level, opt-in [protocols](https://docs.rs/pea2pea/latest/pea2pea/protocols/i
 - ease of use: few objects and traits, no "turboeels" or generics/references that would force all parent objects to adapt
 - correctness: builds with stable Rust, there is no `unsafe` code, there's more code in `tests` than in the actual library
 - low-level: the user has full control over all connections and every byte sent or received
-- good performance: over 10GB/s in favorable scenarios, small memory footprint
+- good performance: over 40GB/s (locally with a high-end desktop CPU) in favorable scenarios, small memory footprint
 
 ## how to use it
 1. define a clonable struct containing a [`Node`](https://docs.rs/pea2pea/latest/pea2pea/struct.Node.html) and any extra state you'd like to carry alongside it
