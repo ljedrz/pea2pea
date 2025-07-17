@@ -121,13 +121,13 @@ async fn check_node_cleanups() {
     println!("before node setup:     {}kB", initial_heap_use / 1000);
     println!("after node setup:      {}kB", heap_after_node_setup / 1000);
     println!("after 32 connections:  {}kB", heap_after_32_conns / 1000);
-    println!("after {} connections: {}kB", NUM_CONNS, final_heap_use_kb);
+    println!("after {NUM_CONNS} connections: {final_heap_use_kb}kB");
     println!("average memory use:    {}kB", avg_heap_use / 1000);
-    println!("maximum memory use:    {}kB", max_heap_use); // note: heavily affected by Reading::INITIAL_BUFFER_SIZE
+    println!("maximum memory use:    {max_heap_use}kB"); // note: heavily affected by Reading::INITIAL_BUFFER_SIZE
     println!();
-    println!("idle node size: {}B", idle_node_size);
-    println!("full node size: {}kB", single_node_size);
-    println!("leaked memory:  {}B", heap_growth);
+    println!("idle node size: {idle_node_size}B");
+    println!("full node size: {single_node_size}kB");
+    println!("leaked memory:  {heap_growth}B");
     println!();
 
     // regardless of the number of connections the node handles, its memory use shouldn't grow at all

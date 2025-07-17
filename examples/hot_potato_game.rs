@@ -213,10 +213,7 @@ async fn main() {
     const GAME_TIME_SECS: u64 = 5;
     const NUM_PLAYERS: usize = 10;
 
-    println!(
-        "hot potato! players: {}, play time: {}s",
-        NUM_PLAYERS, GAME_TIME_SECS
-    );
+    println!("hot potato! players: {NUM_PLAYERS}, play time: {GAME_TIME_SECS}s");
 
     let mut players = Vec::with_capacity(NUM_PLAYERS);
     for _ in 0..NUM_PLAYERS {

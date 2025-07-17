@@ -108,7 +108,7 @@ async fn main() {
     info!(parent: drebin.node().span(), "Where's Hapsburg?");
 
     for i in 0..NUM_THUGS {
-        let hapsburgs_thug = NakedNode::new(format!("thug {}", i));
+        let hapsburgs_thug = NakedNode::new(format!("thug {i}"));
 
         hapsburgs_thug.enable_handshake().await;
         hapsburgs_thug.enable_reading().await;

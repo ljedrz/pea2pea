@@ -522,7 +522,7 @@ async fn main() {
     };
 
     // connect the pea2pea node to the libp2p swarm
-    let swarm_addr = format!("127.0.0.1:{}", swarm_port).parse().unwrap();
+    let swarm_addr = format!("127.0.0.1:{swarm_port}").parse().unwrap();
     pea2pea_node.node().connect(swarm_addr).await.unwrap();
 
     // allow a few messages to be exchanged

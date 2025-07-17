@@ -146,7 +146,7 @@ async fn bench_node_startup() {
     }
     avg_start_up_time /= NUM_ITERATIONS as u32;
 
-    println!("average start-up time: {:?}\n", avg_start_up_time);
+    println!("average start-up time: {avg_start_up_time:?}\n");
 }
 
 #[ignore]
@@ -176,5 +176,5 @@ async fn bench_connection() {
     }
     avg_conn_time /= NUM_ITERATIONS as u32;
 
-    println!("average connection time: {:?}\n", avg_conn_time);
+    println!("average connection time: {avg_conn_time:?}\n");
 }

@@ -175,7 +175,7 @@ impl fmt::Display for Flag {
 
 impl fmt::Debug for Flag {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self)
+        write!(f, "{self}")
     }
 }
 
