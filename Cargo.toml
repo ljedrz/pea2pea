@@ -32,9 +32,9 @@ tracing = { version = "0.1", default-features = false }
 [dev-dependencies]
 bincode = "2"
 deadline = "0.2"
-libp2p = { version = "0.55", default-features = false, features = ["macros", "noise", "ping", "tcp", "tokio", "yamux"] }
+libp2p = { version = "0.56", default-features = false, features = ["macros", "noise", "ping", "tcp", "tokio", "yamux"] }
 native-tls = "0.2"
-peak_alloc = "0.2"
+peak_alloc = "0.3"
 prost = "0.14"
 rand = { version = "0.9", default-features = false, features = ["small_rng"] }
 snow = "0.9.6"
