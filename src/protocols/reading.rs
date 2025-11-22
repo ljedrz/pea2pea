@@ -117,7 +117,10 @@ impl<R: Reading> ReadingInternal for R {
     async fn handle_new_connection(&self, (mut conn, conn_returner): ReturnableConnection) {
         let addr = conn.addr();
         let codec = self.codec(addr, !conn.side());
-        let reader = conn.reader.take().expect("missing connection reader!");
+        let Some(reader) = conn.reader.take() else {
+            error!("The stream was not returned during the handshake with {addr}!");
+            return;
+        };
         let framed = FramedRead::with_capacity(reader, codec, Self::INITIAL_BUFFER_SIZE);
         let mut framed = self.map_codec(framed, conn.info());
 
