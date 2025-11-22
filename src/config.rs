@@ -40,19 +40,12 @@ pub struct Config {
 
 impl Default for Config {
     fn default() -> Self {
-        #[cfg(feature = "test")]
-        fn default_addr() -> Option<SocketAddr> {
-            Some((IpAddr::V4(Ipv4Addr::LOCALHOST), 0).into())
-        }
-
-        #[cfg(not(feature = "test"))]
-        fn default_addr() -> Option<SocketAddr> {
-            Some((IpAddr::V4(Ipv4Addr::UNSPECIFIED), 0).into())
-        }
-
         Self {
             name: None,
-            listener_addr: default_addr(),
+            #[cfg(not(feature = "test"))]
+            listener_addr: Some((IpAddr::V4(Ipv4Addr::UNSPECIFIED), 0).into()),
+            #[cfg(feature = "test")]
+            listener_addr: Some((IpAddr::V4(Ipv4Addr::LOCALHOST), 0).into()),
             fatal_io_errors: vec![
                 ConnectionReset,
                 ConnectionAborted,
@@ -61,7 +54,10 @@ impl Default for Config {
                 UnexpectedEof,
             ],
             max_connections: 100,
+            #[cfg(not(feature = "test"))]
             max_connections_per_ip: 1,
+            #[cfg(feature = "test")]
+            max_connections_per_ip: 100,
             connection_timeout_ms: 1_000,
         }
     }
