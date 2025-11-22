@@ -49,8 +49,12 @@ impl Handshake for SecureNode {
         let noise_builder =
             snow::Builder::new("Noise_XXpsk3_25519_ChaChaPoly_BLAKE2s".parse().unwrap());
         let noise_keypair = noise_builder.generate_keypair().unwrap();
-        let noise_builder = noise_builder.local_private_key(&noise_keypair.private);
-        let noise_builder = noise_builder.psk(3, b"I dont care for codes of conduct");
+        let noise_builder = noise_builder
+            .local_private_key(&noise_keypair.private)
+            .unwrap();
+        let noise_builder = noise_builder
+            .psk(3, b"I dont care for codes of conduct")
+            .unwrap();
 
         // perform the noise handshake
         let (noise_state, _) =

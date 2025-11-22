@@ -237,7 +237,9 @@ impl Handshake for Libp2pNode {
         // create the noise objects
         let noise_builder = snow::Builder::new("Noise_XX_25519_ChaChaPoly_SHA256".parse().unwrap());
         let noise_keypair = noise_builder.generate_keypair().unwrap();
-        let noise_builder = noise_builder.local_private_key(&noise_keypair.private);
+        let noise_builder = noise_builder
+            .local_private_key(&noise_keypair.private)
+            .unwrap();
 
         // prepare the expected handshake payload
         let noise_payload = {
