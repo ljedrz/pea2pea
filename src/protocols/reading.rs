@@ -17,6 +17,14 @@ use crate::{
 #[cfg(doc)]
 use crate::{protocols::Handshake, Config};
 
+/// Backpressure behavior.
+pub enum Backpressure {
+    // Drop packets beyond `Reading::MESSAGE_QUEUE_DEPTH` (good for gossip/realtime).
+    Drop,
+    // Exert backpressure (good for sync/data transfer).
+    Wait,
+}
+
 /// Can be used to specify and enable reading, i.e. receiving inbound messages. If the [`Handshake`]
 /// protocol is enabled too, it goes into force only after the handshake has been concluded.
 ///
@@ -34,6 +42,10 @@ where
     ///
     /// The default value is 64.
     const MESSAGE_QUEUE_DEPTH: usize = 64;
+
+    /// Determines whether backpressure should be exerted in case the number of queued
+    /// messages reaches `MESSAGE_QUEUE_DEPTH`. Defaults to waiting.
+    const BACKPRESSURE: Backpressure = Backpressure::Wait;
 
     /// The initial size of a per-connection buffer for reading inbound messages. Can be set to the maximum expected size
     /// of the inbound message in order to only allocate it once.
@@ -173,8 +185,17 @@ impl<R: Reading> ReadingInternal for R {
                 match bytes {
                     Ok(msg) => {
                         // send the message for further processing
-                        if let Err(e) = inbound_message_sender.try_send(msg) {
-                            error!(parent: node.span(), "can't process a message from {}: {}", addr, e);
+                        match Self::BACKPRESSURE {
+                            Backpressure::Drop => {
+                                if let Err(e) = inbound_message_sender.try_send(msg) {
+                                    error!(parent: node.span(), "can't process a message from {}: {}", addr, e);
+                                }
+                            }
+                            Backpressure::Wait => {
+                                if let Err(e) = inbound_message_sender.send(msg).await {
+                                    error!(parent: node.span(), "can't process a message from {}: {}", addr, e);
+                                }
+                            }
                         }
                     }
                     Err(e) => {
