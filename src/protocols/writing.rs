@@ -266,7 +266,7 @@ impl<W: Writing> WritingInternal for W {
 }
 
 /// Used to queue messages for delivery.
-struct WrappedMessage {
+pub(crate) struct WrappedMessage {
     msg: Box<dyn Any + Send>,
     delivery_notification: oneshot::Sender<io::Result<()>>,
 }
@@ -286,7 +286,7 @@ impl WrappedMessage {
 /// The handler object dedicated to the [`Writing`] protocol.
 pub(crate) struct WritingHandler {
     handler: ProtocolHandler<Connection, io::Result<Connection>>,
-    senders: WritingSenders,
+    pub(crate) senders: WritingSenders,
 }
 
 impl Protocol<Connection, io::Result<Connection>> for WritingHandler {

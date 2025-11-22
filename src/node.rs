@@ -15,7 +15,7 @@ use tokio::{
     io::split,
     net::{TcpListener, TcpSocket, TcpStream},
     sync::{oneshot, RwLock},
-    task::JoinHandle,
+    task::{self, JoinHandle},
     time::timeout,
 };
 use tracing::*;
@@ -426,7 +426,6 @@ impl Node {
             // can be called manually and triggered by both the Reading and Writing protocols
             if self.is_connected(addr) {
                 let (sender, receiver) = oneshot::channel();
-
                 handler.trigger((addr, sender));
                 // wait for the OnDisconnect protocol to perform its specified actions
                 let _ = receiver.await; // can't really fail
@@ -439,6 +438,17 @@ impl Node {
 
         if let Some(ref conn) = conn {
             debug!(parent: self.span(), "disconnecting from {}", conn.addr());
+
+            // ensure that any OnDisconnect-related writes can conclude
+            if let Some(writing) = self.protocols.writing.get() {
+                // remove the connection's message sender so that
+                // the associated loop can exit organically
+                writing.senders.write().remove(&addr);
+
+                // give the Writing task a chance to process it
+                // and flush any final messages to the kernel
+                task::yield_now().await;
+            }
 
             // shut the associated tasks down
             for task in conn.tasks.iter().rev() {
