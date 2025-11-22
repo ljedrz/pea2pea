@@ -30,6 +30,10 @@ pub struct Config {
     /// note: This number can very briefly be breached by 1 in case of inbound connection attempts. It can never be
     /// breached by outbound connection attempts, though.
     pub max_connections: u16,
+    /// The maximum number of active connections the node can maintain with a single IP.
+    ///
+    /// note: It should not be greater than `max_connections`, as it will override it.
+    pub max_connections_per_ip: u16,
     /// The maximum time (in milliseconds) allowed to establish a raw (before the [`Handshake`] protocol) TCP connection.
     pub connection_timeout_ms: u16,
 }
@@ -57,6 +61,7 @@ impl Default for Config {
                 UnexpectedEof,
             ],
             max_connections: 100,
+            max_connections_per_ip: 1,
             connection_timeout_ms: 1_000,
         }
     }

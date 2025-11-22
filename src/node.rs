@@ -209,7 +209,7 @@ impl Node {
         debug!(parent: self.span(), "tentatively accepted a connection from {}", addr);
 
         // check if no connection-related limits are breached
-        if !self.can_add_connection() {
+        if !self.can_add_connection(addr) {
             debug!(parent: self.span(), "rejecting the connection from {}", addr);
             return;
         }
@@ -391,7 +391,7 @@ impl Node {
         }
 
         // make sure connection-related limits are not breached
-        if !self.can_add_connection() {
+        if !self.can_add_connection(addr) {
             error!(parent: self.span(), "too many connections; refusing to connect to {}", addr);
             return Err(io::ErrorKind::PermissionDenied.into());
         }
@@ -489,15 +489,29 @@ impl Node {
     }
 
     /// Checks whether the `Node` can handle an additional connection.
-    fn can_add_connection(&self) -> bool {
+    fn can_add_connection(&self, addr: SocketAddr) -> bool {
+        // check the global connection limit
         let num_connected = self.num_connected();
         let limit = self.config.max_connections as usize;
         if num_connected >= limit || num_connected + self.num_connecting() >= limit {
-            warn!(parent: self.span(), "maximum number of connections ({}) reached", limit);
-            false
-        } else {
-            true
+            warn!(parent: self.span(), "maximum number of connections ({limit}) reached");
+            return false;
         }
+
+        // check the per-IP connection limit
+        let ip = addr.ip();
+        let count = self
+            .connection_infos()
+            .values()
+            .filter(|info| info.addr().ip() == ip)
+            .count();
+
+        if count >= self.config.max_connections_per_ip as usize {
+            warn!(parent: self.span(), "maximum number of connections with {ip} reached");
+            return false;
+        }
+
+        true
     }
 
     /// Gracefully shuts the node down.
