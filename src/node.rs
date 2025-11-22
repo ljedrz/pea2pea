@@ -92,6 +92,30 @@ pub struct InnerNode {
     pub(crate) tasks: Mutex<HashMap<NodeTask, JoinHandle<()>>>,
 }
 
+// A helper object which ensures that a connecting entry is unique and eventually cleaned up.
+struct ConnectionGuard<'a> {
+    addr: SocketAddr,
+    connecting: &'a Mutex<HashSet<SocketAddr>>,
+}
+
+impl<'a> ConnectionGuard<'a> {
+    fn new(addr: SocketAddr, connecting: &'a Mutex<HashSet<SocketAddr>>) -> Option<Self> {
+        let mut lock = connecting.lock();
+        if lock.contains(&addr) {
+            return None;
+        }
+        lock.insert(addr);
+
+        Some(Self { addr, connecting })
+    }
+}
+
+impl<'a> Drop for ConnectionGuard<'a> {
+    fn drop(&mut self) {
+        self.connecting.lock().remove(&self.addr);
+    }
+}
+
 impl Node {
     /// Creates a new [`Node`] using the given [`Config`].
     pub fn new(mut config: Config) -> Self {
@@ -159,7 +183,13 @@ impl Node {
 
                 loop {
                     match listener.accept().await {
-                        Ok((stream, addr)) => node.handle_connection_request(stream, addr).await,
+                        Ok((stream, addr)) => {
+                            // handle connection requests asynchronously
+                            let node = node.clone();
+                            tokio::spawn(async move {
+                                node.handle_connection_request(stream, addr).await
+                            });
+                        }
                         Err(e) => {
                             error!(parent: node.span(), "couldn't accept a connection: {}", e);
                         }
@@ -184,21 +214,19 @@ impl Node {
             return;
         }
 
-        // register the address as connecting
-        self.connecting.lock().insert(addr);
+        // mark the connection as connecting
+        let Some(guard) = ConnectionGuard::new(addr, &self.connecting) else {
+            debug!(parent: self.span(), "rejecting the connection from {addr}: already connecting");
+            return;
+        };
 
-        // finalize the connection asynchronously
-        let node = self.clone();
-        tokio::spawn(async move {
-            if let Err(e) = node
-                .adapt_stream(stream, addr, ConnectionSide::Responder)
-                .await
-            {
-                // if the connection fails to finalize, remove the address from the list of connecting ones
-                node.connecting.lock().remove(&addr);
-                error!(parent: node.span(), "couldn't accept a connection: {}", e);
-            }
-        });
+        // finalize the connection
+        if let Err(e) = self
+            .adapt_stream(stream, addr, ConnectionSide::Responder, guard)
+            .await
+        {
+            error!(parent: self.span(), "couldn't accept a connection from {addr}: {e}");
+        }
     }
 
     /// Returns the name assigned to the node.
@@ -260,6 +288,7 @@ impl Node {
         stream: TcpStream,
         peer_addr: SocketAddr,
         own_side: ConnectionSide,
+        guard: ConnectionGuard<'_>,
     ) -> io::Result<()> {
         // register the port seen by the peer
         if own_side == ConnectionSide::Initiator {
@@ -281,8 +310,9 @@ impl Node {
         // if Reading is enabled, we'll notify the related task when the connection is fully ready
         let conn_ready_tx = connection.readiness_notifier.take();
 
+        // connecting -> connected
         self.connections.add(connection);
-        self.connecting.lock().remove(&peer_addr);
+        drop(guard);
 
         // send the aforementioned notification so that reading from the socket can commence
         if let Some(tx) = conn_ready_tx {
@@ -372,30 +402,20 @@ impl Node {
             return Err(io::ErrorKind::AlreadyExists.into());
         }
 
-        // register the address as connecting, bailing if it's already marked as such
-        if !self.connecting.lock().insert(addr) {
-            warn!(parent: self.span(), "already connecting to {}", addr);
-            return Err(io::ErrorKind::AlreadyExists.into());
-        }
+        // mark the connection as connecting
+        let guard = ConnectionGuard::new(addr, &self.connecting)
+            .ok_or_else(|| io::Error::from(io::ErrorKind::AlreadyExists))?;
 
         // attempt to physically connect to the specified address
-        let stream = self.create_stream(addr, socket).await.inspect_err(|_| {
-            // if the attempt failed, perform a cleanup
-            self.connecting.lock().remove(&addr);
-        })?;
+        let stream = self.create_stream(addr, socket).await?;
 
         // attempt to finalize the connection
-        let ret = self
-            .adapt_stream(stream, addr, ConnectionSide::Initiator)
-            .await;
-
-        // if the connection fails to finalize, remove the address from the list of connecting ones
-        if let Err(ref e) = ret {
-            self.connecting.lock().remove(&addr);
-            error!(parent: self.span(), "couldn't initiate a connection with {}: {}", addr, e);
-        }
-
-        ret
+        self.adapt_stream(stream, addr, ConnectionSide::Initiator, guard)
+            .await
+            .map_err(|e| {
+                error!(parent: self.span(), "couldn't connect to {addr}: {e}");
+                e
+            })
     }
 
     /// Disconnects from the provided `SocketAddr`; returns `true` if an actual disconnect took place.
