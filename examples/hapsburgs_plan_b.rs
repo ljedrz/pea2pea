@@ -5,8 +5,8 @@ mod common;
 use std::{io, net::SocketAddr, time::Duration};
 
 use pea2pea::{
-    protocols::{Handshake, OnDisconnect, Reading, Writing},
     Config, Connection, ConnectionSide, Node, Pea2Pea,
+    protocols::{Handshake, OnDisconnect, Reading, Writing},
 };
 use tokio::time::sleep;
 use tracing::*;

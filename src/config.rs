@@ -5,8 +5,8 @@ use std::{
 
 #[cfg(doc)]
 use crate::{
-    protocols::{self, Handshake, Reading, Writing},
     Node,
+    protocols::{self, Handshake, Reading, Writing},
 };
 
 /// The node's configuration. See the source of [`Config::default`] for the defaults.

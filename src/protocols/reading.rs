@@ -9,13 +9,13 @@ use tokio::{
 use tokio_util::codec::{Decoder, FramedRead};
 use tracing::*;
 
+#[cfg(doc)]
+use crate::{Config, protocols::Handshake};
 use crate::{
+    ConnectionInfo, ConnectionSide, Node, Pea2Pea, Stats,
     node::NodeTask,
     protocols::{ProtocolHandler, ReturnableConnection},
-    ConnectionInfo, ConnectionSide, Node, Pea2Pea, Stats,
 };
-#[cfg(doc)]
-use crate::{protocols::Handshake, Config};
 
 /// Backpressure behavior.
 pub enum Backpressure {

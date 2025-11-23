@@ -4,7 +4,7 @@ mod common;
 use std::time::Duration;
 
 use deadline::deadline;
-use pea2pea::{connect_nodes, Pea2Pea, Topology};
+use pea2pea::{Pea2Pea, Topology, connect_nodes};
 
 // the number of nodes spawned for each topology test
 const N: usize = 10;

@@ -1,7 +1,7 @@
 use std::{future::Future, io, time::Duration};
 
 use tokio::{
-    io::{split, AsyncRead, AsyncWrite},
+    io::{AsyncRead, AsyncWrite, split},
     net::TcpStream,
     sync::{mpsc, oneshot},
     time::timeout,
@@ -9,9 +9,9 @@ use tokio::{
 use tracing::*;
 
 use crate::{
+    Connection, Pea2Pea,
     node::NodeTask,
     protocols::{ProtocolHandler, ReturnableConnection},
-    Connection, Pea2Pea,
 };
 
 /// Can be used to specify and enable network handshakes. Upon establishing a connection, both sides will

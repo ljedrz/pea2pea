@@ -3,8 +3,8 @@
 use std::{io, sync::Arc};
 
 use bytes::{Bytes, BytesMut};
-use futures_util::{sink::SinkExt, TryStreamExt};
-use pea2pea::{protocols::Handshake, Connection, ConnectionSide};
+use futures_util::{TryStreamExt, sink::SinkExt};
+use pea2pea::{Connection, ConnectionSide, protocols::Handshake};
 use tokio_util::codec::{Decoder, Encoder, Framed, FramedParts, LengthDelimitedCodec};
 use tracing::*;
 

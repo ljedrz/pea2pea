@@ -7,8 +7,8 @@ use std::{
     io,
     net::SocketAddr,
     sync::{
-        atomic::{AtomicUsize, Ordering::Relaxed},
         Arc, LazyLock,
+        atomic::{AtomicUsize, Ordering::Relaxed},
     },
     time::Duration,
 };
@@ -17,11 +17,10 @@ use bincode::{Decode, Encode};
 use bytes::BytesMut;
 use parking_lot::Mutex;
 use pea2pea::{
-    connect_nodes,
+    Connection, ConnectionSide, Node, Pea2Pea, Topology, connect_nodes,
     protocols::{Handshake, Reading, Writing},
-    Connection, ConnectionSide, Node, Pea2Pea, Topology,
 };
-use rand::{rngs::SmallRng, seq::IteratorRandom, Rng, SeedableRng};
+use rand::{Rng, SeedableRng, rngs::SmallRng, seq::IteratorRandom};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     time::sleep,

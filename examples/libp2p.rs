@@ -9,12 +9,12 @@ use std::{cmp, collections::HashMap, io, net::SocketAddr, sync::Arc, time::Durat
 use bytes::{Bytes, BytesMut};
 use common::{noise, yamux};
 use futures_util::{SinkExt, StreamExt, TryStreamExt};
-use libp2p::{core::multiaddr::Protocol, identity, ping, PeerId};
-use libp2p::{swarm::SwarmEvent, SwarmBuilder};
+use libp2p::{PeerId, core::multiaddr::Protocol, identity, ping};
+use libp2p::{SwarmBuilder, swarm::SwarmEvent};
 use parking_lot::{Mutex, RwLock};
 use pea2pea::{
-    protocols::{Handshake, OnDisconnect, Reading, Writing},
     Connection, ConnectionSide, Node, Pea2Pea,
+    protocols::{Handshake, OnDisconnect, Reading, Writing},
 };
 use prost::Message;
 use tokio::{sync::oneshot, time::sleep};

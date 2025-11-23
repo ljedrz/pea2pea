@@ -1,13 +1,13 @@
 use bytes::Bytes;
 use deadline::deadline;
-use rand::{rngs::SmallRng, Rng, SeedableRng};
+use rand::{Rng, SeedableRng, rngs::SmallRng};
 
 mod common;
 use std::time::Duration;
 
 use pea2pea::{
-    protocols::{Reading, Writing},
     Pea2Pea,
+    protocols::{Reading, Writing},
 };
 
 #[tokio::test]

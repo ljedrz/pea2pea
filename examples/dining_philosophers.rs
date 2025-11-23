@@ -12,11 +12,10 @@ use std::{
 use bincode::{Decode, Encode};
 use bytes::BytesMut;
 use pea2pea::{
-    connect_nodes,
+    Config, ConnectionSide, Node, Pea2Pea, Topology, connect_nodes,
     protocols::{Reading, Writing},
-    Config, ConnectionSide, Node, Pea2Pea, Topology,
 };
-use rand::{rngs::SmallRng, Rng, SeedableRng};
+use rand::{Rng, SeedableRng, rngs::SmallRng};
 use tokio::{sync::RwLock, time::sleep};
 use tokio_util::codec::{Decoder, Encoder, LengthDelimitedCodec};
 use tracing::*;

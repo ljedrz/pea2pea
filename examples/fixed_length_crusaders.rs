@@ -6,8 +6,8 @@ use std::{io, net::SocketAddr, time::Duration};
 
 use bytes::{Buf, BufMut, BytesMut};
 use pea2pea::{
-    protocols::{Handshake, Reading, Writing},
     Config, Connection, ConnectionSide, Node, Pea2Pea,
+    protocols::{Handshake, Reading, Writing},
 };
 use tokio::time::sleep;
 use tokio_util::codec::{Decoder, Encoder};

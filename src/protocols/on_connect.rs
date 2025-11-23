@@ -3,12 +3,12 @@ use std::{future::Future, net::SocketAddr};
 use tokio::sync::{mpsc, oneshot};
 use tracing::*;
 
-use crate::{node::NodeTask, protocols::ProtocolHandler, Pea2Pea};
 #[cfg(doc)]
 use crate::{
-    protocols::{Handshake, OnDisconnect, Reading, Writing},
     Connection,
+    protocols::{Handshake, OnDisconnect, Reading, Writing},
 };
+use crate::{Pea2Pea, node::NodeTask, protocols::ProtocolHandler};
 
 /// Can be used to automatically perform some initial actions when a connection with a peer is
 /// fully established. The reason for its existence (instead of including such behavior in the

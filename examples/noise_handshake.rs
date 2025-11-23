@@ -8,8 +8,8 @@ use bytes::{Bytes, BytesMut};
 use common::noise;
 use parking_lot::RwLock;
 use pea2pea::{
-    protocols::{Handshake, Reading, Writing},
     Config, Connection, ConnectionSide, Node, Pea2Pea,
+    protocols::{Handshake, Reading, Writing},
 };
 use tokio::time::sleep;
 use tracing::*;

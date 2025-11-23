@@ -9,13 +9,13 @@ use tokio::{
 use tokio_util::codec::{Encoder, FramedWrite};
 use tracing::*;
 
+#[cfg(doc)]
+use crate::{Config, Node, protocols::Handshake};
 use crate::{
+    Connection, ConnectionSide, Pea2Pea,
     node::NodeTask,
     protocols::{Protocol, ProtocolHandler, ReturnableConnection},
-    Connection, ConnectionSide, Pea2Pea,
 };
-#[cfg(doc)]
-use crate::{protocols::Handshake, Config, Node};
 
 type WritingSenders = Arc<RwLock<HashMap<SocketAddr, mpsc::Sender<WrappedMessage>>>>;
 

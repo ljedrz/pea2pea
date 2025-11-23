@@ -7,8 +7,8 @@ mod common;
 use std::time::Duration;
 
 use pea2pea::{
-    protocols::{Reading, Writing},
     Pea2Pea,
+    protocols::{Reading, Writing},
 };
 
 impl common::TestNode {

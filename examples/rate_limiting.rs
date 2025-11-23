@@ -6,10 +6,10 @@ use std::{io, net::SocketAddr, time::Duration};
 
 use bytes::{Bytes, BytesMut};
 use pea2pea::{
-    protocols::{Reading, Writing},
     ConnectionSide, Node, Pea2Pea,
+    protocols::{Reading, Writing},
 };
-use rand::{rngs::SmallRng, Rng, SeedableRng};
+use rand::{Rng, SeedableRng, rngs::SmallRng};
 use tokio::time::sleep;
 use tracing::*;
 use tracing_subscriber::filter::LevelFilter;

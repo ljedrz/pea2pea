@@ -9,13 +9,13 @@ use std::{
     io,
     net::Ipv4Addr,
     sync::{
-        atomic::{AtomicUsize, Ordering::Relaxed},
         Arc,
+        atomic::{AtomicUsize, Ordering::Relaxed},
     },
     time::Duration,
 };
 
-use pea2pea::{connect_nodes, protocols::Handshake, Config, Node, Pea2Pea, Topology};
+use pea2pea::{Config, Node, Pea2Pea, Topology, connect_nodes, protocols::Handshake};
 
 impl Handshake for common::TestNode {
     async fn perform_handshake(

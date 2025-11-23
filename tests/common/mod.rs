@@ -4,8 +4,8 @@ use std::{io, marker::PhantomData, net::SocketAddr};
 
 use bytes::{Bytes, BytesMut};
 use pea2pea::{
-    protocols::{Reading, Writing},
     Node, Pea2Pea,
+    protocols::{Reading, Writing},
 };
 use tokio_util::codec::{Decoder, Encoder, LengthDelimitedCodec};
 use tracing::*;

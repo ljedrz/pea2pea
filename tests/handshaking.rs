@@ -1,6 +1,6 @@
 use deadline::deadline;
 use parking_lot::RwLock;
-use rand::{rngs::SmallRng, Rng, SeedableRng};
+use rand::{Rng, SeedableRng, rngs::SmallRng};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpStream,
@@ -11,8 +11,8 @@ mod common;
 use std::{collections::HashMap, io, net::SocketAddr, sync::Arc, time::Duration};
 
 use pea2pea::{
-    protocols::{Handshake, Reading, Writing},
     Config, Connection, ConnectionSide, Node, Pea2Pea,
+    protocols::{Handshake, Reading, Writing},
 };
 
 use crate::common::WritingExt;

@@ -1,6 +1,6 @@
 use bytes::{Bytes, BytesMut};
 use deadline::deadline;
-use rand::{distr::StandardUniform, rngs::SmallRng, Rng, SeedableRng};
+use rand::{Rng, SeedableRng, distr::StandardUniform, rngs::SmallRng};
 use tokio_util::codec::Decoder;
 
 mod common;
@@ -12,8 +12,8 @@ use std::{
 };
 
 use pea2pea::{
-    protocols::{Handshake, OnDisconnect, Reading, Writing},
     ConnectionSide, Node, Pea2Pea,
+    protocols::{Handshake, OnDisconnect, Reading, Writing},
 };
 
 use crate::common::WritingExt;

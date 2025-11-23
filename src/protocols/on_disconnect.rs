@@ -3,12 +3,12 @@ use std::{future::Future, net::SocketAddr};
 use tokio::sync::{mpsc, oneshot};
 use tracing::*;
 
-use crate::{node::NodeTask, protocols::ProtocolHandler, Pea2Pea};
 #[cfg(doc)]
 use crate::{
-    protocols::{Reading, Writing},
     Connection,
+    protocols::{Reading, Writing},
 };
+use crate::{Pea2Pea, node::NodeTask, protocols::ProtocolHandler};
 
 /// Can be used to automatically perform some extra actions when the connection with a peer is
 /// severed, which is especially practical if the disconnect is triggered automatically, e.g. due

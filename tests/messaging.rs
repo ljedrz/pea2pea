@@ -7,11 +7,11 @@ use tracing::*;
 mod common;
 use std::{collections::HashSet, io, net::SocketAddr, sync::Arc, time::Duration};
 
-use pea2pea::{
-    protocols::{Reading, Writing},
-    Config, ConnectionSide, Node, Pea2Pea,
-};
 use TestMessage::*;
+use pea2pea::{
+    Config, ConnectionSide, Node, Pea2Pea,
+    protocols::{Reading, Writing},
+};
 
 use crate::common::WritingExt;
 

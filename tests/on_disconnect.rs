@@ -10,8 +10,8 @@ use std::{
 };
 
 use pea2pea::{
-    protocols::{OnDisconnect, Reading},
     Pea2Pea,
+    protocols::{OnDisconnect, Reading},
 };
 
 static DISCONNECT_TRIGGERED: LazyLock<Arc<Mutex<HashSet<String>>>> =

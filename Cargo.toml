@@ -2,7 +2,7 @@
 name = "pea2pea"
 version = "0.50.0"
 authors = ["ljedrz <ljedrz@gmail.com>"]
-edition = "2021"
+edition = "2024"
 description = "A simple, low-level, and customizable implementation of a TCP P2P node."
 license = "CC0-1.0"
 repository = "https://github.com/ljedrz/pea2pea"
@@ -10,7 +10,7 @@ documentation = "https://docs.rs/pea2pea"
 readme = "README.md"
 categories = ["network-programming", "asynchronous"]
 keywords = ["p2p", "peer-to-peer", "networking"]
-rust-version = "1.80"
+rust-version = "1.85"
 
 [badges]
 maintenance = { status = "actively-developed" }

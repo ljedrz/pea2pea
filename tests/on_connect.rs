@@ -4,8 +4,8 @@ mod common;
 use std::{net::SocketAddr, time::Duration};
 
 use pea2pea::{
-    protocols::{OnConnect, Reading, Writing},
     Pea2Pea,
+    protocols::{OnConnect, Reading, Writing},
 };
 
 use crate::common::WritingExt;

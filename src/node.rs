@@ -4,8 +4,8 @@ use std::{
     net::SocketAddr,
     ops::Deref,
     sync::{
-        atomic::{AtomicUsize, Ordering::*},
         Arc,
+        atomic::{AtomicUsize, Ordering::*},
     },
     time::Duration,
 };
@@ -14,16 +14,16 @@ use parking_lot::Mutex;
 use tokio::{
     io::split,
     net::{TcpListener, TcpSocket, TcpStream},
-    sync::{oneshot, RwLock},
+    sync::{RwLock, oneshot},
     task::{self, JoinHandle},
     time::timeout,
 };
 use tracing::*;
 
 use crate::{
+    Config, Stats,
     connections::{Connection, ConnectionInfo, ConnectionSide, Connections},
     protocols::{Protocol, Protocols},
-    Config, Stats,
 };
 
 // Starts the selected protocol handler for a new connection
