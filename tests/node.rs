@@ -182,7 +182,7 @@ async fn node_two_way_connection_works() {
 }
 
 #[tokio::test]
-async fn node_connector_limit_breach_fails() {
+async fn node_connector_conn_limit_breach_fails() {
     let config = Config {
         max_connections: 0,
         ..Default::default()
@@ -195,7 +195,7 @@ async fn node_connector_limit_breach_fails() {
 }
 
 #[tokio::test]
-async fn node_connectee_limit_breach_fails() {
+async fn node_connectee_conn_limit_breach_fails() {
     let config = Config {
         max_connections: 0,
         ..Default::default()
@@ -211,6 +211,41 @@ async fn node_connectee_limit_breach_fails() {
     // the number of connections on connectee side needs to be checked instead
     deadline!(Duration::from_secs(1), move || connectee.num_connected()
         == 0);
+}
+
+#[tokio::test]
+async fn node_connector_per_ip_conn_limit_breach_fails() {
+    let config = Config {
+        max_connections_per_ip: 1,
+        ..Default::default()
+    };
+    let connector = Node::new(config);
+    let connectee = Node::new(Default::default());
+    let connectee_addr = connectee.toggle_listener().await.unwrap().unwrap();
+
+    assert!(connector.connect(connectee_addr).await.is_ok());
+    assert!(connector.connect(connectee_addr).await.is_err());
+}
+
+#[tokio::test]
+async fn node_connectee_per_ip_conn_limit_breach_fails() {
+    let config = Config {
+        max_connections_per_ip: 1,
+        ..Default::default()
+    };
+    let connectee = Node::new(config);
+    let connectee_addr = connectee.toggle_listener().await.unwrap().unwrap();
+
+    let connector1 = Node::new(Default::default());
+    let connector2 = Node::new(Default::default());
+
+    // a breached connection limit doesn't close the listener, so this works
+    connector1.connect(connectee_addr).await.unwrap();
+    connector2.connect(connectee_addr).await.unwrap();
+
+    // the number of connections on connectee side needs to be checked instead
+    deadline!(Duration::from_secs(1), move || connectee.num_connected()
+        == 1);
 }
 
 #[tokio::test(flavor = "multi_thread")]
