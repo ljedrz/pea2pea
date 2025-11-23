@@ -174,6 +174,20 @@ async fn node_duplicate_connection_fails() {
 }
 
 #[tokio::test]
+async fn node_allowed_duplicate_connection_works() {
+    let config = Config {
+        allow_duplicate_connections: true,
+        ..Default::default()
+    };
+    let connector = Node::new(config);
+    let connectee = Node::new(Default::default());
+    let connectee_addr = connectee.toggle_listener().await.unwrap().unwrap();
+
+    assert!(connector.connect(connectee_addr).await.is_ok());
+    assert!(connector.connect(connectee_addr).await.is_ok());
+}
+
+#[tokio::test]
 async fn node_two_way_connection_works() {
     let mut nodes = common::start_test_nodes(2).await;
     assert!(connect_nodes(&nodes, Topology::Line).await.is_ok());

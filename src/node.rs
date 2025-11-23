@@ -396,8 +396,9 @@ impl Node {
             return Err(io::ErrorKind::PermissionDenied.into());
         }
 
-        // make sure the address is not already connected to
-        if self.connections.is_connected(addr) {
+        // make sure the address is not already connected to, unless
+        // duplicate connections are permitted in the config
+        if !self.config.allow_duplicate_connections && self.connections.is_connected(addr) {
             warn!(parent: self.span(), "already connected to {}", addr);
             return Err(io::ErrorKind::AlreadyExists.into());
         }
