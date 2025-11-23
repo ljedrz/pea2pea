@@ -65,7 +65,7 @@ impl Reading for NakedNode {
             "..."
         };
 
-        info!(parent: self.node().span(), "{}", reply);
+        info!(parent: self.node().span(), "{reply}");
 
         let _ = self.unicast(source, reply.to_string()).unwrap().await;
 

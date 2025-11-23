@@ -77,11 +77,11 @@ impl Handshake for TlsNode {
                 .connect("localhost", stream)
                 .await
                 .map_err(|e| {
-                    error!(parent: self.node().span(), "TLS handshake error: {}", e);
+                    error!(parent: self.node().span(), "TLS handshake error: {e}");
                     io::ErrorKind::InvalidData
                 })?,
             ConnectionSide::Responder => self.acceptor.accept(stream).await.map_err(|e| {
-                error!(parent: self.node().span(), "TLS handshake error: {}", e);
+                error!(parent: self.node().span(), "TLS handshake error: {e}");
                 io::ErrorKind::InvalidData
             })?,
         };
@@ -101,7 +101,7 @@ impl Reading for TlsNode {
     }
 
     async fn process_message(&self, source: SocketAddr, message: Self::Message) -> io::Result<()> {
-        info!(parent: self.node().span(), "read some bytes from {}: {:?}", source, message);
+        info!(parent: self.node().span(), "read some bytes from {source}: {message:?}");
 
         Ok(())
     }

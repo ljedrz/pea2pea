@@ -68,7 +68,7 @@ impl Player {
             .choose(&mut *RNG.lock())
             .unwrap();
 
-        info!(parent: self.node().span(), "throwing the potato to player {}!", new_carrier_name);
+        info!(parent: self.node().span(), "throwing the potato to player {new_carrier_name}!");
 
         let _ = self
             .unicast(new_carrier_addr, Message::HotPotato)

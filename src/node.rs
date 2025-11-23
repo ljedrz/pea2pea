@@ -153,7 +153,7 @@ impl Node {
             let listener_task = self.tasks.lock().remove(&NodeTask::Listener).unwrap(); // can't fail
             listener_task.abort();
             trace!(parent: self.span(), "aborted the listening task");
-            debug!(parent: self.span(), "no longer listening on {}", old_listening_addr);
+            debug!(parent: self.span(), "no longer listening on {old_listening_addr}");
             *listening_addr = None;
 
             Ok(None)
@@ -191,14 +191,14 @@ impl Node {
                             });
                         }
                         Err(e) => {
-                            error!(parent: node.span(), "couldn't accept a connection: {}", e);
+                            error!(parent: node.span(), "couldn't accept a connection: {e}");
                         }
                     }
                 }
             });
             self.tasks.lock().insert(NodeTask::Listener, listening_task);
             let _ = rx.await;
-            debug!(parent: self.span(), "listening on {}", new_listening_addr);
+            debug!(parent: self.span(), "listening on {new_listening_addr}");
 
             Ok(Some(new_listening_addr))
         }
@@ -206,11 +206,11 @@ impl Node {
 
     /// Processes a single inbound connection request. Only used in [`Node::start_listening`].
     async fn handle_connection_request(&self, stream: TcpStream, addr: SocketAddr) {
-        debug!(parent: self.span(), "tentatively accepted a connection from {}", addr);
+        debug!(parent: self.span(), "tentatively accepted a connection from {addr}");
 
         // check if no connection-related limits are breached
         if !self.can_add_connection(addr) {
-            debug!(parent: self.span(), "rejecting the connection from {}", addr);
+            debug!(parent: self.span(), "rejecting the connection from {addr}");
             return;
         }
 
@@ -294,8 +294,8 @@ impl Node {
         if own_side == ConnectionSide::Initiator {
             if let Ok(addr) = stream.local_addr() {
                 debug!(
-                    parent: self.span(), "establishing connection with {}; the peer is connected on port {}",
-                    peer_addr, addr.port()
+                    parent: self.span(), "establishing connection with {peer_addr}; the peer is connected on port {}",
+                    addr.port()
                 );
             } else {
                 warn!(parent: self.span(), "couldn't determine the peer's port");
@@ -319,7 +319,7 @@ impl Node {
             let _ = tx.send(());
         }
 
-        debug!(parent: self.span(), "fully connected to {}", peer_addr);
+        debug!(parent: self.span(), "fully connected to {peer_addr}");
 
         // if enabled, enact OnConnect
         if let Some(handler) = self.protocols.on_connect.get() {
@@ -385,21 +385,21 @@ impl Node {
             if addr == listening_addr
                 || addr.ip().is_loopback() && addr.port() == listening_addr.port()
             {
-                error!(parent: self.span(), "can't connect to node's own listening address ({})", addr);
+                error!(parent: self.span(), "can't connect to node's own listening address ({addr})");
                 return Err(io::ErrorKind::AddrInUse.into());
             }
         }
 
         // make sure connection-related limits are not breached
         if !self.can_add_connection(addr) {
-            error!(parent: self.span(), "too many connections; refusing to connect to {}", addr);
+            error!(parent: self.span(), "too many connections; refusing to connect to {addr}");
             return Err(io::ErrorKind::PermissionDenied.into());
         }
 
         // make sure the address is not already connected to, unless
         // duplicate connections are permitted in the config
         if !self.config.allow_duplicate_connections && self.connections.is_connected(addr) {
-            warn!(parent: self.span(), "already connected to {}", addr);
+            warn!(parent: self.span(), "already connected to {addr}");
             return Err(io::ErrorKind::AlreadyExists.into());
         }
 
@@ -456,9 +456,9 @@ impl Node {
                 task.abort();
             }
 
-            debug!(parent: self.span(), "disconnected from {}", addr);
+            debug!(parent: self.span(), "disconnected from {addr}");
         } else {
-            debug!(parent: self.span(), "couldn't disconnect from {}, as it wasn't connected", addr);
+            debug!(parent: self.span(), "couldn't disconnect from {addr}, as it wasn't connected");
         }
 
         conn.is_some()

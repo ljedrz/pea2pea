@@ -150,15 +150,15 @@ impl<R: Reading> ReadingInternal for R {
         let self_clone = self.clone();
         let inbound_processing_task = tokio::spawn(Box::pin(async move {
             let node = self_clone.node();
-            trace!(parent: node.span(), "spawned a task for processing messages from {}", addr);
+            trace!(parent: node.span(), "spawned a task for processing messages from {addr}");
             if tx_processing.send(()).is_err() {
-                error!(parent: node.span(), "Reading (processing) for {} was interrupted; shutting down its task", addr);
+                error!(parent: node.span(), "Reading (processing) for {addr} was interrupted; shutting down its task");
                 return;
             }
 
             while let Some(msg) = inbound_message_receiver.recv().await {
                 if let Err(e) = self_clone.process_message(addr, msg).await {
-                    error!(parent: node.span(), "can't process a message from {}: {}", addr, e);
+                    error!(parent: node.span(), "can't process a message from {addr}: {e}");
                 }
             }
         }));
@@ -171,9 +171,9 @@ impl<R: Reading> ReadingInternal for R {
         // the task for reading messages from a stream
         let node = self.node().clone();
         let reader_task = tokio::spawn(Box::pin(async move {
-            trace!(parent: node.span(), "spawned a task for reading messages from {}", addr);
+            trace!(parent: node.span(), "spawned a task for reading messages from {addr}");
             if tx_reader.send(()).is_err() {
-                error!(parent: node.span(), "Reading (IO) for {} was interrupted; shutting down its task", addr);
+                error!(parent: node.span(), "Reading (IO) for {addr} was interrupted; shutting down its task");
                 return;
             }
 
@@ -188,18 +188,18 @@ impl<R: Reading> ReadingInternal for R {
                         match Self::BACKPRESSURE {
                             Backpressure::Drop => {
                                 if let Err(e) = inbound_message_sender.try_send(msg) {
-                                    error!(parent: node.span(), "can't process a message from {}: {}", addr, e);
+                                    error!(parent: node.span(), "can't process a message from {addr}: {e}");
                                 }
                             }
                             Backpressure::Wait => {
                                 if let Err(e) = inbound_message_sender.send(msg).await {
-                                    error!(parent: node.span(), "can't process a message from {}: {}", addr, e);
+                                    error!(parent: node.span(), "can't process a message from {addr}: {e}");
                                 }
                             }
                         }
                     }
                     Err(e) => {
-                        error!(parent: node.span(), "can't read from {}: {}", addr, e);
+                        error!(parent: node.span(), "can't read from {addr}: {e}");
                         if node.config().fatal_io_errors.contains(&e.kind()) {
                             break;
                         }
@@ -214,7 +214,7 @@ impl<R: Reading> ReadingInternal for R {
 
         // return the Connection to the Node, resuming Node::adapt_stream
         if conn_returner.send(Ok(conn)).is_err() {
-            error!(parent: self.node().span(), "couldn't return a Connection with {} from the Reading handler", addr);
+            error!(parent: self.node().span(), "couldn't return a Connection with {addr} from the Reading handler");
         }
     }
 
@@ -253,7 +253,7 @@ impl<D: Decoder> Decoder for CountingCodec<D> {
         let read_len = initial_buf_len - final_buf_len + self.acc;
 
         if read_len != 0 {
-            trace!(parent: self.node.span(), "read {}B from {}", read_len, self.addr);
+            trace!(parent: self.node.span(), "read {read_len}B from {}", self.addr);
 
             if ret.is_some() {
                 self.acc = 0;

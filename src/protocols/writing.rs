@@ -64,7 +64,7 @@ where
             let writing_task = tokio::spawn(async move {
                 trace!(parent: self_clone.node().span(), "spawned the Writing handler task");
                 if tx_writing.send(()).is_err() {
-                    error!(parent: self_clone.node().span(), "Writing handler creation interrupted! shutting down the node");
+                    error!(parent: self_clone.node().span(), "writing handler creation interrupted! shutting down the node");
                     self_clone.node().shut_down().await;
                     return;
                 }
@@ -118,10 +118,13 @@ where
             // find the message sender for the given address
             if let Some(sender) = handler.senders.read().get(&addr).cloned() {
                 let (msg, delivery) = WrappedMessage::new(Box::new(message));
-                sender.try_send(msg).map_err(|e| {
-                    error!(parent: self.node().span(), "can't send a message to {}: {}", addr, e);
-                    io::ErrorKind::Other.into()
-                }).map(|_| delivery)
+                sender
+                    .try_send(msg)
+                    .map_err(|e| {
+                        error!(parent: self.node().span(), "can't send a message to {addr}: {e}");
+                        io::ErrorKind::Other.into()
+                    })
+                    .map(|_| delivery)
             } else {
                 Err(io::ErrorKind::NotConnected.into())
             }
@@ -148,7 +151,7 @@ where
             for (addr, message_sender) in senders {
                 let (msg, _delivery) = WrappedMessage::new(Box::new(message.clone()));
                 let _ = message_sender.try_send(msg).map_err(|e| {
-                    error!(parent: self.node().span(), "can't send a message to {}: {}", addr, e);
+                    error!(parent: self.node().span(), "can't send a message to {addr}: {e}");
                 });
             }
 
@@ -223,9 +226,9 @@ impl<W: Writing> WritingInternal for W {
         let conn_stats = conn.stats().clone();
         let writer_task = tokio::spawn(Box::pin(async move {
             let node = self_clone.node();
-            trace!(parent: node.span(), "spawned a task for writing messages to {}", addr);
+            trace!(parent: node.span(), "spawned a task for writing messages to {addr}");
             if tx_writer.send(()).is_err() {
-                error!(parent: node.span(), "Writing for {} was interrupted; shutting down its task", addr);
+                error!(parent: node.span(), "Writing for {addr} was interrupted; shutting down its task");
                 return;
             }
 
@@ -240,10 +243,10 @@ impl<W: Writing> WritingInternal for W {
                         let _ = wrapped_msg.delivery_notification.send(Ok(()));
                         conn_stats.register_sent_message(len);
                         node.stats().register_sent_message(len);
-                        trace!(parent: node.span(), "sent {}B to {}", len, addr);
+                        trace!(parent: node.span(), "sent {len}B to {addr}");
                     }
                     Err(e) => {
-                        error!(parent: node.span(), "couldn't send a message to {}: {}", addr, e);
+                        error!(parent: node.span(), "couldn't send a message to {addr}: {e}");
                         let is_fatal = node.config().fatal_io_errors.contains(&e.kind());
                         let _ = wrapped_msg.delivery_notification.send(Err(e));
                         if is_fatal {
@@ -260,7 +263,7 @@ impl<W: Writing> WritingInternal for W {
 
         // return the Connection to the Node, resuming Node::adapt_stream
         if conn_returner.send(Ok(conn)).is_err() {
-            error!(parent: self.node().span(), "couldn't return a Connection with {} from the Writing handler", addr);
+            error!(parent: self.node().span(), "couldn't return a Connection with {addr} from the Writing handler");
         }
     }
 }

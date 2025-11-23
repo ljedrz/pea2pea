@@ -185,10 +185,10 @@ impl Reading for Philosopher {
         match message {
             Message::AreYouUsingTheSharedFork => {
                 let answer = if matches!(*self.state.read().await, State::Thinking) {
-                    debug!(parent: self.node().span(), "giving {} my {} fork", neighbor_name, neighbor_side);
+                    debug!(parent: self.node().span(), "giving {neighbor_name} my {neighbor_side} fork");
                     Message::No
                 } else {
-                    debug!(parent: self.node().span(), "I'm not giving {} my {} fork yet", neighbor_name, neighbor_side);
+                    debug!(parent: self.node().span(), "I'm not giving {neighbor_name} my {neighbor_side} fork yet");
                     Message::Yes(None)
                 };
 
@@ -199,7 +199,7 @@ impl Reading for Philosopher {
                     .unwrap();
             }
             Message::Yes(duration) => {
-                debug!(parent: self.node().span(), "{} won't share his fork yet", neighbor_name);
+                debug!(parent: self.node().span(), "{neighbor_name} won't share his fork yet");
 
                 let state = self.state.read().await;
                 if *state != State::Hungry(true) {
@@ -210,7 +210,7 @@ impl Reading for Philosopher {
                 }
             }
             Message::No => {
-                info!(parent: self.node().span(), "I got the fork from {}", neighbor_name);
+                info!(parent: self.node().span(), "I got the fork from {neighbor_name}");
 
                 let state = &mut *self.state.write().await;
                 if *state == State::Hungry(false) {

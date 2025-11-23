@@ -20,7 +20,7 @@ impl common::TestNode {
 
             loop {
                 if self_clone.node().num_connected() != 0 {
-                    info!(parent: self_clone.node().span(), "sending \"{}\" to all my frens", message);
+                    info!(parent: self_clone.node().span(), "sending \"{message}\" to all my frens");
                     self_clone.broadcast(bytes.clone()).unwrap();
                 } else {
                     info!(parent: self_clone.node().span(), "meh, I have no frens to chat with",);

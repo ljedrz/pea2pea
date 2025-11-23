@@ -55,7 +55,7 @@ impl Libp2pNode {
 
         let node = Node::new(Default::default());
 
-        info!(parent: node.span(), "started a node with PeerId {}", peer_id);
+        info!(parent: node.span(), "started a node with PeerId {peer_id}");
 
         Self {
             node,
@@ -265,7 +265,7 @@ impl Handshake for Libp2pNode {
         let peer_key = identity::PublicKey::try_decode_protobuf(&secure_payload.identity_key)
             .map_err(|_| io::ErrorKind::InvalidData)?;
         let peer_id = PeerId::from(peer_key);
-        info!(parent: self.node().span(), "the PeerId of {} is {}", addr, &peer_id);
+        info!(parent: self.node().span(), "the PeerId of {addr} is {peer_id}");
 
         // reconstruct the Framed with the post-handshake noise state
         let mut framed = Framed::new(
@@ -384,7 +384,7 @@ impl Reading for Libp2pNode {
                 {
                     events.push(Event::NewStream(*stream_id, payload.clone()));
                 } else {
-                    error!(parent: self.node().span(), "yamux stream {} had already been registered", stream_id);
+                    error!(parent: self.node().span(), "yamux stream {stream_id} had already been registered", );
                     return Err(io::ErrorKind::InvalidData.into());
                 }
             }
@@ -393,7 +393,7 @@ impl Reading for Libp2pNode {
                 if get_streams_mut!(self, source).remove(stream_id).is_some() {
                     events.push(Event::StreamTerminated(*stream_id));
                 } else {
-                    error!(parent: self.node().span(), "yamux stream {} is unknown", stream_id);
+                    error!(parent: self.node().span(), "yamux stream {stream_id} is unknown");
                     return Err(io::ErrorKind::InvalidData.into());
                 }
             }
@@ -405,7 +405,7 @@ impl Reading for Libp2pNode {
                 if get_streams_mut!(self, source).remove(stream_id).is_some() {
                     events.push(Event::StreamHalfClosed(*stream_id));
                 } else {
-                    error!(parent: self.node().span(), "yamux stream {} is unknown", stream_id);
+                    error!(parent: self.node().span(), "yamux stream {stream_id} is unknown");
                     return Err(io::ErrorKind::InvalidData.into());
                 }
             }
@@ -421,7 +421,7 @@ impl Reading for Libp2pNode {
                 {
                     p.clone()
                 } else {
-                    error!(parent: self.node().span(), "yamux stream {} is unknown", stream_id);
+                    error!(parent: self.node().span(), "yamux stream {stream_id} is unknown");
                     return Err(io::ErrorKind::InvalidData.into());
                 };
 
@@ -435,7 +435,7 @@ impl Reading for Libp2pNode {
                 }
             }
             flags => {
-                warn!(parent: self.node().span(), "unexpected combination of yamux flags: {:?}", flags);
+                warn!(parent: self.node().span(), "unexpected combination of yamux flags: {flags:?}");
             }
         }
 

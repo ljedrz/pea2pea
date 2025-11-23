@@ -50,7 +50,7 @@ where
 
                     let node = self_clone.clone();
                     tokio::spawn(async move {
-                        debug!(parent: node.node().span(), "shaking hands with {} as the {:?}", addr, !conn.side());
+                        debug!(parent: node.node().span(), "shaking hands with {addr} as the {:?}", !conn.side());
                         let result = timeout(
                             Duration::from_millis(Self::TIMEOUT_MS),
                             node.perform_handshake(conn),
@@ -59,22 +59,22 @@ where
 
                         let ret = match result {
                             Ok(Ok(conn)) => {
-                                debug!(parent: node.node().span(), "successfully handshaken with {}", addr);
+                                debug!(parent: node.node().span(), "successfully handshaken with {addr}");
                                 Ok(conn)
                             }
                             Ok(Err(e)) => {
-                                error!(parent: node.node().span(), "handshake with {} failed: {}", addr, e);
+                                error!(parent: node.node().span(), "handshake with {addr} failed: {e}");
                                 Err(e)
                             }
                             Err(_) => {
-                                error!(parent: node.node().span(), "handshake with {} timed out", addr);
+                                error!(parent: node.node().span(), "handshake with {addr} timed out");
                                 Err(io::ErrorKind::TimedOut.into())
                             }
                         };
 
                         // return the Connection to the Node, resuming Node::adapt_stream
                         if result_sender.send(ret).is_err() {
-                            error!(parent: node.node().span(), "couldn't return a Connection with {} from the Handshake handler", addr);
+                            error!(parent: node.node().span(), "couldn't return a Connection with {addr} from the Handshake handler");
                         }
                     });
                 }

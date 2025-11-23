@@ -61,7 +61,7 @@ impl Reading for EchoNode {
     }
 
     async fn process_message(&self, source: SocketAddr, message: Self::Message) -> io::Result<()> {
-        info!(parent: self.node().span(), "got a {:?} from {}", message, source);
+        info!(parent: self.node().span(), "got a {message:?} from {source}");
 
         if self.echoed.lock().insert(message) {
             info!(parent: self.node().span(), "it was new! echoing it");
@@ -70,7 +70,7 @@ impl Reading for EchoNode {
                 .await
                 .unwrap();
         } else {
-            debug!(parent: self.node().span(), "I've already heard {:?}! not echoing", message);
+            debug!(parent: self.node().span(), "I've already heard {message:?}! not echoing");
         }
 
         Ok(())
@@ -237,10 +237,12 @@ async fn no_writing_no_delivery() {
         == 1);
 
     // writer tries to send a message
-    assert!(writer
-        .send_dm(reader_addr, vec![0; 16].into())
-        .await
-        .is_err());
+    assert!(
+        writer
+            .send_dm(reader_addr, vec![0; 16].into())
+            .await
+            .is_err()
+    );
 
     // the writer didn't enable writing, so the reader won't receive anything
     deadline!(Duration::from_secs(1), move || reader

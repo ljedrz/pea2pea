@@ -115,8 +115,7 @@ async fn bench_spam_to_one() {
     for sender_count in &[1, 10, 20, 50, 100] {
         let throughput = run_bench_scenario(*sender_count).await;
         println!(
-            "throughput with {:>3} sender(s), 1 receiver: {}/s",
-            sender_count,
+            "throughput with {sender_count:>3} sender(s), 1 receiver: {}/s",
             common::display_bytes(throughput)
         );
         results.push(throughput);

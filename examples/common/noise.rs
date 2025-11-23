@@ -133,7 +133,7 @@ impl Decoder for Codec {
                     .0
                     .read_message(&bytes, &mut self.buffer)
                     .map_err(|e| {
-                        error!(parent: &self.span, "noise: {}; raw bytes: {:?}", e, bytes);
+                        error!(parent: &self.span, "noise error: {e}; raw bytes: {bytes:?}");
                         io::ErrorKind::InvalidData
                     })?;
 
@@ -148,10 +148,7 @@ impl Decoder for Codec {
                         .read_message(noise.rx_nonce, encrypted_chunk, &mut self.buffer)
                         .map_err(|e| {
                             let span = self.span.clone();
-                            error!(
-                                parent: &span,
-                                "noise error: {}; raw chunk: {:?}", e, encrypted_chunk
-                            );
+                            error!(parent: &span, "noise error: {e}; raw chunk: {encrypted_chunk:?}");
                             io::ErrorKind::InvalidData
                         })?;
                     noise.rx_nonce += 1;

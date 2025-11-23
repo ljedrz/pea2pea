@@ -37,9 +37,8 @@ impl Reading for Player {
 
         info!(
             parent: self.node().span(),
-            "player {} said \"{}\"{}",
+            "player {} said \"{message}\"{}",
             own_id - 1,
-            message,
             if own_id != NUM_PLAYERS - 1 { ", passing it on" } else { "" },
         );
 
@@ -83,7 +82,7 @@ async fn main() {
 
     let message = "when we can't think for ourselves, we can always quote";
 
-    info!(parent: players[0].node().span(), "psst, player {}; \"{}\", pass it on!", players[1].node().name(), message);
+    info!(parent: players[0].node().span(), "psst, player {}; \"{message}\", pass it on!", players[1].node().name());
     let _ = players[0]
         .unicast(
             players[1].node().listening_addr().await.unwrap(),

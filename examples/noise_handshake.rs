@@ -77,7 +77,7 @@ impl Reading for SecureNode {
     }
 
     async fn process_message(&self, source: SocketAddr, message: Self::Message) -> io::Result<()> {
-        info!(parent: self.node().span(), "decrypted a message from {}: {:?}", source, message);
+        info!(parent: self.node().span(), "decrypted a message from {source}: {message:?}");
 
         Ok(())
     }
