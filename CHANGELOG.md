@@ -1,9 +1,18 @@
 # 0.51.0
 
+### Added
+
+- `Reading::BACKPRESSURE`, facilitating optional backpressure
+- `Config::{allow_duplicate_connections, max_connections_per_ip}`
+
 ### Changed
 
 - dropped the dev-dependency on `once_cell`
-- due to the use of `std::sync::{LazyLock, OnceLock}` in tests and examples, the MSRV is bumped to 1.80
+- due to the use of `std::sync::{LazyLock, OnceLock}` in tests and examples, the MSRV was bumped to `1.80`
+- per-connection tasks are now placed on the heap (via `Box::pin`) in order to reduce stack use
+- not returning a `TcpStream` during a handshake no longer causes a panic (but it'll break the connection)
+- any `OnDisconnect`-related writes are now a lot less unlikely to not conclude
+- the edition was bumped to `2024`, increasing the MSRV to `1.85`
 
 # 0.50.0
 
