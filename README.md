@@ -1,43 +1,155 @@
 # pea2pea
-[![crates.io](https://img.shields.io/crates/v/pea2pea)](https://crates.io/crates/pea2pea)
-[![docs.rs](https://docs.rs/pea2pea/badge.svg)](https://docs.rs/pea2pea)
-[![dependencies](https://deps.rs/crate/pea2pea/latest/status.svg)](https://deps.rs/crate/pea2pea)
-[![actively developed](https://img.shields.io/badge/maintenance-actively--developed-brightgreen.svg)](https://gist.github.com/cheerfulstoic/d107229326a01ff0f333a1d3476e068d)
-[![issues](https://img.shields.io/github/issues-raw/ljedrz/pea2pea)](https://github.com/ljedrz/pea2pea/issues)
 
-**pea2pea** is a simple, low-level, and customizable implementation of a TCP P2P node.
+[![Crates.io](https://img.shields.io/crates/v/pea2pea.svg)](https://crates.io/crates/pea2pea)
+[![Documentation](https://docs.rs/pea2pea/badge.svg)](https://docs.rs/pea2pea)
 
-The core library only provides the most basic functionalities like starting, ending and maintaining connections; the rest is up to a few
-low-level, opt-in [protocols](https://docs.rs/pea2pea/latest/pea2pea/protocols/index.html):
-- [`Handshake`](https://docs.rs/pea2pea/latest/pea2pea/protocols/trait.Handshake.html) requires connections to adhere to the given handshake logic before anything else can be done with them
-- [`Reading`](https://docs.rs/pea2pea/latest/pea2pea/protocols/trait.Reading.html) enables the node to receive messages based on the user-supplied [Decoder](https://docs.rs/tokio-util/latest/tokio_util/codec/trait.Decoder.html)
-- [`Writing`](https://docs.rs/pea2pea/latest/pea2pea/protocols/trait.Writing.html) enables the node to send messages based on the user-supplied [Encoder](https://docs.rs/tokio-util/latest/tokio_util/codec/trait.Encoder.html)
-- [`OnDisconnect`](https://docs.rs/pea2pea/latest/pea2pea/protocols/trait.OnDisconnect.html) makes the node perform specified actions whenever a connection with a peer is severed
-- [`OnConnect`](https://docs.rs/pea2pea/latest/pea2pea/protocols/trait.OnConnect.html) makes the node perform specified actions whenever a connection with a peer is fully established (post-handshake)
+**A clean, modular, and lightweight peer-to-peer networking library for Rust.**
 
-## goals
-- small, simple, non-framework codebase: the entire library is ~1k LOC and there are few dependencies
-- ease of use: few objects and traits, no "turboeels" or generics/references that would force all parent objects to adapt
-- correctness: builds with stable Rust, there is no `unsafe` code, there's more code in `tests` than in the actual library
-- low-level: the user has full control over all connections and every byte sent or received
-- good performance: over 40GB/s (locally with a high-end desktop CPU) in favorable scenarios, small memory footprint
+`pea2pea` abstracts away the complex, low-level boilerplate of P2P networking - TCP stream handling, connection pooling, framing, and backpressure - allowing you to focus strictly on your network's logic and protocol implementation.
 
-## how to use it
-1. define a clonable struct containing a [`Node`](https://docs.rs/pea2pea/latest/pea2pea/struct.Node.html) and any extra state you'd like to carry alongside it
-2. implement the trivial [`Pea2Pea`](https://docs.rs/pea2pea/latest/pea2pea/trait.Pea2Pea.html) trait for it
-3. make it implement any/all of the [protocols](https://docs.rs/pea2pea/latest/pea2pea/protocols/index.html)
-4. create that struct (or as many of them as you like)
-5. enable the protocols you'd like them to utilize
+---
 
-That's it!
+### ⚡ Why pea2pea?
 
-## [examples](https://github.com/ljedrz/pea2pea/tree/master/examples)
+**Battle-Tested in Production.**
 
-- including [noise](https://noiseprotocol.org/noise.html) encryption, simple interop with [`libp2p`](https://crates.io/crates/libp2p), or [TLS](https://en.wikipedia.org/wiki/Transport_Layer_Security) connections
+While `pea2pea` prioritizes simplicity, it is not a toy. This library has been vendored and deployed in **high-throughput, real-world decentralized networks**, successfully managing complex topologies and heavy traffic loads in production environments.
 
-## status
-- all the desired functionalities are complete
-- the crate follows [semver](https://semver.org/), and some API breakage is still possible before `1.0`
-- the project is actively developed, with all changes being recorded in the [CHANGELOG](https://github.com/ljedrz/pea2pea/blob/master/CHANGELOG.md)
-- some of the desired features that are not yet available in Rust include [associated type defaults](https://github.com/rust-lang/rust/issues/29661)
-- the project aims to always build with the current stable Rust compiler; legacy version support is not a goal, but they might also work
+* **Simplicity First:** No complex configuration objects, massive dependency trees, or rigid frameworks.
+* **Async by Default:** Built on top of `tokio`, fully non-blocking and performant.
+* **Fast and Lightweight** Potential throughput of over 40GB/s (tested locally on a single Ryzen 9 9950X), and a single node occupies from ~20kB to ~150kB of RAM.
+* **Meticulously Tested** A comprehensive collection of tests and examples ensures correctness; there is no `unsafe` code involved.
+* **Mechanism, Not Policy:** We handle the tedious connection management; you dictate the application logic, and control **every** byte sent and received.
+
+---
+
+### 🚧 Project Status & Stability
+
+**Current State: Stable & Feature-Complete.**
+
+Despite the `0.x` versioning, `pea2pea` is considered **production-ready**. The core architecture is finished and proven.
+
+* **API Stability:** The public API is stable. We do not anticipate breaking changes.
+* **Scope:** The library is effectively in "maintenance mode" regarding features. Future development is strictly limited to **hardening internals** (e.g., improving backpressure, edge-case error handling) to ensure maximum reliability. We are not adding new features to the core.
+
+---
+
+### 🚀 Quick Start
+
+Spin up a TCP node capable of receiving messages in 37 lines of code:
+
+```rust
+use std::{io, net::SocketAddr};
+
+use pea2pea::{Config, ConnectionSide, Node, Pea2Pea, protocols::Reading};
+
+// Define your node
+#[derive(Clone)]
+struct MyNode {
+    p2p: Node,
+    // add your state here
+}
+
+// Implement the Pea2Pea trait
+impl Pea2Pea for MyNode {
+    fn node(&self) -> &Node {
+        &self.p2p
+    }
+}
+
+// Specify how to read network messages
+impl Reading for MyNode {
+    type Message = bytes::BytesMut;
+    type Codec = tokio_util::codec::LengthDelimitedCodec;
+
+    fn codec(&self, _addr: SocketAddr, _side: ConnectionSide) -> Self::Codec {
+        Default::default()
+    }
+
+    async fn process_message(&self, source: SocketAddr, _message: Self::Message) -> io::Result<()> {
+        tracing::info!(parent: self.node().span(), "received a message from {source}");
+
+        Ok(())
+    }
+}
+
+#[tokio::main]
+async fn main() -> io::Result<()> {
+    // Log events
+    tracing_subscriber::fmt::init();
+
+    // Create the node's configuration
+    let config = Config {
+        listener_addr: Some("127.0.0.1:0".parse().unwrap()),
+        ..Default::default()
+    };
+
+    // Instantiate the node
+    let node = MyNode {
+        p2p: Node::new(config),
+    };
+
+    // Start reading incoming messages according to the Reading protocol
+    node.enable_reading().await;
+
+    // Start accepting connections
+    node.p2p.toggle_listener().await?;
+
+    // Keep the node running
+    std::future::pending::<()>().await;
+
+    Ok(())
+}
+```
+
+---
+
+### ⚙️ Architecture & Customization
+
+`pea2pea` is designed around a "hooks" system. You implement specific traits (or enable built-in capabilities) to control the entire lifecycle of a connection.
+
+*(For a visual representation of the connection state machine, please refer to the **Connection Lifecycle Graph** from the [documentation](https://docs.rs/pea2pea/latest/pea2pea/protocols/index.html).*
+
+You have full control over every stage:
+
+#### 1. Connection Logic
+* **Filtering:** Reject unwanted incoming connections (e.g., IP bans, max peer counts) before they consume resources.
+* **Creation:** Define exactly when and how to establish new outbound connections.
+
+#### 2. Handshaking (Security)
+* **Authentication:** Exchange headers, keys, or magic bytes immediately after connecting.
+* **Encryption:** Wrap streams (e.g., Noise, TLS) before application data flows.
+* **Validation:** Drop connections immediately if the handshake fails.
+
+#### 3. Communication (Read/Write)
+* **Framing:** Use one of the [codecs](https://docs.rs/tokio-util/latest/tokio_util/codec/index.html#structs) from `tokio_utils` or provide your own.
+* **Protocol:** Handle incoming messages and route them to your application logic.
+* **Backpressure:** The library manages socket pressure, ensuring your node doesn't get overwhelmed.
+
+#### 4. Disconnection Logic
+* **Cleanup:** Hook into disconnect events to clean up peer state.
+* **Recovery:** Decide whether to attempt a re-connection or ban the peer based on the disconnect reason.
+
+---
+
+### 📦 Installation
+
+Add this to your `Cargo.toml`:
+
+```toml
+[dependencies]
+pea2pea = "x.x.x" # Replace with the latest version
+tokio = { version = "1", features = ["rt"] } # pick any other features you need
+```
+
+### 📚 Examples
+
+Check out the `examples/` directory for real-world usage patterns, including:
+* **Fixed Topology:** Creating a static mesh of nodes.
+* **Gossip:** Implementing a basic gossip protocol.
+* **Secure Handshake:** How to implement authentication headers.
+* **`libp2p` interop** Connect to a `libp2p` node.
+
+### 🤝 Contributing
+
+Please see [CONTRIBUTING.md](CONTRIBUTING.md) for details on our strict scope policy.
