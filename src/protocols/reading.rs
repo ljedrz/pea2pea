@@ -39,18 +39,14 @@ where
     /// The depth of per-connection queues used to process inbound messages; the greater it is, the more inbound
     /// messages the node can enqueue, but setting it to a large value can make the node more susceptible to DoS
     /// attacks.
-    ///
-    /// The default value is 64.
     const MESSAGE_QUEUE_DEPTH: usize = 64;
 
     /// Determines whether backpressure should be exerted in case the number of queued
-    /// messages reaches `MESSAGE_QUEUE_DEPTH`. Defaults to waiting.
+    /// messages reaches `MESSAGE_QUEUE_DEPTH`.
     const BACKPRESSURE: Backpressure = Backpressure::Wait;
 
     /// The initial size of a per-connection buffer for reading inbound messages. Can be set to the maximum expected size
     /// of the inbound message in order to only allocate it once.
-    ///
-    /// The default value is 64KiB.
     const INITIAL_BUFFER_SIZE: usize = 64 * 1024;
 
     /// The final (deserialized) type of inbound messages.

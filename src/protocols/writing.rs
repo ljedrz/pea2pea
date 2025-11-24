@@ -28,14 +28,10 @@ where
     /// The depth of per-connection queues used to send outbound messages; the greater it is, the more outbound
     /// messages the node can enqueue. Setting it to a large value is not recommended, as doing it might
     /// obscure potential issues with your implementation (like slow serialization) or network.
-    ///
-    /// The default value is 64.
     const MESSAGE_QUEUE_DEPTH: usize = 64;
 
     /// The initial size of a per-connection buffer for writing outbound messages. Can be set to the maximum expected size
     /// of the outbound message in order to only allocate it once.
-    ///
-    /// The default value is 64KiB.
     const INITIAL_BUFFER_SIZE: usize = 64 * 1024;
 
     /// The type of the outbound messages; unless their serialization is expensive and the message
