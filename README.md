@@ -5,21 +5,18 @@
 
 **A clean, modular, and lightweight peer-to-peer networking library for Rust.**
 
-`pea2pea` abstracts away the complex, low-level boilerplate of P2P networking - TCP stream handling, connection pooling, framing, and backpressure - allowing you to focus strictly on your network's logic and protocol implementation.
+`pea2pea` abstracts away the complex, low-level boilerplate of P2P networking - TCP stream handling, connection pooling, framing, backpressure, etc. - allowing you to focus strictly on your network's logic and protocol implementation.
 
 ---
 
 ### ⚡ Why pea2pea?
 
-**Battle-Tested in Production.**
-
-While `pea2pea` prioritizes simplicity, it is not a toy. This library has been vendored and deployed in **high-throughput, real-world decentralized networks**, successfully managing complex topologies and heavy traffic loads in production environments.
-
+* **Battle-Tested in Production:** This library has been vendored and deployed in high-throughput, real-world decentralized networks, successfully managing complex topologies and heavy traffic loads in production environments.
 * **Simplicity First:** No complex configuration objects, massive dependency trees, or rigid frameworks.
 * **Async by Default:** Built on top of `tokio`, fully non-blocking and performant.
-* **Fast and Lightweight** Potential throughput of over 40GB/s (tested locally on a single Ryzen 9 9950X), and a single node occupies from ~20kB to ~150kB of RAM.
-* **Meticulously Tested** A comprehensive collection of tests and examples ensures correctness; there is no `unsafe` code involved.
-* **Mechanism, Not Policy:** We handle the tedious connection management; you dictate the application logic, and control **every** byte sent and received.
+* **Fast and Lightweight:** The potential throughput is over 40GB/s (tested locally on a single Ryzen 9 9950X), and a single node occupies from ~20kB to ~150kB of RAM. You can run **thousands** of them locally.
+* **Meticulously Tested:** A comprehensive collection of tests and examples ensures correctness; there is no `unsafe` code involved.
+* **Complete Control:** You dictate the application logic, and control **every** byte sent and received. Use slightly altered nodes to fuzz-test and stress-test your production nodes.
 
 ---
 
@@ -30,7 +27,7 @@ While `pea2pea` prioritizes simplicity, it is not a toy. This library has been v
 Despite the `0.x` versioning, `pea2pea` is considered **production-ready**. The core architecture is finished and proven.
 
 * **API Stability:** The public API is stable. We do not anticipate breaking changes.
-* **Scope:** The library is effectively in "maintenance mode" regarding features. Future development is strictly limited to **hardening internals** (e.g., improving backpressure, edge-case error handling) to ensure maximum reliability. We are not adding new features to the core.
+* **Scope:** The library is effectively in "maintenance mode" regarding features. Future development is strictly limited to **hardening internals** to ensure maximum reliability. We are not adding new features to the core.
 
 ---
 
@@ -122,7 +119,7 @@ You have full control over every stage:
 * **Validation:** Drop connections immediately if the handshake fails.
 
 #### 3. Communication (Read/Write)
-* **Framing:** Use one of the [codecs](https://docs.rs/tokio-util/latest/tokio_util/codec/index.html#structs) from `tokio_utils` or provide your own.
+* **Framing:** Use one of the [codecs](https://docs.rs/tokio-util/latest/tokio_util/codec/index.html#structs) from `tokio_util` or provide your own.
 * **Protocol:** Handle incoming messages and route them to your application logic.
 * **Backpressure:** The library manages socket pressure, ensuring your node doesn't get overwhelmed.
 
@@ -148,7 +145,7 @@ Check out the `examples/` directory for real-world usage patterns, including:
 * **Fixed Topology:** Creating a static mesh of nodes.
 * **Gossip:** Implementing a basic gossip protocol.
 * **Secure Handshake:** How to implement authentication headers.
-* **`libp2p` interop** Connect to a `libp2p` node.
+* **`libp2p` Interop** Connect to a simple `libp2p` node.
 
 ### 🤝 Contributing
 
