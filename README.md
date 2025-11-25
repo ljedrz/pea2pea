@@ -141,11 +141,11 @@ tokio = { version = "1", features = ["rt"] } # pick any other features you need
 
 ### 📚 Examples
 
-Check out the `examples/` directory for real-world usage patterns, including:
+Check out the [examples](https://github.com/ljedrz/pea2pea/tree/master/examples) directory for real-world usage patterns, including:
 * **Fixed Topology:** Creating a static mesh of nodes.
 * **Gossip:** Implementing a basic gossip protocol.
 * **Secure Handshake:** How to implement authentication headers.
-* **`libp2p` Interop** Connect to a simple `libp2p` node.
+* **`libp2p` Interop:** Connect to a simple `libp2p` node.
 
 ### 🤝 Contributing
 

@@ -17,7 +17,7 @@ We welcome contributions that harden the existing core without expanding the API
 1.  **Bug Fixes:** Resolving panics, race conditions, or logic errors.
 2.  **Performance Improvements:** Optimizations that reduce memory footprint or CPU usage.
 3.  **Documentation:** Clarifications, typo fixes, or additional examples.
-4.  **Tests** New cases for any untested features, improvements to structure.
+4.  **Tests:** New cases for any untested features, improvements to structure.
 
 ## ❌ What We Do Not Accept
 
