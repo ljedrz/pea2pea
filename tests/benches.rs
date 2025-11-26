@@ -58,9 +58,7 @@ impl Reading for BenchNode {
         Default::default()
     }
 
-    async fn process_message(&self, _src: SocketAddr, _msg: Self::Message) -> io::Result<()> {
-        Ok(())
-    }
+    async fn process_message(&self, _src: SocketAddr, _msg: Self::Message) {}
 }
 
 async fn run_bench_scenario(sender_count: usize) -> f64 {

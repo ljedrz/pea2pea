@@ -98,10 +98,8 @@ macro_rules! impl_messaging {
                 Default::default()
             }
 
-            async fn process_message(&self, source: SocketAddr, _message: Self::Message) -> io::Result<()> {
+            async fn process_message(&self, source: SocketAddr, _message: Self::Message) {
                 info!(parent: self.node().span(), "received a message from {source}");
-
-                Ok(())
             }
         }
 

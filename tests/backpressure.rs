@@ -1,5 +1,4 @@
 use std::{
-    io,
     net::SocketAddr,
     sync::{
         Arc,
@@ -40,9 +39,8 @@ impl Reading for RealtimeNode {
     type Message = BytesMut;
     type Codec = common::TestCodec<BytesMut>;
 
-    async fn process_message(&self, _: SocketAddr, _: Self::Message) -> io::Result<()> {
+    async fn process_message(&self, _: SocketAddr, _: Self::Message) {
         self.num_processed_messages.fetch_add(1, Ordering::Relaxed);
-        Ok(())
     }
 
     fn codec(&self, _: SocketAddr, _: ConnectionSide) -> <Self as Reading>::Codec {

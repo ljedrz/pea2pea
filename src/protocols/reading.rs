@@ -93,7 +93,7 @@ where
         &self,
         source: SocketAddr,
         message: Self::Message,
-    ) -> impl Future<Output = io::Result<()>> + Send;
+    ) -> impl Future<Output = ()> + Send;
 }
 
 /// This trait is used to restrict access to methods that would otherwise be public in [`Reading`].
@@ -144,9 +144,7 @@ impl<R: Reading> ReadingInternal for R {
             }
 
             while let Some(msg) = inbound_message_receiver.recv().await {
-                if let Err(e) = self_clone.process_message(addr, msg).await {
-                    error!(parent: node.span(), "can't process a message from {addr}: {e}");
-                }
+                self_clone.process_message(addr, msg).await;
             }
         }));
         let _ = rx_processing.await;

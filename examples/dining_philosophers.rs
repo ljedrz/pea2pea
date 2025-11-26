@@ -173,7 +173,7 @@ impl Reading for Philosopher {
         Default::default()
     }
 
-    async fn process_message(&self, source: SocketAddr, message: Self::Message) -> io::Result<()> {
+    async fn process_message(&self, source: SocketAddr, message: Self::Message) {
         let (left_neighbor_addr, left_neighbor_name) = self.left_neighbor.get().unwrap();
         let (neighbor_name, neighbor_side) = if source == *left_neighbor_addr {
             (left_neighbor_name.to_owned(), "left")
@@ -222,8 +222,6 @@ impl Reading for Philosopher {
                 }
             }
         }
-
-        Ok(())
     }
 }
 

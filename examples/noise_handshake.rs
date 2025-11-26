@@ -76,10 +76,8 @@ impl Reading for SecureNode {
         noise::Codec::new(2, u16::MAX as usize, state, self.node().span().clone())
     }
 
-    async fn process_message(&self, source: SocketAddr, message: Self::Message) -> io::Result<()> {
+    async fn process_message(&self, source: SocketAddr, message: Self::Message) {
         info!(parent: self.node().span(), "decrypted a message from {source}: {message:?}");
-
-        Ok(())
     }
 }
 

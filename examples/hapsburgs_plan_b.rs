@@ -52,10 +52,10 @@ impl Reading for NakedNode {
         Default::default()
     }
 
-    async fn process_message(&self, source: SocketAddr, message: Self::Message) -> io::Result<()> {
+    async fn process_message(&self, source: SocketAddr, message: Self::Message) {
         let reply = if self.node().name() == "Drebin" {
             if message == "..." {
-                return Ok(());
+                return;
             } else {
                 "Where?"
             }
@@ -68,8 +68,6 @@ impl Reading for NakedNode {
         info!(parent: self.node().span(), "{reply}");
 
         let _ = self.unicast(source, reply.to_string()).unwrap().await;
-
-        Ok(())
     }
 }
 

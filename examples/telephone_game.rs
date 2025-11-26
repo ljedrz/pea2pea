@@ -2,7 +2,7 @@
 
 mod common;
 
-use std::{io, net::SocketAddr, time::Duration};
+use std::{net::SocketAddr, time::Duration};
 
 use pea2pea::{
     ConnectionSide, Node, Pea2Pea, Topology, connect_nodes,
@@ -31,7 +31,7 @@ impl Reading for Player {
         Default::default()
     }
 
-    async fn process_message(&self, source: SocketAddr, message: String) -> io::Result<()> {
+    async fn process_message(&self, source: SocketAddr, message: String) {
         let own_id = self.node().name().parse::<usize>().unwrap();
 
         info!(
@@ -45,10 +45,8 @@ impl Reading for Player {
 
         // there are just a maximum of 2 connections, so this is sufficient
         if let Some(addr) = connected_addrs.into_iter().find(|addr| *addr != source) {
-            let _ = self.unicast(addr, message)?.await;
+            self.unicast(addr, message).unwrap().await.unwrap().unwrap();
         }
-
-        Ok(())
     }
 }
 

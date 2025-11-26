@@ -340,8 +340,7 @@ macro_rules! get_streams_mut {
             .peer_states
             .write()
             .get_mut(&$addr)
-            .ok_or(io::ErrorKind::BrokenPipe)?
-            .streams
+            .map(|state| &mut state.streams)
     };
 }
 
@@ -363,7 +362,7 @@ impl Reading for Libp2pNode {
         )
     }
 
-    async fn process_message(&self, source: SocketAddr, message: Self::Message) -> io::Result<()> {
+    async fn process_message(&self, source: SocketAddr, message: Self::Message) {
         info!(parent: self.node().span(), "received a {:?}", message);
 
         // deconstruct the yamux frame
@@ -379,22 +378,23 @@ impl Reading for Libp2pNode {
             &[yamux::Flag::Syn] => {
                 // a new stream is being created
                 if get_streams_mut!(self, source)
-                    .insert(*stream_id, payload.clone())
+                    .and_then(|streams| streams.insert(*stream_id, payload.clone()))
                     .is_none()
                 {
                     events.push(Event::NewStream(*stream_id, payload.clone()));
                 } else {
                     error!(parent: self.node().span(), "yamux stream {stream_id} had already been registered", );
-                    return Err(io::ErrorKind::InvalidData.into());
                 }
             }
             &[yamux::Flag::Rst] => {
                 // a stream is being terminated
-                if get_streams_mut!(self, source).remove(stream_id).is_some() {
+                if get_streams_mut!(self, source)
+                    .and_then(|streams| streams.remove(stream_id))
+                    .is_some()
+                {
                     events.push(Event::StreamTerminated(*stream_id));
                 } else {
                     error!(parent: self.node().span(), "yamux stream {stream_id} is unknown");
-                    return Err(io::ErrorKind::InvalidData.into());
                 }
             }
             &[yamux::Flag::Ack] => {
@@ -402,11 +402,13 @@ impl Reading for Libp2pNode {
             }
             &[yamux::Flag::Fin] => {
                 // a stream is being half-closed
-                if get_streams_mut!(self, source).remove(stream_id).is_some() {
+                if get_streams_mut!(self, source)
+                    .and_then(|streams| streams.remove(stream_id))
+                    .is_some()
+                {
                     events.push(Event::StreamHalfClosed(*stream_id));
                 } else {
                     error!(parent: self.node().span(), "yamux stream {stream_id} is unknown");
-                    return Err(io::ErrorKind::InvalidData.into());
                 }
             }
             &[] => {
@@ -415,14 +417,12 @@ impl Reading for Libp2pNode {
                     .peer_states
                     .read()
                     .get(&source)
-                    .ok_or(io::ErrorKind::BrokenPipe)?
-                    .streams
-                    .get(stream_id)
+                    .and_then(|source| source.streams.get(stream_id))
                 {
                     p.clone()
                 } else {
                     error!(parent: self.node().span(), "yamux stream {stream_id} is unknown");
-                    return Err(io::ErrorKind::InvalidData.into());
+                    Default::default()
                 };
 
                 if protocol == PROTOCOL_PING {
@@ -440,10 +440,10 @@ impl Reading for Libp2pNode {
         }
 
         for event in events {
-            self.process_event(event, source).await?;
+            if let Err(e) = self.process_event(event, source).await {
+                error!("Couldn't process an event: {e}");
+            }
         }
-
-        Ok(())
     }
 }
 

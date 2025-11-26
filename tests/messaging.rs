@@ -60,7 +60,7 @@ impl Reading for EchoNode {
         Default::default()
     }
 
-    async fn process_message(&self, source: SocketAddr, message: Self::Message) -> io::Result<()> {
+    async fn process_message(&self, source: SocketAddr, message: Self::Message) {
         info!(parent: self.node().span(), "got a {message:?} from {source}");
 
         if self.echoed.lock().insert(message) {
@@ -72,8 +72,6 @@ impl Reading for EchoNode {
         } else {
             debug!(parent: self.node().span(), "I've already heard {message:?}! not echoing");
         }
-
-        Ok(())
     }
 }
 

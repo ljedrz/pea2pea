@@ -153,7 +153,7 @@ impl Reading for Player {
         Default::default()
     }
 
-    async fn process_message(&self, _source: SocketAddr, message: Self::Message) -> io::Result<()> {
+    async fn process_message(&self, _source: SocketAddr, message: Self::Message) {
         match message {
             Message::HotPotato => {
                 info!(parent: self.node().span(), "I have the potato!");
@@ -180,8 +180,6 @@ impl Reading for Player {
                 }
             }
         }
-
-        Ok(())
     }
 }
 

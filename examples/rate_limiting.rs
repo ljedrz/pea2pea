@@ -2,7 +2,7 @@
 
 mod common;
 
-use std::{io, net::SocketAddr, time::Duration};
+use std::{net::SocketAddr, time::Duration};
 
 use bytes::{Bytes, BytesMut};
 use pea2pea::{
@@ -32,9 +32,7 @@ impl Reading for GenericNode {
     }
 
     // no extra message processing is required, connection stats are automatic
-    async fn process_message(&self, _source: SocketAddr, _message: BytesMut) -> io::Result<()> {
-        Ok(())
-    }
+    async fn process_message(&self, _source: SocketAddr, _message: BytesMut) {}
 }
 
 impl Writing for GenericNode {

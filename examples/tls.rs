@@ -100,10 +100,8 @@ impl Reading for TlsNode {
         Default::default()
     }
 
-    async fn process_message(&self, source: SocketAddr, message: Self::Message) -> io::Result<()> {
+    async fn process_message(&self, source: SocketAddr, message: Self::Message) {
         info!(parent: self.node().span(), "read some bytes from {source}: {message:?}");
-
-        Ok(())
     }
 }
 

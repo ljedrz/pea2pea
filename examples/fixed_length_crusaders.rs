@@ -94,11 +94,7 @@ impl Reading for JoJoNode {
         SingleByteCodec
     }
 
-    async fn process_message(
-        &self,
-        source: SocketAddr,
-        battle_cry: Self::Message,
-    ) -> io::Result<()> {
+    async fn process_message(&self, source: SocketAddr, battle_cry: Self::Message) {
         let reply = match battle_cry {
             BattleCry::Ora => BattleCry::Muda,
             BattleCry::Muda => BattleCry::Ora,
@@ -111,8 +107,6 @@ impl Reading for JoJoNode {
         };
 
         let _ = self.unicast(source, reply).unwrap().await;
-
-        Ok(())
     }
 }
 
