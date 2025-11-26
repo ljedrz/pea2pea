@@ -559,28 +559,21 @@ impl Node {
     }
 }
 
-// FIXME: this can probably be done more elegantly
 /// Creates the node's tracing span based on its name.
 fn create_span(node_name: &str) -> Span {
-    let mut span = trace_span!("node", name = node_name);
-    if !span.is_disabled() {
-        return span;
-    } else {
-        span = debug_span!("node", name = node_name);
+    macro_rules! try_span {
+        ($lvl:expr) => {
+            let s = span!($lvl, "node", name = node_name);
+            if !s.is_disabled() {
+                return s;
+            }
+        };
     }
-    if !span.is_disabled() {
-        return span;
-    } else {
-        span = info_span!("node", name = node_name);
-    }
-    if !span.is_disabled() {
-        return span;
-    } else {
-        span = warn_span!("node", name = node_name);
-    }
-    if !span.is_disabled() {
-        span
-    } else {
-        error_span!("node", name = node_name)
-    }
+
+    try_span!(Level::TRACE);
+    try_span!(Level::DEBUG);
+    try_span!(Level::INFO);
+    try_span!(Level::WARN);
+
+    error_span!("node", name = node_name)
 }
