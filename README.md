@@ -26,7 +26,7 @@
 
 Despite the `0.x` versioning, `pea2pea` is considered **production-ready**. The core architecture is finished and proven.
 
-* **API Stability:** The public API is stable. We do not anticipate breaking changes.
+* **API Stability:** The public API is stable. We do not anticipate breaking changes unless there's a **very** good reason to do so.
 * **Scope:** The library is effectively in "maintenance mode" regarding features. Future development is strictly limited to **hardening internals** to ensure maximum reliability. We are not adding new features to the core.
 
 ---

@@ -1,3 +1,29 @@
+# 0.52.0
+
+### Added
+
+- many test cases and additional docs
+
+### Changed
+
+- `Reading::process_message` no longer returns a value; its working context is opaque to the user,
+so it wasn't really practical; not to mention that it had forced the user to adhere to its error
+type (`io::Error`)
+
+### Fixed
+
+- the stream reading loop now breaks and no longer leaks in case `Reading::process_message` panics
+- `Node::toggle_listener` no longer panics when `Config::listening_add` is set to `None`; this is
+technically not a fix, as it had always been documented, but it's a superior behavior to not panic
+regardless
+- concurrent duplicate calls to `Node::disconnect` will no longer be able to trigger `OnDisconnect`
+more than once
+
+### Removed
+
+- `Config::fatal_io_errors` - while it was useful back when it had been introduced, `tokio_util` no
+longer allows a `Stream` to be read after an error has been encountered, so it doesn't work anymore
+
 # 0.51.0
 
 ### Added
