@@ -60,6 +60,10 @@ pub(crate) enum NodeTask {
 }
 
 /// The central object responsible for handling connections.
+///
+/// note: Due to the architecture of protocol handlers capturing the node, a reference cycle exists
+/// that prevents the Node from being dropped automatically. You must call [`Node::shut_down`] when
+/// you are finished with a node to ensure all background tasks are aborted and sockets are closed.
 #[derive(Clone)]
 pub struct Node(Arc<InnerNode>);
 
