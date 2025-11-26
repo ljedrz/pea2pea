@@ -174,11 +174,15 @@ impl<R: Reading> ReadingInternal for R {
                             true => {
                                 if let Err(e) = inbound_message_sender.send(msg).await {
                                     error!(parent: node.span(), "can't process a message from {addr}: {e}");
+                                    break;
                                 }
                             }
                             false => {
                                 if let Err(e) = inbound_message_sender.try_send(msg) {
                                     error!(parent: node.span(), "can't process a message from {addr}: {e}");
+                                    if matches!(e, mpsc::error::TrySendError::Closed(_)) {
+                                        break;
+                                    }
                                 }
                             }
                         }
