@@ -5,7 +5,7 @@ use tracing::*;
 
 #[cfg(doc)]
 use crate::{
-    Connection,
+    Connection, Node,
     protocols::{Handshake, OnDisconnect, Reading, Writing},
 };
 use crate::{Pea2Pea, node::NodeTask, protocols::ProtocolHandler};
@@ -21,6 +21,10 @@ where
 {
     /// Attaches the behavior specified in [`OnConnect::on_connect`] right after every successful
     /// handshake.
+    ///
+    /// note: If you are initiating the connection via [`Node::connect`], it will not return
+    /// until this hook completes. If you need this to happen in the background, spawn a task
+    /// within your implementation.
     fn enable_on_connect(&self) -> impl Future<Output = ()> {
         async {
             let (from_node_sender, mut from_node_receiver) =

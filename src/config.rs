@@ -17,6 +17,10 @@ pub struct Config {
     /// The socket address the node's connection listener should bind to.
     ///
     /// note: If set to `None`, the node will not listen for inbound connections at all.
+    ///
+    /// note: This is a configuration directive, not a live status. If set to `127.0.0.1:0`,
+    /// the actual bound port will differ. Always use [`Node::listening_addr`] to retrieve the
+    /// active runtime address.
     pub listener_addr: Option<SocketAddr>,
     /// The maximum number of active connections the node can maintain at any given time.
     ///

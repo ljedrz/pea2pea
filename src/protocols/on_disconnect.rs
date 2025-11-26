@@ -5,7 +5,7 @@ use tracing::*;
 
 #[cfg(doc)]
 use crate::{
-    Connection,
+    Connection, Node,
     protocols::{Reading, Writing},
 };
 use crate::{Pea2Pea, node::NodeTask, protocols::ProtocolHandler};
@@ -24,6 +24,10 @@ where
 {
     /// Attaches the behavior specified in [`OnDisconnect::on_disconnect`] to every occurrence of the
     /// node disconnecting from a peer.
+    ///
+    /// note: This hook is executed before the connection is fully removed from the node's internal
+    /// state. Calls to [`Node::disconnect`] will wait for it to complete, ensuring that any
+    /// necessary cleanup (e.g., notifying a database) is finished before the function returns.
     fn enable_on_disconnect(&self) -> impl Future<Output = ()> {
         async {
             let (from_node_sender, mut from_node_receiver) =
