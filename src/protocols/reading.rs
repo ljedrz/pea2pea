@@ -22,8 +22,7 @@ use crate::{
 ///
 /// Each inbound message is isolated by the user-supplied [`Reading::Codec`], creating a [`Reading::Message`],
 /// which is immediately queued (with a [`Reading::MESSAGE_QUEUE_DEPTH`] limit) to be processed by
-/// [`Reading::process_message`]. The configured fatal IO errors result in an immediate disconnect
-/// (in order to e.g. avoid accidentally reading "borked" messages).
+/// [`Reading::process_message`].
 pub trait Reading: Pea2Pea
 where
     Self: Clone + Send + Sync + 'static,
@@ -188,9 +187,6 @@ impl<R: Reading> ReadingInternal for R {
                     }
                     Err(e) => {
                         error!(parent: node.span(), "can't read from {addr}: {e}");
-                        if node.config().fatal_io_errors.contains(&e.kind()) {
-                            break;
-                        }
                     }
                 }
             }

@@ -1,7 +1,4 @@
-use std::{
-    io::{self, ErrorKind::*},
-    net::{IpAddr, Ipv4Addr, SocketAddr},
-};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
 #[cfg(doc)]
 use crate::{
@@ -21,10 +18,6 @@ pub struct Config {
     ///
     /// note: If set to `None`, the node will not listen for inbound connections at all.
     pub listener_addr: Option<SocketAddr>,
-    /// The list of IO errors considered fatal and causing the connection to be dropped.
-    ///
-    /// note: The node needs to implement the [`Reading`] and/or [`Writing`] protocol in order for it to have any effect.
-    pub fatal_io_errors: Vec<io::ErrorKind>,
     /// The maximum number of active connections the node can maintain at any given time.
     ///
     /// note: This number can very briefly be breached by 1 in case of inbound connection attempts. It can never be
@@ -48,13 +41,6 @@ impl Default for Config {
             listener_addr: Some((IpAddr::V4(Ipv4Addr::UNSPECIFIED), 0).into()),
             #[cfg(feature = "test")]
             listener_addr: Some((IpAddr::V4(Ipv4Addr::LOCALHOST), 0).into()),
-            fatal_io_errors: vec![
-                ConnectionReset,
-                ConnectionAborted,
-                BrokenPipe,
-                InvalidData,
-                UnexpectedEof,
-            ],
             max_connections: 100,
             #[cfg(not(feature = "test"))]
             max_connections_per_ip: 1,
