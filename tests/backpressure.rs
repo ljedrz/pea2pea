@@ -9,6 +9,7 @@ use std::{
 };
 
 use bytes::{Bytes, BytesMut};
+use deadline::deadline;
 use tokio::time::sleep;
 
 mod common;
@@ -51,7 +52,7 @@ impl Reading for RealtimeNode {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn drops_messages_wo_backpressure() {
-    const MSGS_TO_SEND: u8 = 10;
+    const MSGS_TO_SEND: u8 = 25;
 
     let rt_node = RealtimeNode {
         node: Node::new(Config {
@@ -69,13 +70,17 @@ async fn drops_messages_wo_backpressure() {
     fast_node.node().connect(rt_node_addr).await.unwrap();
 
     for _ in 0..MSGS_TO_SEND {
-        fast_node
-            .unicast(rt_node_addr, (&b"gotta go fast!"[..]).into())
-            .unwrap();
+        let _ = fast_node.unicast(rt_node_addr, (&b"gotta go fast!"[..]).into());
     }
 
     // ensure that the realtime node has time to attempt to process everything
-    sleep(Duration::from_millis(100)).await;
+    let rt_node_clone = rt_node.clone();
+    deadline!(Duration::from_secs(5), move || rt_node_clone
+        .node()
+        .stats()
+        .received()
+        .0
+        == MSGS_TO_SEND as u64);
 
     // the number of processed messages should be lower than that of sent messages
     let processed = rt_node.num_processed_messages.load(Ordering::Relaxed);
