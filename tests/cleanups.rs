@@ -14,11 +14,11 @@ use crate::common::WritingExt;
 
 impl_noop_disconnect_and_handshake!(common::TestNode);
 
+#[global_allocator]
+static PEAK_ALLOC: PeakAlloc = PeakAlloc;
+
 #[tokio::test]
 async fn check_node_cleanups() {
-    #[global_allocator]
-    static PEAK_ALLOC: PeakAlloc = PeakAlloc;
-
     const NUM_CONNS: usize = 100;
 
     // register heap use before node setup
