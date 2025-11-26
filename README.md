@@ -33,7 +33,7 @@ Despite the `0.x` versioning, `pea2pea` is considered **production-ready**. The 
 
 ### 🚀 Quick Start
 
-Spin up a TCP node capable of receiving messages in 37 lines of code:
+Spin up a TCP node capable of receiving messages in 36 lines of code:
 
 ```rust
 use std::{io, net::SocketAddr};
@@ -63,10 +63,8 @@ impl Reading for MyNode {
         Default::default()
     }
 
-    async fn process_message(&self, source: SocketAddr, _message: Self::Message) -> io::Result<()> {
+    async fn process_message(&self, source: SocketAddr, _message: Self::Message) {
         tracing::info!(parent: self.node().span(), "received a message from {source}");
-
-        Ok(())
     }
 }
 
