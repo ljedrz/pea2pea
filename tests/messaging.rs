@@ -160,6 +160,11 @@ async fn drop_connection_on_invalid_message() {
         .node()
         .num_connected()
         == 0);
+
+    // make sure that a disconnected peer is properly cleaned up
+    writer.node().disconnect(reader_addr).await;
+    let result = writer.unicast(reader_addr, (&b"are you still there?"[..]).into());
+    assert_eq!(result.unwrap_err().kind(), io::ErrorKind::NotConnected);
 }
 
 #[tokio::test]
