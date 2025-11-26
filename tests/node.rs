@@ -12,7 +12,7 @@ use std::{
         Arc,
         atomic::{AtomicUsize, Ordering::Relaxed},
     },
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use pea2pea::{Config, Node, Pea2Pea, Topology, connect_nodes, protocols::Handshake};
@@ -262,6 +262,68 @@ async fn node_connectee_per_ip_conn_limit_breach_fails() {
         == 1);
 }
 
+#[tokio::test]
+async fn max_connections_per_ip_is_distinct() {
+    let config = Config {
+        name: Some("server".into()),
+        max_connections_per_ip: 1,
+        max_connections: 10, // ensure only per-IP limit triggers
+        ..Default::default()
+    };
+    let server = Node::new(config);
+    let server_addr = server.toggle_listener().await.unwrap().unwrap();
+
+    // connector A (default IP: 127.0.0.1)
+    let connector_a1 = Node::new(Default::default());
+    connector_a1.connect(server_addr).await.unwrap();
+
+    // wait for A1 to connect
+    let server_clone = server.clone();
+    deadline!(Duration::from_millis(500), move || server_clone
+        .num_connected()
+        == 1);
+
+    // connector A2 (default IP: 127.0.0.1) -> should fail (limit reached for this IP)
+    let connector_a2 = Node::new(Default::default());
+    connector_a2.connect(server_addr).await.unwrap();
+
+    // connector B (spoofed IP: 127.0.0.2) -> should succeed (different IP)
+    // note: the loopback interface (lo) typically accepts the entire 127.0.0.0/8 block;
+    //       we bind explicitly to 127.0.0.2 to simulate a different machine.
+    let socket = TcpSocket::new_v4().unwrap();
+    // verify OS allows binding to non-127.0.0.1 loopback (usually works)
+    if socket.bind("127.0.0.2:0".parse().unwrap()).is_ok() {
+        let connector_b = Node::new(Default::default());
+        connector_b
+            .connect_using_socket(server_addr, socket)
+            .await
+            .unwrap();
+
+        // total connections should be 2:
+        // - one from 127.0.0.1 (A1)
+        // - one from 127.0.0.2 (B)
+        // - A2 should have been dropped
+        let server_clone = server.clone();
+        deadline!(Duration::from_millis(500), move || server_clone
+            .num_connected()
+            == 2);
+
+        // verify specifically who is connected
+        let connected_ips: Vec<_> = server
+            .connected_addrs()
+            .iter()
+            .map(|a| a.ip().to_string())
+            .collect();
+        assert!(connected_ips.contains(&"127.0.0.1".to_string()));
+        assert!(connected_ips.contains(&"127.0.0.2".to_string()));
+    } else {
+        println!("Skipping 127.0.0.2 test portion due to OS binding restrictions");
+        // fallback: just assert A2 failed (num_connected stays 1)
+        deadline!(Duration::from_millis(500), move || server.num_connected()
+            == 1);
+    }
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn node_overlapping_duplicate_connection_attempts_fail() {
     const NUM_ATTEMPTS: usize = 5;
@@ -303,4 +365,39 @@ async fn test_nodes_use_localhost() {
     let addr = node.toggle_listener().await.unwrap().unwrap();
 
     assert_eq!(addr.ip(), Ipv4Addr::LOCALHOST);
+}
+
+#[tokio::test]
+async fn connection_timeout_works() {
+    // configure a very short connection timeout (200ms)
+    let config = Config {
+        name: Some("impatient".into()),
+        connection_timeout_ms: 200,
+        ..Default::default()
+    };
+    let node = Node::new(config);
+
+    // attempt to connect to a non-routable IP (TEST-NET-1)
+    // 192.0.2.x is reserved for documentation and examples; it should typically blackhole
+    // or at least not respond with a TCP RST immediately, triggering the timeout logic
+    let blackhole_addr = "192.0.2.1:1234".parse().unwrap();
+
+    let start = Instant::now();
+
+    // perform the connection attempt
+    let result = node.connect(blackhole_addr).await;
+
+    let elapsed = start.elapsed();
+
+    // verify the result
+    assert!(result.is_err());
+    let err = result.unwrap_err();
+
+    // check that it is indeed a TimedOut error, not a "Network Unreachable" or "Refused"
+    assert_eq!(err.kind(), io::ErrorKind::TimedOut);
+
+    // verify the timing
+    // OS TCP timeouts are usually 30s+, so if this finishes in <1s, we know our logic worked
+    assert!(elapsed >= Duration::from_millis(200));
+    assert!(elapsed < Duration::from_secs(2));
 }
