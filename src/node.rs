@@ -158,10 +158,10 @@ impl Node {
 
             Ok(None)
         } else {
-            let listener_addr = self
-                .config()
-                .listener_addr
-                .expect("the listener was toggled on, but Config::listener_addr is not set");
+            let listener_addr = self.config().listener_addr.ok_or_else(|| {
+                error!("the listener was toggled on, but Config::listener_addr is not set");
+                io::ErrorKind::AddrNotAvailable
+            })?;
             let listener = TcpListener::bind(listener_addr).await?;
             let port = listener.local_addr()?.port(); // discover the port if it was unspecified
             let new_listening_addr = (listener_addr.ip(), port).into();
