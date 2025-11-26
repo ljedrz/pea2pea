@@ -1,6 +1,11 @@
 //! Objects associated with connection handling.
 
-use std::{collections::HashMap, net::SocketAddr, ops::Not, sync::Arc};
+use std::{
+    collections::HashMap,
+    net::SocketAddr,
+    ops::Not,
+    sync::{Arc, atomic::AtomicBool},
+};
 
 use parking_lot::RwLock;
 use tokio::{
@@ -16,7 +21,7 @@ use crate::Stats;
 use crate::protocols::{Handshake, Reading, Writing};
 
 #[derive(Default)]
-pub(crate) struct Connections(RwLock<HashMap<SocketAddr, Connection>>);
+pub(crate) struct Connections(pub(crate) RwLock<HashMap<SocketAddr, Connection>>);
 
 impl Connections {
     pub(crate) fn add(&self, conn: Connection) {
@@ -126,6 +131,8 @@ pub struct Connection {
     pub(crate) writer: Option<Box<dyn AW>>,
     /// Used to notify the [`Reading`] protocol that the connection is fully ready.
     pub(crate) readiness_notifier: Option<oneshot::Sender<()>>,
+    /// Prevents the OnDisconnect hook from being triggered multiple times.
+    pub(crate) disconnecting: AtomicBool,
     /// Handles to tasks spawned for the connection.
     pub(crate) tasks: Vec<JoinHandle<()>>,
 }
@@ -143,6 +150,7 @@ impl Connection {
             reader: None,
             writer: None,
             readiness_notifier: None,
+            disconnecting: Default::default(),
             tasks: Default::default(),
         }
     }

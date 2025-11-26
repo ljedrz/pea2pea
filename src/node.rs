@@ -421,16 +421,23 @@ impl Node {
 
     /// Disconnects from the provided `SocketAddr`; returns `true` if an actual disconnect took place.
     pub async fn disconnect(&self, addr: SocketAddr) -> bool {
+        // claim the disconnect to avoid duplicate executions, or return early if already claimed
+        if let Some(conn) = self.connections.0.read().get(&addr) {
+            if conn.disconnecting.swap(true, Relaxed) {
+                // valid connection, but someone else is already disconnecting it
+                return false;
+            }
+        } else {
+            // not connected
+            return false;
+        };
+
         // if the OnDisconnect protocol is enabled, trigger it
         if let Some(handler) = self.protocols.on_disconnect.get() {
-            // only do so if the connection is still present; this check is necessary, because Node::disconnect
-            // can be called manually and triggered by both the Reading and Writing protocols
-            if self.is_connected(addr) {
-                let (sender, receiver) = oneshot::channel();
-                handler.trigger((addr, sender));
-                // wait for the OnDisconnect protocol to perform its specified actions
-                let _ = receiver.await; // can't really fail
-            }
+            let (sender, receiver) = oneshot::channel();
+            handler.trigger((addr, sender));
+            // wait for the OnDisconnect protocol to perform its specified actions
+            let _ = receiver.await; // can't really fail
         }
 
         // as soon as the OnDisconnect protocol does its job, remove the connection from the list of the active
