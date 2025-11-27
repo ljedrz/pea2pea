@@ -1,13 +1,17 @@
 use bytes::{Bytes, BytesMut};
 use deadline::deadline;
 use rand::{Rng, SeedableRng, distr::StandardUniform, rngs::SmallRng};
+use tokio::sync::{Barrier, Notify};
 use tokio_util::codec::Decoder;
 
 mod common;
 use std::{
     io,
     net::SocketAddr,
-    sync::LazyLock,
+    sync::{
+        Arc, LazyLock,
+        atomic::{AtomicUsize, Ordering},
+    },
     time::{Duration, Instant},
 };
 
@@ -20,7 +24,7 @@ use crate::common::WritingExt;
 
 impl_noop_disconnect_and_handshake!(common::TestNode);
 
-const NUM_MESSAGES: usize = 10_000;
+const NUM_MESSAGES: usize = 100_000;
 const MSG_SIZE: usize = 32 * 1024;
 
 static RANDOM_BYTES: LazyLock<Bytes> = LazyLock::new(|| {
@@ -42,11 +46,16 @@ impl Decoder for common::TestCodec<()> {
 }
 
 #[derive(Clone)]
-struct BenchNode(Node);
+struct BenchNode {
+    node: Node,
+    counter: Arc<AtomicUsize>,
+    done: Arc<Notify>,
+    expected_count: usize,
+}
 
 impl Pea2Pea for BenchNode {
     fn node(&self) -> &Node {
-        &self.0
+        &self.node
     }
 }
 
@@ -58,7 +67,23 @@ impl Reading for BenchNode {
         Default::default()
     }
 
-    async fn process_message(&self, _src: SocketAddr, _msg: Self::Message) {}
+    async fn process_message(&self, _src: SocketAddr, _msg: Self::Message) {
+        let prev = self.counter.fetch_add(1, Ordering::Relaxed);
+        if prev + 1 == self.expected_count {
+            self.done.notify_one();
+        }
+    }
+}
+
+// a helper to wait for connections without counting them in the bench time
+async fn wait_for_connections(node: &Node, expected: usize) {
+    let start = Instant::now();
+    while node.num_connected() < expected {
+        if start.elapsed() > Duration::from_secs(5) {
+            panic!("timed out waiting for connections");
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
 }
 
 async fn run_bench_scenario(sender_count: usize) -> f64 {
@@ -68,7 +93,16 @@ async fn run_bench_scenario(sender_count: usize) -> f64 {
         sender.enable_writing().await;
     }
 
-    let receiver = BenchNode(Node::new(Default::default()));
+    let total_messages = sender_count * NUM_MESSAGES;
+    let done_notify = Arc::new(Notify::new());
+
+    let receiver = BenchNode {
+        node: Node::new(Default::default()),
+        counter: Default::default(),
+        done: done_notify.clone(),
+        expected_count: total_messages,
+    };
+
     receiver.enable_reading().await;
     let receiver_addr = receiver.node().toggle_listener().await.unwrap().unwrap();
 
@@ -76,29 +110,47 @@ async fn run_bench_scenario(sender_count: usize) -> f64 {
         sender.node().connect(receiver_addr).await.unwrap();
     }
 
-    let receiver_clone = receiver.clone();
-    deadline!(Duration::from_secs(10), move || receiver_clone
-        .node()
-        .num_connected()
-        == sender_count);
+    // wait for connections to stabilize (warmup)
+    wait_for_connections(receiver.node(), sender_count).await;
 
-    let start = Instant::now();
+    // prepare the Barrier (senders + the main thread)
+    let start_barrier = Arc::new(Barrier::new(sender_count + 1));
+
+    // spawn senders
     for sender in senders {
+        let barrier = start_barrier.clone();
         tokio::spawn(async move {
-            for _ in 0..NUM_MESSAGES {
-                sender
-                    .send_dm(receiver_addr, RANDOM_BYTES.clone())
-                    .await
-                    .unwrap();
+            // wait for the gun
+            barrier.wait().await;
+
+            // blast
+            for i in 0..NUM_MESSAGES {
+                // check if this is the last message of a batch
+                if (i + 1) % BenchNode::MESSAGE_QUEUE_DEPTH == 0 {
+                    // sync point: wait until the Writing task has flushed this message
+                    // (and all prior ones) to the socket
+                    sender
+                        .send_dm(receiver_addr, crate::RANDOM_BYTES.clone())
+                        .await
+                        .unwrap();
+                } else {
+                    // fast path: ignore the returned Receiver to avoid overhead, but
+                    // unwrap to make sure that the message isn't dropped
+                    #[allow(clippy::let_underscore_future)]
+                    let _ = sender
+                        .unicast(receiver_addr, crate::RANDOM_BYTES.clone())
+                        .unwrap();
+                }
             }
         });
     }
 
-    let receiver_clone = receiver.clone();
-    deadline!(
-        Duration::from_secs(10),
-        move || receiver_clone.node().stats().received().0 as usize == sender_count * NUM_MESSAGES
-    );
+    // start the clock after synchronizing with the senders
+    start_barrier.wait().await;
+    let start = Instant::now();
+
+    // wait for the "done" signal
+    done_notify.notified().await;
 
     let time_elapsed = start.elapsed().as_millis();
     let bytes_received = receiver.node().stats().received().1;
@@ -109,7 +161,7 @@ async fn run_bench_scenario(sender_count: usize) -> f64 {
 #[ignore]
 #[tokio::test(flavor = "multi_thread")]
 async fn bench_spam_to_one() {
-    let mut results = Vec::with_capacity(4);
+    let mut results = Vec::with_capacity(5);
     for sender_count in &[1, 10, 20, 50, 100] {
         let throughput = run_bench_scenario(*sender_count).await;
         println!(
