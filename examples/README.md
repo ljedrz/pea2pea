@@ -23,6 +23,7 @@ These examples demonstrate standard infrastructure patterns, security integratio
 | :--- | :--- | :--- |
 | **[Noise Handshake](noise_handshake.rs)** | Implements a secure Noise_XX_25519 handshake using the `snow` library to encrypt all traffic between nodes. | Encryption, Stream Hijacking, Snow Library Integration |
 | **[Rate Limiting](rate_limiting.rs)** | A node that tracks peer statistics (messages/sec) and automatically disconnects peers that exceed a spam threshold. | Stats Tracking, Ban Logic, Traffic Analysis |
+| **[Simple RPC](simple_rpc.rs)** | Implements a request/response pattern over raw TCP using correlation IDs to map replies to callers. | Request/Response, Correlation IDs, Manual Protocol |
 | **[TLS](tls.rs)** | Wraps the underlying TCP stream in a TLS layer using `native-tls`, enabling secure, standard encrypted communication. | Encryption, Stream Wrapping, Native-TLS |
 
 ## 🧠 Advanced & Stress Tests
