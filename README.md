@@ -11,8 +11,8 @@
 
 - [⚡ Why pea2pea?](#-why-pea2pea)
 - [🚀 Quick Start](#-quick-start)
-- [⚙️ Architecture](#-architecture)
-- [🛡️ Security](#-security)
+- [🧩 Architecture](#-architecture)
+- [🔒 Security](#-security)
 - [🏁 Benchmarking](#-benchmarking)
 - [📚 Examples](#-examples)
 - [📦 Installation](#-installation)
@@ -101,7 +101,7 @@ async fn main() -> io::Result<()> {
 
 ---
 
-### ⚙️ Architecture
+### 🧩 Architecture
 
 `pea2pea` operates on a **modular "hooks" system**. You control the connection lifecycle by implementing specific traits, while the library handles the low-level async plumbing.
 
@@ -116,7 +116,7 @@ For full details, refer to the **[protocols documentation](https://docs.rs/pea2p
 
 ---
 
-### 🛡️ Security
+### 🔒 Security
 
 `pea2pea` is built to survive the hostile internet. Its architecture naturally mitigates common denial-of-service vectors without requiring complex configuration:
 
