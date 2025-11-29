@@ -4,7 +4,8 @@
 //! When a node detects a beacon from a peer, it automatically establishes
 //! a TCP connection using `pea2pea`.
 //!
-//! Run this example in two or more different terminal windows to see them find each other!
+//! Run this example in two or more different terminal windows or computers
+//! in your local network to see them find each other!
 
 mod common;
 
@@ -98,10 +99,10 @@ impl DiscoveryNode {
                 buf.put_slice(MAGIC_BYTES);
                 buf.put_u16(tcp_port);
 
-                // We broadcast to every port in the range to ensure we hit
-                // whatever port the other nodes happened to bind to.
+                // we broadcast to every port in the range to ensure we hit
+                // whatever port the other nodes happened to bind to
                 for target_port in DISCOVERY_PORT_RANGE {
-                    // Skip sending to ourselves if we are running on localhost
+                    // skip sending to ourselves if we are running on localhost
                     if target_port == my_discovery_port {
                         continue;
                     }
@@ -151,18 +152,14 @@ impl DiscoveryNode {
                         {
                             info!(parent: node.node().span(), "✨ discovered peer at {peer_tcp_addr}!");
 
-                            let node_clone = node.clone();
-                            tokio::spawn(async move {
-                                match node_clone.node().connect(peer_tcp_addr).await {
-                                    Ok(_) => {
-                                        let _ =
-                                            node_clone.unicast(peer_tcp_addr, "I see you!".into());
-                                    }
-                                    Err(e) => {
-                                        error!("Couldn't connect to {peer_tcp_addr}: {e}");
-                                    }
+                            match node.node().connect(peer_tcp_addr).await {
+                                Ok(_) => {
+                                    let _ = node.unicast(peer_tcp_addr, "I see you!".into());
                                 }
-                            });
+                                Err(e) => {
+                                    error!("Couldn't connect to {peer_tcp_addr}: {e}");
+                                }
+                            }
                         }
                     }
                     Err(e) => error!("UDP recv error: {e}"),
