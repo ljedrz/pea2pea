@@ -10,7 +10,7 @@ These examples are the best place to start. They use gamified scenarios to demon
 
 | Example | Description | Key Features |
 | :--- | :--- | :--- |
-| **[Fixed Length Crusaders](fixed_length_crusaders.rs)** | A JoJo's Bizarre Adventure-inspired node battle. Demonstrates custom handshakes where timing and sequence matter. | Handshake Logic, Timer/Sleep Logic, Custom Codec |
+| **[Fixed Length Crusaders](fixed_length_crusaders.rs)** | A *JoJo's Bizarre Adventure*-inspired node battle. Demonstrates custom handshakes where timing and sequence matter. | Handshake Logic, Timer/Sleep Logic, Custom Codec |
 | **[Hapsburg's Plan B](hapsburgs_plan_b.rs)** | A *Naked Gun* homage demonstrating how to trigger logic immediately upon disconnection. Nodes exchange "last words" before the connection drops. | OnDisconnect Protocol, Cleanup Logic |
 | **[Hot Potato](hot_potato_game.rs)** | Nodes pass a "hot potato" (message) around a random mesh. The potato count is tracked globally to verify delivery. | Mesh Topology, Random Routing, Atomic Counters |
 | **[Telephone](telephone_game.rs)** | A linear chain of nodes passing a string message from start to end, modifying it along the way. | Line Topology, Message Forwarding |
@@ -32,6 +32,7 @@ These examples involve complex state machines, high-load stress testing, or heav
 
 | Example | Description | Key Features |
 | :--- | :--- | :--- |
+| **[Connection Churn](churn_stress.rs)** | A "Thundering Herd" simulation where clients rapidly connect, exchange data, and disconnect. Demonstrates low overhead in connection lifecycle management. | Stress Testing, High Churn, Performance |
 | **[Dense Mesh](dense_mesh.rs)** | A stress test that spawns a configurable number of nodes (default 25) and fully connects them all, flooding the network. Demonstrates OS resource management. | Stress Testing, Resource Limits, Backpressure |
 | **[Dining Philosophers](dining_philosophers.rs)** | A complex concurrency problem mapped to P2P. Nodes must negotiate access to shared resources ("forks") using stateful request/response flows. | Ring Topology, Shared State, Deadlock Avoidance |
 | **[Libp2p Interop](libp2p.rs)** | A fully compatible `libp2p` node that performs a Noise handshake and multiplexes streams using Yamux to talk to `rust-libp2p` nodes. | Interop, Noise Encryption, Yamux Multiplexing, Complex Handshake |
