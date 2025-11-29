@@ -102,29 +102,17 @@ async fn main() -> io::Result<()> {
 
 ### ⚙️ Architecture & Customization
 
-`pea2pea` is designed around a "hooks" system. You implement specific traits (or enable built-in capabilities) to control the entire lifecycle of a connection.
+`pea2pea` operates on a **modular "hooks" system**. You control the connection lifecycle by implementing specific traits, while the library handles the low-level async plumbing.
 
-*(For a visual representation of the connection state machine, please refer to the **Connection Lifecycle Graph** from the [documentation](https://docs.rs/pea2pea/latest/pea2pea/protocols/index.html).*
+*(For a visual representation, see the **[Connection Lifecycle Graph](https://github.com/ljedrz/pea2pea/blob/master/assets/connection_lifetime.png)**)*
 
-You have full control over every stage:
+Simply implement the traits you need:
+* **handshake:** secure your connections (tls, noise, etc.), configure the stream, or exchange metadata.
+* **Reading & Writing:** Define framing (codecs), message processing, and backpressure handling.
+* **OnConnect / OnDisconnect:** Trigger logic when a connection is fully established or severed (cleanup, recovery).
 
-#### 1. Connection Logic
-* **Filtering:** Reject unwanted incoming connections (e.g., IP bans, max peer counts) before they consume resources.
-* **Creation:** Define exactly when and how to establish new outbound connections.
+For full details, refer to the **[protocols documentation](https://docs.rs/pea2pea/latest/pea2pea/protocols/index.html)**.
 
-#### 2. Handshaking (Security)
-* **Authentication:** Exchange headers, keys, or magic bytes immediately after connecting.
-* **Encryption:** Wrap streams (e.g., Noise, TLS) before application data flows.
-* **Validation:** Drop connections immediately if the handshake fails.
-
-#### 3. Communication (Read/Write)
-* **Framing:** Use one of the [codecs](https://docs.rs/tokio-util/latest/tokio_util/codec/index.html#structs) from `tokio_util` or provide your own.
-* **Protocol:** Handle incoming messages and route them to your application logic.
-* **Backpressure:** The library manages socket pressure, ensuring your node doesn't get overwhelmed.
-
-#### 4. Disconnection Logic
-* **Cleanup:** Hook into disconnect events to clean up peer state.
-* **Recovery:** Decide whether to attempt a re-connection or ban the peer based on the disconnect reason.
 
 ---
 
@@ -146,7 +134,7 @@ Check out the [examples](examples) directory, which is organized by complexity a
 
 * **🎮 Fun & Visual (Tutorials):** Gamified scenarios like the **[Telephone Game](examples/telephone_game.rs)** or **[Hot Potato](examples/hot_potato_game.rs)** that demonstrate core concepts like topology, message passing, and basic state synchronization.
 * **🛠️ Practical & Patterns:** Standard infrastructure patterns, including **[TLS](examples/tls.rs)**, **[Noise Handshakes](examples/noise_handshake.rs)**, **[Rate Limiting](examples/rate_limiting.rs)**, and **[RPC](examples/simple_rpc.rs)**.
-* **🧠 Advanced & Stress Tests:** High-load scenarios like **[Connection Churn](examples/churn_stress.rs)** or **[Dense Mesh](examples/dense_mesh.rs)** that demonstrate the library's performance and **[libp2p Interop](examples/libp2p.rs)**.
+* **🧠 Advanced & Stress Tests:** High-load scenarios like **[Connection Churn](examples/churn_stress.rs)** or **[Dense Mesh](examples/dense_mesh.rs)** that demonstrate the library's performance and **[libp2p interop](examples/libp2p.rs)**.
 
 ---
 

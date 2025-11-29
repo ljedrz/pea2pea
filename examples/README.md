@@ -13,7 +13,7 @@ These examples are the best place to start. They use gamified scenarios to demon
 | **[Fixed Length Crusaders](fixed_length_crusaders.rs)** | A *JoJo's Bizarre Adventure*-inspired node battle. Demonstrates custom handshakes where timing and sequence matter. | Handshake Logic, Timer/Sleep Logic, Custom Codec |
 | **[Hapsburg's Plan B](hapsburgs_plan_b.rs)** | A *Naked Gun* homage demonstrating how to trigger logic immediately upon disconnection. Nodes exchange "last words" before the connection drops. | OnDisconnect Protocol, Cleanup Logic |
 | **[Hot Potato](hot_potato_game.rs)** | Nodes pass a "hot potato" (message) around a random mesh. The potato count is tracked globally to verify delivery. | Mesh Topology, Random Routing, Atomic Counters |
-| **[Telephone](telephone_game.rs)** | A linear chain of nodes passing a string message from start to end, modifying it along the way. | Line Topology, Message Forwarding |
+| **[Telephone Game](telephone_game.rs)** | A linear chain of nodes passing a string message from start to end, modifying it along the way. | Line Topology, Message Forwarding |
 
 ## 🛠️ Practical & Patterns
 
