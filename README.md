@@ -21,17 +21,6 @@
 
 ---
 
-### 🚧 Project Status & Stability
-
-**Current State: Stable & Feature-Complete.**
-
-Despite the `0.x` versioning, `pea2pea` is considered **production-ready**. The core architecture is finished and proven.
-
-* **API Stability:** The public API is stable. We do not anticipate breaking changes unless there's a **very** good reason to do so.
-* **Scope:** The library is effectively in "maintenance mode" regarding features. Future development is strictly limited to **hardening internals** to ensure maximum reliability. We are not adding new features to the core.
-
----
-
 ### 🚀 Quick Start
 
 Spin up a TCP node capable of receiving messages in 36 lines of code:
@@ -113,29 +102,6 @@ Simply implement the traits you need:
 
 For full details, refer to the **[protocols documentation](https://docs.rs/pea2pea/latest/pea2pea/protocols/index.html)**.
 
-
----
-
-### 📦 Installation
-
-Add this to your `Cargo.toml`:
-
-```toml
-[dependencies]
-pea2pea = "x.x.x" # replace with the latest version
-tokio = { version = "1", features = ["rt"] } # pick any other features you need
-```
-
----
-
-### 📚 Examples
-
-Check out the [examples](examples) directory, which is organized by complexity and use case:
-
-* **🎮 Fun & Visual (Tutorials):** Gamified scenarios like the **[Telephone Game](examples/telephone_game.rs)** or **[Hot Potato](examples/hot_potato_game.rs)** that demonstrate core concepts like topology, message passing, and basic state synchronization.
-* **🛠️ Practical & Patterns:** Standard infrastructure patterns, including **[TLS](examples/tls.rs)**, **[Noise Handshakes](examples/noise_handshake.rs)**, **[Rate Limiting](examples/rate_limiting.rs)**, and **[RPC](examples/simple_rpc.rs)**.
-* **🧠 Advanced & Stress Tests:** High-load scenarios like **[Connection Churn](examples/churn_stress.rs)** or **[Dense Mesh](examples/dense_mesh.rs)** that demonstrate the library's performance and **[libp2p interop](examples/libp2p.rs)**.
-
 ---
 
 ### 🛡️ Security & Resilience
@@ -160,6 +126,39 @@ cargo test --release --test benches -- --nocapture --ignored
 ```
 
 Be sure to also check out the stress tests included in the [examples](examples).
+
+---
+
+### 📚 Examples
+
+Check out the [examples](examples) directory, which is organized by complexity and use case:
+
+* **🎮 Fun & Visual (Tutorials):** Gamified scenarios like the **[Telephone Game](examples/telephone_game.rs)** or **[Hot Potato](examples/hot_potato_game.rs)** that demonstrate core concepts like topology, message passing, and basic state synchronization.
+* **🛠️ Practical & Patterns:** Standard infrastructure patterns, including **[TLS](examples/tls.rs)**, **[Noise Handshakes](examples/noise_handshake.rs)**, **[Rate Limiting](examples/rate_limiting.rs)**, and **[RPC](examples/simple_rpc.rs)**.
+* **🧠 Advanced & Stress Tests:** High-load scenarios like **[Connection Churn](examples/churn_stress.rs)** or **[Dense Mesh](examples/dense_mesh.rs)** that demonstrate the library's performance and **[libp2p interop](examples/libp2p.rs)**.
+
+---
+
+### 📦 Installation
+
+Add this to your `Cargo.toml`:
+
+```toml
+[dependencies]
+pea2pea = "x.x.x" # replace with the latest version
+tokio = { version = "1", features = ["rt"] } # pick any other features you need
+```
+
+---
+
+### 🚧 Project Status & Stability
+
+**Current State: Stable & Feature-Complete.**
+
+Despite the `0.x` versioning, `pea2pea` is considered **production-ready**. The core architecture is finished and proven.
+
+* **API Stability:** The public API is stable. We do not anticipate breaking changes unless there's a **very** good reason to do so.
+* **Scope:** The library is effectively in "maintenance mode" regarding features. Future development is strictly limited to **hardening internals** to ensure maximum reliability. We are not adding new features to the core.
 
 ---
 
