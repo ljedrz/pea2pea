@@ -11,9 +11,9 @@
 
 ### ⚡ Why pea2pea?
 
-* **Battle-Tested in Production:** This library has been vendored and deployed in high-throughput, real-world decentralized networks, successfully managing complex topologies and heavy traffic loads in production environments.
-* **Simplicity First:** No complex configuration objects, massive dependency trees, or rigid frameworks. You can audit the library yourself in a single afternoon.
-* **Async by Default:** Built on top of `tokio`, fully non-blocking and performant.
+* **Battle-Tested in Production:** This library has been vendored and deployed in high-throughput, real-world decentralized networks, successfully managing complex topologies and heavy traffic.
+* **Simplicity First:** No complex configuration objects or rigid frameworks. You can audit the library yourself in a single afternoon.
+* **Minimal Dependency Tree:** `pea2pea` relies strictly on `tokio` and standard crates, resulting in lightning-fast compile times and tiny binaries.
 * **Uncompromising Performance:** Designed as a zero-weight abstraction layer, the library imposes negligible overhead, allowing your application to saturate the underlying network hardware or loopback interface limits.
 * **Tiny Footprint:** The core node structure occupies just **~16kB of RAM**; per-connection memory usage starts at **~14kB** and scales directly with your configured buffer sizes.
 * **Meticulously Tested:** A comprehensive collection of tests and examples ensures correctness; there is no `unsafe` code involved.
