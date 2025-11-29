@@ -7,6 +7,18 @@
 
 `pea2pea` abstracts away the complex, low-level boilerplate of P2P networking - TCP stream handling, connection pooling, framing, backpressure, etc. - allowing you to focus strictly on your network's logic and protocol implementation.
 
+### 📖 Table of Contents
+
+- [⚡ Why pea2pea?](#-why-pea2pea)
+- [🚀 Quick Start](#-quick-start)
+- [⚙️ Architecture](#-architecture)
+- [🛡️ Security](#-security)
+- [🏁 Benchmarking](#-benchmarking)
+- [📚 Examples](#-examples)
+- [📦 Installation](#-installation)
+- [🚧 Project Status](#-project-status)
+- [🤝 Contributing](#-contributing)
+
 ---
 
 ### ⚡ Why pea2pea?
@@ -89,7 +101,7 @@ async fn main() -> io::Result<()> {
 
 ---
 
-### ⚙️ Architecture & Customization
+### ⚙️ Architecture
 
 `pea2pea` operates on a **modular "hooks" system**. You control the connection lifecycle by implementing specific traits, while the library handles the low-level async plumbing.
 
@@ -104,7 +116,7 @@ For full details, refer to the **[protocols documentation](https://docs.rs/pea2p
 
 ---
 
-### 🛡️ Security & Resilience
+### 🛡️ Security
 
 `pea2pea` is built to survive the hostile internet. Its architecture naturally mitigates common denial-of-service vectors without requiring complex configuration:
 
@@ -117,7 +129,7 @@ For full details, refer to the **[protocols documentation](https://docs.rs/pea2p
 
 ---
 
-### Benchmarking
+### 🏁 Benchmarking
 
 `pea2pea` is designed to be as fast as the machine it runs on. To verify the throughput on your specific hardware, run the included benchmark suite:
 
@@ -151,7 +163,7 @@ tokio = { version = "1", features = ["rt"] } # pick any other features you need
 
 ---
 
-### 🚧 Project Status & Stability
+### 🚧 Project Status
 
 **Current State: Stable & Feature-Complete.**
 
