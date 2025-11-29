@@ -1,4 +1,4 @@
-//! An minimal node capable of communicating with libp2p nodes.
+//! A minimal node capable of communicating with libp2p nodes.
 //!
 //! The supported libp2p protocol is ping.
 
@@ -26,7 +26,7 @@ use unsigned_varint::codec::UviBytes;
 // the protocol string of libp2p::ping
 const PROTOCOL_PING: &[u8] = b"\x13/multistream/1.0.0\n\x11/ipfs/ping/1.0.0\n";
 
-// the libp2p-cabable node
+// the libp2p-capable node
 #[derive(Clone)]
 struct Libp2pNode {
     // the pea2pea node

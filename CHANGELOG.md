@@ -13,7 +13,7 @@ type (`io::Error`)
 ### Fixed
 
 - the stream reading loop now breaks and no longer leaks in case `Reading::process_message` panics
-- `Node::toggle_listener` no longer panics when `Config::listening_add` is set to `None`; this is
+- `Node::toggle_listener` no longer panics when `Config::listener_addr` is set to `None`; this is
 technically not a fix, as it had always been documented, but it's a superior behavior to not panic
 regardless
 - concurrent duplicate calls to `Node::disconnect` will no longer be able to trigger `OnDisconnect`
@@ -177,7 +177,7 @@ longer allows a `Stream` to be read after an error has been encountered, so it d
 - `Config::max_handshake_time_ms` was moved to `Handshake::TIMEOUT_MS`
 - `Config::outbound_queue_depth` was moved to `Writing::MESSAGE_QUEUE_DEPTH`
 - `Writing::send_direct_message` now returns an `io::Result<oneshot::Receiver<io::Result<()>>>` instead of `io::Result<oneshot::Receiver<bool>>`
-- several objects and trait methods indended to not be used outside of the crate were made private
+- several objects and trait methods intended to not be used outside of the crate were made private
 
 # 0.36.0
 
@@ -221,7 +221,7 @@ longer allows a `Stream` to be read after an error has been encountered, so it d
 
 - added `PartialEq` and `Eq` to `ConnectionSide`
 - the `Reading` and `Writing` protocols now take advantage of `tokio-util`'s `Decoder` and `Encoder` traits
-- the signature od `Writing::write_to_stream` has changed
+- the signature of `Writing::write_to_stream` has changed
 - the protocol handler objects and `ReturnableItem` are no longer `pub` (only `pub(crate)`)
 - `Connection`'s fields are no longer `pub`
 
@@ -592,7 +592,7 @@ longer allows a `Stream` to be read after an error has been encountered, so it d
 - `NodeConfig.max_connections` with a default value of 100
 
 ### Changed
-- updading `PeerStats` no longer implicitly adds an entry
+- updating `PeerStats` no longer implicitly adds an entry
 
 ### Fixed
 - `PeerStats.last_connected` no longer shows a timestamp if there were no connections
@@ -627,7 +627,7 @@ longer allows a `Stream` to be read after an error has been encountered, so it d
 - `KnownPeers::add` doesn't occur before the connection is fully established
 - `Connection` now carries its task handles in a single `Vec`
 - `Connection` no longer uses `OnceCell` internally (`Option` is used instead)
-- `Connection` now carries `ConnectionReader` and `ConnectionWriter` while the procols are being enabled
+- `Connection` now carries `ConnectionReader` and `ConnectionWriter` while the protocols are being enabled
 - `HandshakingObjects`, `ReadingObjects`, and `WritingObjects` are now merged into `ReturnableConnection`
 
 ### Removed

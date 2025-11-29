@@ -107,7 +107,7 @@ async fn main() -> io::Result<()> {
 *(For a visual representation, see the **[Connection Lifecycle Graph](https://github.com/ljedrz/pea2pea/blob/master/assets/connection_lifetime.png)**)*
 
 Simply implement the traits you need:
-* **handshake:** secure your connections (tls, noise, etc.), configure the stream, or exchange metadata.
+* **Handshake:** Secure your connections (tls, noise, etc.), configure the stream, or exchange metadata.
 * **Reading & Writing:** Define framing (codecs), message processing, and backpressure handling.
 * **OnConnect / OnDisconnect:** Trigger logic when a connection is fully established or severed (cleanup, recovery).
 

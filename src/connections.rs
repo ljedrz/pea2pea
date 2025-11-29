@@ -62,7 +62,7 @@ impl Connections {
 pub enum ConnectionSide {
     /// The side that initiated the connection.
     Initiator,
-    /// The sider that accepted the connection.
+    /// The side that accepted the connection.
     Responder,
 }
 
