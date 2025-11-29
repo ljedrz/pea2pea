@@ -514,7 +514,8 @@ impl Node {
         // count established connections from this IP
         let established_count = self
             .connections
-            .infos()
+            .0
+            .read()
             .values()
             .filter(|info| info.addr().ip() == ip)
             .count();
