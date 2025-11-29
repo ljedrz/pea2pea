@@ -1,6 +1,8 @@
 use deadline::deadline;
 use tokio::{
     net::{TcpListener, TcpSocket},
+    sync::Barrier,
+    task::JoinSet,
     time::sleep,
 };
 
@@ -400,4 +402,64 @@ async fn connection_timeout_works() {
     // OS TCP timeouts are usually 30s+, so if this finishes in <1s, we know our logic worked
     assert!(elapsed >= Duration::from_millis(200));
     assert!(elapsed < Duration::from_secs(2));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn max_connections_race_condition() {
+    // a minimal target node
+    #[derive(Clone)]
+    struct TestNode(Node);
+
+    impl Pea2Pea for TestNode {
+        fn node(&self) -> &Node {
+            &self.0
+        }
+    }
+
+    // configure the target Node with a strict limit
+    let limit = 3;
+    let target_config = Config {
+        max_connections: limit,
+        ..Default::default()
+    };
+
+    let target_node = TestNode(Node::new(target_config));
+    let target_addr = target_node.node().toggle_listener().await.unwrap().unwrap();
+
+    // create many more nodes than the limit allows
+    let swarm_size = 50;
+    let mut swarm_nodes = Vec::new();
+
+    for _ in 0..swarm_size {
+        let node = Node::new(Default::default());
+        swarm_nodes.push(node);
+    }
+
+    // spawn tasks to ensure the connection attempts happen in parallel
+    let mut conn_tasks = JoinSet::new();
+    let barrier = Arc::new(Barrier::new(swarm_size));
+    for node in swarm_nodes {
+        let b = barrier.clone();
+        conn_tasks.spawn(async move {
+            // synchronize all attempts
+            b.wait().await;
+            // ignore the result; we expect some to fail
+            let _ = node.connect(target_addr).await;
+        });
+    }
+
+    // wait for all attempts to resolve
+    conn_tasks.join_all().await;
+
+    // give the target node's event loop a moment to process everything
+    sleep(Duration::from_millis(500)).await;
+
+    // check for races
+    let current_peers = target_node.node().num_connected();
+    assert!(
+        current_peers <= limit as usize,
+        "Race Condition Detected: Target accepted {} connections, but limit was {}",
+        current_peers,
+        limit
+    );
 }

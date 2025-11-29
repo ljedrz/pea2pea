@@ -102,18 +102,6 @@ struct ConnectionGuard<'a> {
     connecting: &'a Mutex<HashSet<SocketAddr>>,
 }
 
-impl<'a> ConnectionGuard<'a> {
-    fn new(addr: SocketAddr, connecting: &'a Mutex<HashSet<SocketAddr>>) -> Option<Self> {
-        let mut lock = connecting.lock();
-        if lock.contains(&addr) {
-            return None;
-        }
-        lock.insert(addr);
-
-        Some(Self { addr, connecting })
-    }
-}
-
 impl<'a> Drop for ConnectionGuard<'a> {
     fn drop(&mut self) {
         self.connecting.lock().remove(&self.addr);
@@ -212,16 +200,13 @@ impl Node {
     async fn handle_connection_request(&self, stream: TcpStream, addr: SocketAddr) {
         debug!(parent: self.span(), "tentatively accepted a connection from {addr}");
 
-        // check if no connection-related limits are breached
-        if !self.can_add_connection(addr) {
-            debug!(parent: self.span(), "rejecting the connection from {addr}");
-            return;
-        }
-
-        // mark the connection as connecting
-        let Some(guard) = ConnectionGuard::new(addr, &self.connecting) else {
-            debug!(parent: self.span(), "rejecting the connection from {addr}: already connecting");
-            return;
+        // attempt to reserve a connection slot atomically
+        let guard = match self.check_and_reserve(addr) {
+            Ok(guard) => guard,
+            Err(e) => {
+                debug!(parent: self.span(), "rejecting connection from {addr}: {e}");
+                return;
+            }
         };
 
         // finalize the connection
@@ -394,12 +379,6 @@ impl Node {
             }
         }
 
-        // make sure connection-related limits are not breached
-        if !self.can_add_connection(addr) {
-            error!(parent: self.span(), "too many connections; refusing to connect to {addr}");
-            return Err(io::ErrorKind::PermissionDenied.into());
-        }
-
         // make sure the address is not already connected to, unless
         // duplicate connections are permitted in the config
         if !self.config.allow_duplicate_connections && self.connections.is_connected(addr) {
@@ -407,9 +386,8 @@ impl Node {
             return Err(io::ErrorKind::AlreadyExists.into());
         }
 
-        // mark the connection as connecting
-        let guard = ConnectionGuard::new(addr, &self.connecting)
-            .ok_or_else(|| io::Error::from(io::ErrorKind::AlreadyExists))?;
+        // attempt to reserve a connection slot atomically
+        let guard = self.check_and_reserve(addr)?;
 
         // attempt to physically connect to the specified address
         let stream = self.create_stream(addr, socket).await?;
@@ -510,30 +488,52 @@ impl Node {
         self.connections.infos()
     }
 
-    /// Checks whether the `Node` can handle an additional connection.
-    fn can_add_connection(&self, addr: SocketAddr) -> bool {
+    /// Atomically checks connection limits and reserves a slot if available.
+    fn check_and_reserve(&self, addr: SocketAddr) -> io::Result<ConnectionGuard<'_>> {
+        // this lock is held for the duration of the check to prevent races
+        let mut connecting = self.connecting.lock();
+
+        // check if already connecting (duplicate connection attempt from same node)
+        if connecting.contains(&addr) {
+            return Err(io::ErrorKind::AlreadyExists.into());
+        }
+
         // check the global connection limit
-        let num_connected = self.num_connected();
+        let num_connected = self.connections.num_connected();
+        let num_connecting = connecting.len();
         let limit = self.config.max_connections as usize;
-        if num_connected >= limit || num_connected + self.num_connecting() >= limit {
+
+        if num_connected + num_connecting >= limit {
             warn!(parent: self.span(), "maximum number of connections ({limit}) reached");
-            return false;
+            return Err(io::ErrorKind::PermissionDenied.into());
         }
 
         // check the per-IP connection limit
         let ip = addr.ip();
-        let count = self
-            .connection_infos()
+
+        // count established connections from this IP
+        let established_count = self
+            .connections
+            .infos()
             .values()
             .filter(|info| info.addr().ip() == ip)
             .count();
 
-        if count >= self.config.max_connections_per_ip as usize {
-            warn!(parent: self.span(), "maximum number of connections with {ip} reached");
-            return false;
+        // count pending connections from this IP
+        let pending_count = connecting.iter().filter(|addr| addr.ip() == ip).count();
+
+        if established_count + pending_count >= self.config.max_connections_per_ip as usize {
+            return Err(io::ErrorKind::PermissionDenied.into());
         }
 
-        true
+        // reserve a slot
+        connecting.insert(addr);
+
+        // return the guard that will remove the address from 'connecting' on drop
+        Ok(ConnectionGuard {
+            addr,
+            connecting: &self.connecting,
+        })
     }
 
     /// Gracefully shuts the node down.
