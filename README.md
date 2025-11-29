@@ -138,6 +138,19 @@ Check out the [examples](examples) directory, which is organized by complexity a
 
 ---
 
+### 🛡️ Security & Resilience
+
+`pea2pea` is built to survive the hostile internet. Its architecture naturally mitigates common denial-of-service vectors without requiring complex configuration:
+
+* **Slowloris / Connection Exhaustion:** The `connection_timeout_ms` config ensures that "creeper" connections that fail to handshake or send data are aggressively pruned, freeing up slots for legitimate peers.
+* **SYN Floods / Rapid Churn:** The library's internal state machine handles high-frequency connect/disconnect events (churn) without leaking file descriptors or memory.
+* **Malicious Payloads / Fuzzing:** The strict separation of the `Reading` protocol means that malformed packets or garbage data are rejected at the codec level, instantly dropping the offender before application logic is touched.
+* **Resource Limits:** Hard caps on `max_connections` and `max_connections_per_ip` prevent bad actors from monopolizing your node's resources.
+
+> **Challenge:** We invite you to try and break a `pea2pea`-powered node. Point your favorite stress-testing tool (like `hping3` or a custom fuzzer) at it; the node will hold its ground.
+
+---
+
 ### Benchmarking
 
 `pea2pea` is designed to be as fast as the machine it runs on. To verify the throughput on your specific hardware, run the included benchmark suite:
