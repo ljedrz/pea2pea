@@ -8,6 +8,7 @@ use pea2pea::{
     ConnectionSide, Node, Pea2Pea, Topology, connect_nodes,
     protocols::{Reading, Writing},
 };
+use rand::Rng;
 use tokio::time::sleep;
 use tracing::*;
 use tracing_subscriber::filter::LevelFilter;
@@ -21,7 +22,7 @@ impl Pea2Pea for Player {
     }
 }
 
-const NUM_PLAYERS: usize = 100;
+const NUM_PLAYERS: usize = 20;
 
 impl Reading for Player {
     type Message = String;
@@ -31,8 +32,18 @@ impl Reading for Player {
         Default::default()
     }
 
-    async fn process_message(&self, source: SocketAddr, message: String) {
+    async fn process_message(&self, source: SocketAddr, mut message: String) {
         let own_id = self.node().name().parse::<usize>().unwrap();
+
+        // "bork" the message with a 50% probability
+        if rand::rng().random_bool(0.5) {
+            let mut bytes = message.into_bytes();
+            let idx = rand::rng().random_range(0..bytes.len() - 1);
+            let changed_char = rand::rng().random_range(b'a'..=b'z');
+            bytes[idx] = changed_char;
+            message = String::from_utf8(bytes).unwrap();
+            warn!(parent: self.node().span(), "huh? not sure if I got it right, but here goes...");
+        }
 
         info!(
             parent: self.node().span(),
