@@ -1,10 +1,13 @@
-use std::{any::Any, collections::HashMap, future::Future, io, net::SocketAddr, sync::Arc};
+use std::{
+    any::Any, collections::HashMap, future::Future, io, net::SocketAddr, sync::Arc, time::Duration,
+};
 
 use futures_util::sink::SinkExt;
 use parking_lot::RwLock;
 use tokio::{
     io::AsyncWrite,
     sync::{mpsc, oneshot},
+    time::timeout,
 };
 use tokio_util::codec::{Encoder, FramedWrite};
 use tracing::*;
@@ -33,6 +36,10 @@ where
     /// The initial size of a per-connection buffer for writing outbound messages. Can be set to the maximum expected size
     /// of the outbound message in order to only allocate it once.
     const INITIAL_BUFFER_SIZE: usize = 64 * 1024;
+
+    // The maximum time (in milliseconds) allowed for a single message write to flush
+    /// to the underlying stream before the connection is considered dead.
+    const TIMEOUT_MS: u64 = 10_000;
 
     /// The type of the outbound messages; unless their serialization is expensive and the message
     /// is broadcasted (in which case it would get serialized multiple times), serialization should
@@ -183,9 +190,12 @@ impl<W: Writing> WritingInternal for W {
     ) -> Result<usize, <Self::Codec as Encoder<Self::Message>>::Error> {
         writer.feed(message).await?;
         let len = writer.write_buffer().len();
-        writer.flush().await?;
-
-        Ok(len)
+        // guard against write starvation
+        match timeout(Duration::from_millis(W::TIMEOUT_MS), writer.flush()).await {
+            Ok(Ok(())) => Ok(len),
+            Ok(Err(e)) => Err(e),
+            Err(_) => Err(io::Error::new(io::ErrorKind::TimedOut, "write timed out")),
+        }
     }
 
     async fn handle_new_connection(
