@@ -21,6 +21,7 @@ These examples demonstrate standard infrastructure patterns, security integratio
 
 | Example | Description | Key Features |
 | :--- | :--- | :--- |
+| **[LAN Discovery](lan_discovery.rs)** | A "zero-conf" example where nodes broadcast their presence via UDP beacons to automatically discover and connect to peers in the local network. | UDP Broadcasting, Automatic Discovery, Hybrid TCP/UDP |
 | **[Noise Handshake](noise_handshake.rs)** | Implements a secure Noise_XX_25519 handshake using the `snow` library to encrypt all traffic between nodes. | Encryption, Stream Hijacking, Snow Library Integration |
 | **[Rate Limiting](rate_limiting.rs)** | A node that tracks peer statistics (messages/sec) and automatically disconnects peers that exceed a spam threshold. | Stats Tracking, Ban Logic, Traffic Analysis |
 | **[Simple RPC](simple_rpc.rs)** | Implements a request/response pattern over raw TCP using correlation IDs to map replies to callers. | Request/Response, Correlation IDs, Manual Protocol |
