@@ -32,6 +32,7 @@ These examples involve complex state machines, high-load stress testing, or heav
 
 | Example | Description | Key Features |
 | :--- | :--- | :--- |
+| **[Bucket Brigade](bucket_brigade.rs)** | A 100-node linear chain that passes a message from start to end. Measures per-hop latency (often sub-50µs), demonstrating the minimal overhead of the protocol stack. | Latency Testing, Topology, Forwarding |
 | **[Connection Churn](churn_stress.rs)** | A "Thundering Herd" simulation where clients rapidly connect, exchange data, and disconnect. Demonstrates low overhead in connection lifecycle management. | Stress Testing, High Churn, Performance |
 | **[Dense Mesh](dense_mesh.rs)** | A stress test that spawns a configurable number of nodes (default 25) and fully connects them all, flooding the network. Demonstrates OS resource management. | Stress Testing, Resource Limits, Backpressure |
 | **[Dining Philosophers](dining_philosophers.rs)** | A complex concurrency problem mapped to P2P. Nodes must negotiate access to shared resources ("forks") using stateful request/response flows. | Ring Topology, Shared State, Deadlock Avoidance |
