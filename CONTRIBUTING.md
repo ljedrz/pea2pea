@@ -32,10 +32,13 @@ To keep the library lightweight and maintainable, we generally **reject**:
 
 1.  **Open an Issue First:** Unless it is a trivial typo fix, **please open an issue** to discuss your proposed change. This saves your time if the change falls outside our scope.
 2.  **Run Tests:** Ensure all tests pass locally.
+
     ```bash
     cargo test
     ```
+
 3.  **Format Code:** Ensure your code is formatted correctly, and that `clippy` is happy.
+
     ```bash
     cargo fmt --all -- --check
     cargo clippy --all-targets -- -D warnings

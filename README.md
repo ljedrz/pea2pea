@@ -12,9 +12,10 @@
 ### ⚡ Why pea2pea?
 
 * **Battle-Tested in Production:** This library has been vendored and deployed in high-throughput, real-world decentralized networks, successfully managing complex topologies and heavy traffic loads in production environments.
-* **Simplicity First:** No complex configuration objects, massive dependency trees, or rigid frameworks.
+* **Simplicity First:** No complex configuration objects, massive dependency trees, or rigid frameworks. You can audit the library yourself in a single afternoon.
 * **Async by Default:** Built on top of `tokio`, fully non-blocking and performant.
-* **Fast and Lightweight:** The potential throughput is over 40GB/s (tested locally on a single Ryzen 9 9950X), and a single node occupies from ~20kB to ~150kB of RAM. You can run **thousands** of them locally.
+* **Uncompromising Performance**: Designed as a zero-weight abstraction layer, the library imposes negligible overhead, allowing your application to saturate the underlying network hardware or loopback interface limits.
+* **Tiny Footprint**: A single node occupies from ~20kB to ~150kB of RAM, allowing you to run thousands of nodes locally.
 * **Meticulously Tested:** A comprehensive collection of tests and examples ensures correctness; there is no `unsafe` code involved.
 * **Complete Control:** You dictate the application logic, and control **every** byte sent and received. Use slightly altered nodes to fuzz-test and stress-test your production nodes.
 
@@ -133,17 +134,33 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-pea2pea = "x.x.x" # Replace with the latest version
+pea2pea = "x.x.x" # replace with the latest version
 tokio = { version = "1", features = ["rt"] } # pick any other features you need
 ```
 
+---
+
 ### 📚 Examples
 
-Check out the [examples](https://github.com/ljedrz/pea2pea/tree/master/examples) directory for real-world usage patterns, including:
-* **Fixed Topology:** Creating a static mesh of nodes.
-* **Gossip:** Implementing a basic gossip protocol.
-* **Secure Handshake:** How to implement authentication headers.
-* **`libp2p` Interop:** Connect to a simple `libp2p` node.
+Check out the [examples](examples) directory, which is organized by complexity and use case:
+
+* **🎮 Fun & Visual (Tutorials):** Gamified scenarios like the **[Telephone Game](examples/telephone_game.rs)** or **[Hot Potato](examples/hot_potato_game.rs)** that demonstrate core concepts like topology, message passing, and basic state synchronization.
+* **🛠️ Practical & Patterns:** Standard infrastructure patterns, including **[TLS](examples/tls.rs)**, **[Noise Handshakes](examples/noise_handshake.rs)**, **[Rate Limiting](examples/rate_limiting.rs)**, and **[RPC](examples/simple_rpc.rs)**.
+* **🧠 Advanced & Stress Tests:** High-load scenarios like **[Connection Churn](examples/churn_stress.rs)** or **[Dense Mesh](examples/dense_mesh.rs)** that demonstrate the library's performance and **[libp2p Interop](examples/libp2p.rs)**.
+
+---
+
+### Benchmarking
+
+`pea2pea` is designed to be as fast as the machine it runs on. To verify the throughput on your specific hardware, run the included benchmark suite:
+
+```rust
+cargo test --release --test benches -- --nocapture --ignored
+```
+
+Be sure to also check out the stress tests included in the [examples](examples).
+
+---
 
 ### 🤝 Contributing
 
