@@ -1,5 +1,4 @@
 use bytes::{Bytes, BytesMut};
-use deadline::deadline;
 use rand::{Rng, SeedableRng, distr::StandardUniform, rngs::SmallRng};
 use tokio::sync::{Barrier, Notify};
 use tokio_util::codec::Decoder;
@@ -12,17 +11,19 @@ use std::{
         Arc, LazyLock,
         atomic::{AtomicUsize, Ordering},
     },
-    time::{Duration, Instant},
+    time::Instant,
 };
 
 use pea2pea::{
     ConnectionSide, Node, Pea2Pea,
-    protocols::{Handshake, OnDisconnect, Reading, Writing},
+    protocols::{Handshake, OnConnect, OnDisconnect, Reading, Writing},
 };
 
 use crate::common::WritingExt;
 
 impl_noop_disconnect_and_handshake!(common::TestNode);
+
+impl_barrier_on_connect!(common::TestNode);
 
 const NUM_MESSAGES: usize = 100_000;
 const MSG_SIZE: usize = 32 * 1024;
@@ -75,22 +76,14 @@ impl Reading for BenchNode {
     }
 }
 
-// a helper to wait for connections without counting them in the bench time
-async fn wait_for_connections(node: &Node, expected: usize) {
-    let start = Instant::now();
-    while node.num_connected() < expected {
-        if start.elapsed() > Duration::from_secs(5) {
-            panic!("timed out waiting for connections");
-        }
-        tokio::time::sleep(Duration::from_millis(10)).await;
-    }
-}
-
 async fn run_bench_scenario(sender_count: usize) -> f64 {
     let senders = common::start_test_nodes(sender_count).await;
+    let connect_barrier = Arc::new(Barrier::new(sender_count + 1));
 
     for sender in &senders {
         sender.enable_writing().await;
+        sender.barrier.set(connect_barrier.clone()).unwrap();
+        sender.enable_on_connect().await;
     }
 
     let total_messages = sender_count * NUM_MESSAGES;
@@ -111,7 +104,7 @@ async fn run_bench_scenario(sender_count: usize) -> f64 {
     }
 
     // wait for connections to stabilize (warmup)
-    wait_for_connections(receiver.node(), sender_count).await;
+    connect_barrier.wait().await;
 
     // prepare the Barrier (senders + the main thread)
     let start_barrier = Arc::new(Barrier::new(sender_count + 1));
@@ -203,25 +196,22 @@ async fn bench_node_startup() {
 async fn bench_connection() {
     const NUM_ITERATIONS: usize = 1000;
 
-    let initiator = test_node!("initiator");
-    let responder = test_node!("responder");
-    let responder_addr = responder.node().toggle_listener().await.unwrap().unwrap();
-
     let mut avg_conn_time = std::time::Duration::new(0, 0);
     for _ in 0..NUM_ITERATIONS {
+        let initiator = test_node!("initiator");
+        let responder = test_node!("responder");
+        let conn_barrier = Arc::new(Barrier::new(2));
+        responder.barrier.set(conn_barrier.clone()).unwrap();
+        responder.enable_on_connect().await;
+        let responder_addr = responder.node().toggle_listener().await.unwrap().unwrap();
+
         let start = std::time::Instant::now();
         initiator.node().connect(responder_addr).await.unwrap();
+        conn_barrier.wait().await;
         avg_conn_time += start.elapsed();
 
-        let responder_clone = responder.clone();
-        deadline!(Duration::from_secs(1), move || responder_clone
-            .node()
-            .num_connected()
-            == 1);
-
-        initiator.node().disconnect(responder_addr).await;
-        let initiator_addr = responder.node().connected_addrs()[0];
-        responder.node().disconnect(initiator_addr).await;
+        initiator.node().shut_down().await;
+        responder.node().shut_down().await;
     }
     avg_conn_time /= NUM_ITERATIONS as u32;
 
