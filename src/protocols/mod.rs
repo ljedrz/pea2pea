@@ -7,7 +7,10 @@
 
 use std::{io, net::SocketAddr, sync::OnceLock};
 
-use tokio::sync::{mpsc, oneshot};
+use tokio::{
+    sync::{mpsc, oneshot},
+    task::JoinHandle,
+};
 
 use crate::connections::Connection;
 
@@ -28,7 +31,7 @@ pub(crate) struct Protocols {
     pub(crate) handshake: OnceLock<ProtocolHandler<Connection, io::Result<Connection>>>,
     pub(crate) reading: OnceLock<ProtocolHandler<Connection, io::Result<Connection>>>,
     pub(crate) writing: OnceLock<writing::WritingHandler>,
-    pub(crate) on_connect: OnceLock<ProtocolHandler<SocketAddr, ()>>,
+    pub(crate) on_connect: OnceLock<ProtocolHandler<SocketAddr, JoinHandle<()>>>,
     pub(crate) on_disconnect: OnceLock<ProtocolHandler<SocketAddr, ()>>,
 }
 

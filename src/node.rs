@@ -313,10 +313,15 @@ impl Node {
         // if enabled, enact OnConnect
         if let Some(handler) = self.protocols.on_connect.get() {
             let (sender, receiver) = oneshot::channel();
-
             handler.trigger((peer_addr, sender));
-            // wait for the OnConnect protocol to perform its specified actions
-            let _ = receiver.await; // can't really fail
+
+            // receive the handle for the running task
+            if let Ok(handle) = receiver.await {
+                // add the task to the connection so it gets aborted on disconnect
+                if let Some(conn) = self.connections.0.write().get_mut(&peer_addr) {
+                    conn.tasks.push(handle);
+                }
+            }
         }
 
         Ok(())

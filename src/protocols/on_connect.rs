@@ -21,14 +21,12 @@ where
 {
     /// Attaches the behavior specified in [`OnConnect::on_connect`] right after every successful
     /// handshake.
-    ///
-    /// note: If you are initiating the connection via [`Node::connect`], it will not return
-    /// until this hook completes. If you need this to happen in the background, spawn a task
-    /// within your implementation.
     fn enable_on_connect(&self) -> impl Future<Output = ()> {
         async {
-            let (from_node_sender, mut from_node_receiver) =
-                mpsc::unbounded_channel::<(SocketAddr, oneshot::Sender<()>)>();
+            let (from_node_sender, mut from_node_receiver) = mpsc::unbounded_channel::<(
+                SocketAddr,
+                oneshot::Sender<tokio::task::JoinHandle<()>>,
+            )>();
 
             // use a channel to know when the on_connect task is ready
             let (tx, rx) = oneshot::channel::<()>();
@@ -45,12 +43,12 @@ where
 
                 while let Some((addr, notifier)) = from_node_receiver.recv().await {
                     let self_clone2 = self_clone.clone();
-                    tokio::spawn(async move {
+                    let handle = tokio::spawn(async move {
                         // perform the specified initial actions
                         self_clone2.on_connect(addr).await;
-                        // notify the node that the initial actions have concluded
-                        let _ = notifier.send(()); // can't really fail
                     });
+                    // notify the node that the initial actions have been scheduled
+                    let _ = notifier.send(handle); // can't really fail
                 }
             });
             let _ = rx.await;

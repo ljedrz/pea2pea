@@ -44,7 +44,7 @@ async fn on_connect_message() {
 }
 
 #[tokio::test]
-async fn connect_waits_for_on_connect_hook() {
+async fn connect_doesnt_wait_for_on_connect_hook() {
     #[derive(Clone)]
     struct SlowNode(Node);
 
@@ -75,8 +75,8 @@ async fn connect_waits_for_on_connect_hook() {
     let elapsed = start.elapsed();
 
     assert!(
-        elapsed >= Duration::from_millis(500),
-        "node.connect() returned too early!"
+        elapsed < Duration::from_millis(500),
+        "node.connect() returned too late!"
     );
     assert_eq!(initiator.node().num_connected(), 1);
 }
