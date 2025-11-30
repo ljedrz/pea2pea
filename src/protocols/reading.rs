@@ -1,4 +1,4 @@
-use std::{future::Future, io, net::SocketAddr, sync::Arc};
+use std::{future::Future, io, net::SocketAddr, sync::Arc, time::Duration};
 
 use bytes::BytesMut;
 use futures_util::StreamExt;
@@ -6,6 +6,7 @@ use tokio::{
     io::AsyncRead,
     sync::{mpsc, oneshot},
     task::JoinSet,
+    time::timeout,
 };
 use tokio_util::codec::{Decoder, FramedRead};
 use tracing::*;
@@ -40,6 +41,11 @@ where
     /// The initial size of a per-connection buffer for reading inbound messages. Can be set to the maximum expected size
     /// of the inbound message in order to only allocate it once.
     const INITIAL_BUFFER_SIZE: usize = 64 * 1024;
+
+    /// The maximum time (in milliseconds) the node will wait for a new message
+    /// before considering the connection dead. If it is set to `0`, there is no
+    /// timeout.
+    const IDLE_TIMEOUT_MS: u64 = 60_000;
 
     /// The final (deserialized) type of inbound messages.
     type Message: Send;
@@ -184,9 +190,28 @@ impl<R: Reading> ReadingInternal for R {
             // this task gets aborted, so there is no need for a dedicated timeout
             let _ = rx_conn_ready.await;
 
-            while let Some(bytes) = framed.next().await {
-                match bytes {
-                    Ok(msg) => {
+            loop {
+                let next_frame_future = framed.next();
+
+                let read_result = if Self::IDLE_TIMEOUT_MS != 0 {
+                    match timeout(
+                        Duration::from_millis(Self::IDLE_TIMEOUT_MS),
+                        next_frame_future,
+                    )
+                    .await
+                    {
+                        Ok(res) => res, // IO completed (success or error)
+                        Err(_) => {
+                            debug!(parent: node.span(), "connection with {addr} timed out due to inactivity");
+                            break;
+                        }
+                    }
+                } else {
+                    next_frame_future.await
+                };
+
+                match read_result {
+                    Some(Ok(msg)) => {
                         // send the message for further processing
                         match Self::BACKPRESSURE {
                             true => {
@@ -205,9 +230,12 @@ impl<R: Reading> ReadingInternal for R {
                             }
                         }
                     }
-                    Err(e) => {
+                    Some(Err(e)) => {
                         error!(parent: node.span(), "can't read from {addr}: {e}");
+                        // `tokio_util` codecs fuse on error, but break just to be safe
+                        break;
                     }
+                    None => break, // end of stream
                 }
             }
 
