@@ -118,3 +118,21 @@ async fn topology_tree_conn_counts() {
 
     // TODO
 }
+
+#[tokio::test]
+async fn topology_random_conn_counts() {
+    let nodes = common::start_test_nodes(N).await;
+    let topology = Topology::Random {
+        degree: 2,
+        seed: 12345,
+    };
+    let barrier = Arc::new(Barrier::new(topology.num_expected_connections(N) + 1));
+    for node in &nodes {
+        node.barrier.set(barrier.clone()).unwrap();
+        node.enable_on_connect().await;
+    }
+    connect_nodes(&nodes, topology).await.unwrap();
+    barrier.wait().await;
+
+    // TODO
+}

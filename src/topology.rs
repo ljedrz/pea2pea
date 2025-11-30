@@ -24,6 +24,14 @@ pub enum Topology {
     },
     /// The relationships between the nodes form a binary tree.
     Tree,
+    /// Each node connects to a specific number of unique random peers.
+    /// Uses a deterministic hash seeded by `seed`.
+    Random {
+        /// The number of connections each node attempts to initiate.
+        degree: usize,
+        /// A randomness seed for reproducibility.
+        seed: u64,
+    },
 }
 
 impl Topology {
@@ -40,6 +48,7 @@ impl Topology {
             Self::Star => (num_nodes - 1) * 2,
             Self::Grid { width, height } => ((width * height) * 2 - width - height) * 2,
             Self::Tree => (num_nodes - 1) * 2,
+            Self::Random { degree, seed: _ } => num_nodes * degree * 2,
         }
     }
 }
@@ -122,6 +131,37 @@ pub async fn connect_nodes<T: Pea2Pea>(nodes: &[T], topology: Topology) -> io::R
                 if right < count {
                     let addr = nodes[right].node().listening_addr().await?;
                     nodes[i].node().connect(addr).await?;
+                }
+            }
+        }
+        Topology::Random { degree, seed } => {
+            if degree >= count {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "Random topology degree cannot exceed N-1",
+                ));
+            }
+
+            for i in 0..count {
+                let mut chosen_targets = HashSet::with_capacity(degree);
+                let mut attempt = 0u64;
+
+                // simple loop: keep picking targets until we satisfy the degree
+                while chosen_targets.len() < degree {
+                    attempt += 1;
+
+                    // stupidly simple deterministic mixer
+                    let mut x = (i as u64).wrapping_add(seed).wrapping_add(attempt);
+                    x = x.wrapping_mul(0x517cc1b727220a95); // large odd constant
+                    x ^= x >> 32; // mix high bits
+
+                    let target = (x as usize) % count;
+
+                    // ensure no self-connection and no duplicate outbound connections
+                    if target != i && chosen_targets.insert(target) {
+                        let addr = nodes[target].node().listening_addr().await?;
+                        let _ = nodes[i].node().connect(addr).await;
+                    }
                 }
             }
         }
