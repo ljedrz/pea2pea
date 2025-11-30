@@ -1,21 +1,30 @@
 #![allow(dead_code)]
 
-use std::{io, marker::PhantomData, net::SocketAddr};
+use std::{
+    io,
+    marker::PhantomData,
+    net::SocketAddr,
+    sync::{Arc, OnceLock},
+};
 
 use bytes::{Bytes, BytesMut};
 use pea2pea::{
     Node, Pea2Pea,
     protocols::{Reading, Writing},
 };
+use tokio::sync::Barrier;
 use tokio_util::codec::{Decoder, Encoder, LengthDelimitedCodec};
 use tracing::*;
 
 #[derive(Clone)]
-pub struct TestNode(pub Node);
+pub struct TestNode {
+    pub node: Node,
+    pub barrier: OnceLock<Arc<Barrier>>,
+}
 
 impl Pea2Pea for TestNode {
     fn node(&self) -> &Node {
-        &self.0
+        &self.node
     }
 }
 
@@ -35,7 +44,10 @@ macro_rules! test_node {
             name: Some($name.into()),
             ..Default::default()
         };
-        common::TestNode(pea2pea::Node::new(config))
+        common::TestNode {
+            node: pea2pea::Node::new(config),
+            barrier: Default::default(),
+        }
     }};
 }
 
@@ -43,7 +55,10 @@ pub async fn start_test_nodes(count: usize) -> Vec<TestNode> {
     let mut nodes = Vec::with_capacity(count);
 
     for _ in 0..count {
-        let test_node = TestNode(Node::new(Default::default()));
+        let test_node = TestNode {
+            node: Node::new(Default::default()),
+            barrier: Default::default(),
+        };
         test_node.node().toggle_listener().await.unwrap();
         nodes.push(test_node);
     }
@@ -130,6 +145,19 @@ macro_rules! impl_noop_disconnect_and_handshake {
 
         impl OnDisconnect for $target {
             async fn on_disconnect(&self, _addr: SocketAddr) {}
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! impl_barrier_on_connect {
+    ($target: ty) => {
+        impl OnConnect for $target {
+            async fn on_connect(&self, _addr: SocketAddr) {
+                if let Some(barrier) = self.barrier.get() {
+                    barrier.wait().await;
+                }
+            }
         }
     };
 }

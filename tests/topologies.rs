@@ -1,64 +1,86 @@
-#![allow(clippy::blocks_in_conditions)]
-
 mod common;
-use std::time::Duration;
+use std::{net::SocketAddr, sync::Arc};
 
-use deadline::deadline;
-use pea2pea::{Pea2Pea, Topology, connect_nodes};
+use pea2pea::{Pea2Pea, Topology, connect_nodes, protocols::OnConnect};
+use tokio::sync::Barrier;
 
 // the number of nodes spawned for each topology test
 const N: usize = 10;
 
+crate::impl_barrier_on_connect!(common::TestNode);
+
 #[tokio::test]
 async fn topology_line_conn_counts() {
     let nodes = common::start_test_nodes(N).await;
+    let barrier = Arc::new(Barrier::new(
+        (Topology::Line).num_expected_connections(N) + 1,
+    ));
+    for node in &nodes {
+        node.barrier.set(barrier.clone()).unwrap();
+        node.enable_on_connect().await;
+    }
     connect_nodes(&nodes, Topology::Line).await.unwrap();
+    barrier.wait().await;
 
-    deadline!(Duration::from_secs(1), move || nodes
-        .iter()
-        .enumerate()
-        .all(|(i, node)| {
-            if i == 0 || i == N - 1 {
-                node.node().num_connected() == 1
-            } else {
-                node.node().num_connected() == 2
-            }
-        }));
+    assert!(nodes.iter().enumerate().all(|(i, node)| {
+        if i == 0 || i == N - 1 {
+            node.node().num_connected() == 1
+        } else {
+            node.node().num_connected() == 2
+        }
+    }));
 }
 
 #[tokio::test]
 async fn topology_ring_conn_counts() {
     let nodes = common::start_test_nodes(N).await;
+    let barrier = Arc::new(Barrier::new(
+        (Topology::Ring).num_expected_connections(N) + 1,
+    ));
+    for node in &nodes {
+        node.barrier.set(barrier.clone()).unwrap();
+        node.enable_on_connect().await;
+    }
     connect_nodes(&nodes, Topology::Ring).await.unwrap();
+    barrier.wait().await;
 
-    deadline!(Duration::from_secs(1), move || nodes
-        .iter()
-        .all(|node| node.node().num_connected() == 2));
+    assert!(nodes.iter().all(|node| node.node().num_connected() == 2));
 }
 
 #[tokio::test]
 async fn topology_mesh_conn_counts() {
     let nodes = common::start_test_nodes(N).await;
+    let barrier = Arc::new(Barrier::new(
+        (Topology::Mesh).num_expected_connections(N) + 1,
+    ));
+    for node in &nodes {
+        node.barrier.set(barrier.clone()).unwrap();
+        node.enable_on_connect().await;
+    }
     connect_nodes(&nodes, Topology::Mesh).await.unwrap();
+    barrier.wait().await;
 
-    deadline!(Duration::from_secs(1), move || nodes
-        .iter()
-        .all(|n| n.node().num_connected() == N - 1));
+    assert!(nodes.iter().all(|n| n.node().num_connected() == N - 1));
 }
 
 #[tokio::test]
 async fn topology_star_conn_counts() {
     let nodes = common::start_test_nodes(N).await;
+    let barrier = Arc::new(Barrier::new(
+        (Topology::Star).num_expected_connections(N) + 1,
+    ));
+    for node in &nodes {
+        node.barrier.set(barrier.clone()).unwrap();
+        node.enable_on_connect().await;
+    }
     connect_nodes(&nodes, Topology::Star).await.unwrap();
+    barrier.wait().await;
 
-    deadline!(Duration::from_secs(1), move || nodes
-        .iter()
-        .enumerate()
-        .all(|(i, node)| {
-            if i == 0 {
-                node.node().num_connected() == N - 1
-            } else {
-                node.node().num_connected() == 1
-            }
-        }));
+    assert!(nodes.iter().enumerate().all(|(i, node)| {
+        if i == 0 {
+            node.node().num_connected() == N - 1
+        } else {
+            node.node().num_connected() == 1
+        }
+    }));
 }
