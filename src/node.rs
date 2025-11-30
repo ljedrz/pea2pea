@@ -16,7 +16,7 @@ use tokio::{
     net::{TcpListener, TcpSocket, TcpStream},
     sync::{RwLock, oneshot},
     task::{self, JoinHandle},
-    time::timeout,
+    time::{sleep, timeout},
 };
 use tracing::*;
 
@@ -184,6 +184,9 @@ impl Node {
                         }
                         Err(e) => {
                             error!(parent: node.span(), "couldn't accept a connection: {e}");
+                            // if we ran out of FDs, sleep to avoid spinning 100% CPU
+                            // while waiting for a slot to free up
+                            sleep(Duration::from_millis(500)).await;
                         }
                     }
                 }
