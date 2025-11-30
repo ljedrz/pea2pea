@@ -4,6 +4,7 @@ use tokio::{
     io::{AsyncRead, AsyncWrite, split},
     net::TcpStream,
     sync::{mpsc, oneshot},
+    task::JoinSet,
     time::timeout,
 };
 use tracing::*;
@@ -27,7 +28,10 @@ where
     /// Prepares the node to perform specified network handshakes.
     fn enable_handshake(&self) -> impl Future<Output = ()> + Send {
         async {
-            let (from_node_sender, mut from_node_receiver) =
+            // create a JoinSet to track all in-flight setup tasks
+            let mut setup_tasks = JoinSet::new();
+
+            let (conn_sender, mut conn_receiver) =
                 mpsc::unbounded_channel::<ReturnableConnection>();
 
             // use a channel to know when the handshake task is ready
@@ -43,38 +47,23 @@ where
                     return;
                 }
 
-                while let Some((conn, result_sender)) = from_node_receiver.recv().await {
-                    let addr = conn.addr();
-
-                    let node = self_clone.clone();
-                    tokio::spawn(async move {
-                        debug!(parent: node.node().span(), "shaking hands with {addr} as the {:?}", !conn.side());
-                        let result = timeout(
-                            Duration::from_millis(Self::TIMEOUT_MS),
-                            node.perform_handshake(conn),
-                        )
-                        .await;
-
-                        let ret = match result {
-                            Ok(Ok(conn)) => {
-                                debug!(parent: node.node().span(), "successfully handshaken with {addr}");
-                                Ok(conn)
+                loop {
+                    tokio::select! {
+                        // handle new connections from `Node::adapt_stream`
+                        maybe_conn = conn_receiver.recv() => {
+                            match maybe_conn {
+                                Some(returnable_conn) => {
+                                    let self_clone2 = self_clone.clone();
+                                    setup_tasks.spawn(async move {
+                                        self_clone2.handle_new_connection(returnable_conn).await;
+                                    });
+                                }
+                                None => break, // channel closed
                             }
-                            Ok(Err(e)) => {
-                                error!(parent: node.node().span(), "handshake with {addr} failed: {e}");
-                                Err(e)
-                            }
-                            Err(_) => {
-                                error!(parent: node.node().span(), "handshake with {addr} timed out");
-                                Err(io::ErrorKind::TimedOut.into())
-                            }
-                        };
-
-                        // return the Connection to the Node, resuming Node::adapt_stream
-                        if result_sender.send(ret).is_err() {
-                            error!(parent: node.node().span(), "couldn't return a Connection with {addr} from the Handshake handler");
                         }
-                    });
+                        // task set cleanups
+                        _ = setup_tasks.join_next(), if !setup_tasks.is_empty() => {}
+                    }
                 }
             });
             let _ = rx.await;
@@ -84,7 +73,7 @@ where
                 .insert(NodeTask::Handshake, handshake_task);
 
             // register the Handshake handler with the Node
-            let hdl = ProtocolHandler(from_node_sender);
+            let hdl = ProtocolHandler(conn_sender);
             assert!(
                 self.node().protocols.handshake.set(hdl).is_ok(),
                 "the Handshake protocol was enabled more than once!"
@@ -120,5 +109,46 @@ where
         let (reader, writer) = split(stream);
         conn.reader = Some(Box::new(reader));
         conn.writer = Some(Box::new(writer));
+    }
+}
+
+trait HandshakeInternal: Handshake {
+    /// Applies the [`Handshake`] protocol to a single connection.
+    fn handle_new_connection(
+        &self,
+        conn_with_returner: ReturnableConnection,
+    ) -> impl Future<Output = ()> + Send;
+}
+
+impl<H: Handshake> HandshakeInternal for H {
+    async fn handle_new_connection(&self, (conn, conn_returner): ReturnableConnection) {
+        let addr = conn.addr();
+
+        debug!(parent: self.node().span(), "shaking hands with {addr} as the {:?}", !conn.side());
+        let result = timeout(
+            Duration::from_millis(Self::TIMEOUT_MS),
+            self.perform_handshake(conn),
+        )
+        .await;
+
+        let ret = match result {
+            Ok(Ok(conn)) => {
+                debug!(parent: self.node().span(), "successfully handshaken with {addr}");
+                Ok(conn)
+            }
+            Ok(Err(e)) => {
+                error!(parent: self.node().span(), "handshake with {addr} failed: {e}");
+                Err(e)
+            }
+            Err(_) => {
+                error!(parent: self.node().span(), "handshake with {addr} timed out");
+                Err(io::ErrorKind::TimedOut.into())
+            }
+        };
+
+        // return the Connection to the Node, resuming Node::adapt_stream
+        if conn_returner.send(ret).is_err() {
+            error!(parent: self.node().span(), "couldn't return a Connection with {addr} from the Handshake handler");
+        }
     }
 }

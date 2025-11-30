@@ -7,6 +7,7 @@ use parking_lot::RwLock;
 use tokio::{
     io::AsyncWrite,
     sync::{mpsc, oneshot},
+    task::JoinSet,
     time::timeout,
 };
 use tokio_util::codec::{Encoder, FramedWrite};
@@ -52,6 +53,9 @@ where
     /// Prepares the node to send messages.
     fn enable_writing(&self) -> impl Future<Output = ()> {
         async {
+            // create a JoinSet to track all in-flight setup tasks
+            let mut setup_tasks = JoinSet::new();
+
             let (conn_sender, mut conn_receiver) = mpsc::unbounded_channel();
 
             // the conn_senders are used to send messages from the Node to individual connections
@@ -72,11 +76,24 @@ where
                     return;
                 }
 
-                // these objects are sent from `Node::adapt_stream`
-                while let Some(returnable_conn) = conn_receiver.recv().await {
-                    self_clone
-                        .handle_new_connection(returnable_conn, &conn_senders)
-                        .await;
+                loop {
+                    tokio::select! {
+                        // handle new connections from `Node::adapt_stream`
+                        maybe_conn = conn_receiver.recv() => {
+                            match maybe_conn {
+                                Some(returnable_conn) => {
+                                    let self_clone2 = self_clone.clone();
+                                    let senders = conn_senders.clone();
+                                    setup_tasks.spawn(async move {
+                                        self_clone2.handle_new_connection(returnable_conn, &senders).await;
+                                    });
+                                }
+                                None => break, // channel closed
+                            }
+                        }
+                        // task set cleanups
+                        _ = setup_tasks.join_next(), if !setup_tasks.is_empty() => {}
+                    }
                 }
             });
             let _ = rx_writing.await;

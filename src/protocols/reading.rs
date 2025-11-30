@@ -5,6 +5,7 @@ use futures_util::StreamExt;
 use tokio::{
     io::AsyncRead,
     sync::{mpsc, oneshot},
+    task::JoinSet,
 };
 use tokio_util::codec::{Decoder, FramedRead};
 use tracing::*;
@@ -49,6 +50,9 @@ where
     /// Prepares the node to receive messages.
     fn enable_reading(&self) -> impl Future<Output = ()> {
         async {
+            // create a JoinSet to track all in-flight setup tasks
+            let mut setup_tasks = JoinSet::new();
+
             let (conn_sender, mut conn_receiver) = mpsc::unbounded_channel();
 
             // use a channel to know when the reading task is ready
@@ -64,9 +68,23 @@ where
                     return;
                 }
 
-                // these objects are sent from `Node::adapt_stream`
-                while let Some(returnable_conn) = conn_receiver.recv().await {
-                    self_clone.handle_new_connection(returnable_conn).await;
+                loop {
+                    tokio::select! {
+                        // handle new connections from `Node::adapt_stream`
+                        maybe_conn = conn_receiver.recv() => {
+                            match maybe_conn {
+                                Some(returnable_conn) => {
+                                    let self_clone2 = self_clone.clone();
+                                    setup_tasks.spawn(async move {
+                                        self_clone2.handle_new_connection(returnable_conn).await;
+                                    });
+                                }
+                                None => break, // channel closed
+                            }
+                        }
+                        // task set cleanups
+                        _ = setup_tasks.join_next(), if !setup_tasks.is_empty() => {}
+                    }
                 }
             });
             let _ = rx_reading.await;
