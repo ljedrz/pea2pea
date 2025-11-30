@@ -84,3 +84,37 @@ async fn topology_star_conn_counts() {
         }
     }));
 }
+
+#[tokio::test]
+async fn topology_grid_conn_counts() {
+    let nodes = common::start_test_nodes(N).await;
+    let topology = Topology::Grid {
+        width: 5,
+        height: 2,
+    };
+    let barrier = Arc::new(Barrier::new(topology.num_expected_connections(N) + 1));
+    for node in &nodes {
+        node.barrier.set(barrier.clone()).unwrap();
+        node.enable_on_connect().await;
+    }
+    connect_nodes(&nodes, topology).await.unwrap();
+    barrier.wait().await;
+
+    // TODO
+}
+
+#[tokio::test]
+async fn topology_tree_conn_counts() {
+    let nodes = common::start_test_nodes(N).await;
+    let barrier = Arc::new(Barrier::new(
+        (Topology::Tree).num_expected_connections(N) + 1,
+    ));
+    for node in &nodes {
+        node.barrier.set(barrier.clone()).unwrap();
+        node.enable_on_connect().await;
+    }
+    connect_nodes(&nodes, Topology::Tree).await.unwrap();
+    barrier.wait().await;
+
+    // TODO
+}

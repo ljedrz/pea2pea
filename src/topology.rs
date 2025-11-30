@@ -4,6 +4,7 @@ use crate::Pea2Pea;
 
 /// The way in which nodes are connected to each other; used in [`connect_nodes`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum Topology {
     /// Each node - except the last one - connects to the next one in a linear fashion.
     Line,
@@ -13,6 +14,16 @@ pub enum Topology {
     Mesh,
     /// The first node is the central one (the hub); all the other nodes connect to it.
     Star,
+    /// Nodes are connected in a 2D grid lattice.
+    /// The number of nodes must equal `width * height`.
+    Grid {
+        /// The width of the grid.
+        width: usize,
+        /// The height of the grid.
+        height: usize,
+    },
+    /// The relationships between the nodes form a binary tree.
+    Tree,
 }
 
 impl Topology {
@@ -27,6 +38,8 @@ impl Topology {
             Self::Ring => num_nodes * 2,
             Self::Mesh => (num_nodes - 1) * num_nodes,
             Self::Star => (num_nodes - 1) * 2,
+            Self::Grid { width, height } => ((width * height) * 2 - width - height) * 2,
+            Self::Tree => (num_nodes - 1) * 2,
         }
     }
 }
@@ -65,6 +78,51 @@ pub async fn connect_nodes<T: Pea2Pea>(nodes: &[T], topology: Topology) -> io::R
             let hub_addr = nodes[0].node().listening_addr().await?;
             for node in nodes.iter().skip(1) {
                 node.node().connect(hub_addr).await?;
+            }
+        }
+        Topology::Grid { width, height } => {
+            if width * height != count {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!(
+                        "Grid topology dimensions ({width}x{height} = {}) do not match the number of nodes ({count})",
+                        width * height
+                    ),
+                ));
+            }
+
+            for row in 0..height {
+                for col in 0..width {
+                    let i = row * width + col;
+
+                    // connect right
+                    if col + 1 < width {
+                        let target = i + 1;
+                        let addr = nodes[target].node().listening_addr().await?;
+                        nodes[i].node().connect(addr).await?;
+                    }
+
+                    // connect down
+                    if row + 1 < height {
+                        let target = i + width;
+                        let addr = nodes[target].node().listening_addr().await?;
+                        nodes[i].node().connect(addr).await?;
+                    }
+                }
+            }
+        }
+        Topology::Tree => {
+            for i in 0..count {
+                let left = 2 * i + 1;
+                if left < count {
+                    let addr = nodes[left].node().listening_addr().await?;
+                    nodes[i].node().connect(addr).await?;
+                }
+                let right = 2 * i + 2;
+                if right < count {
+                    let addr = nodes[right].node().listening_addr().await?;
+                    nodes[i].node().connect(addr).await?;
+                }
             }
         }
     }
