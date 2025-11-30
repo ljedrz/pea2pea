@@ -26,13 +26,17 @@ pub use on_disconnect::OnDisconnect;
 pub use reading::Reading;
 pub use writing::Writing;
 
+// The value returned to the node by the OnDisconnect protocol is a bit complex,
+// so use an alias to break it down.
+type OnDisconnectBundle = (JoinHandle<()>, oneshot::Receiver<()>);
+
 #[derive(Default)]
 pub(crate) struct Protocols {
     pub(crate) handshake: OnceLock<ProtocolHandler<Connection, io::Result<Connection>>>,
     pub(crate) reading: OnceLock<ProtocolHandler<Connection, io::Result<Connection>>>,
     pub(crate) writing: OnceLock<writing::WritingHandler>,
     pub(crate) on_connect: OnceLock<ProtocolHandler<SocketAddr, JoinHandle<()>>>,
-    pub(crate) on_disconnect: OnceLock<ProtocolHandler<SocketAddr, ()>>,
+    pub(crate) on_disconnect: OnceLock<ProtocolHandler<SocketAddr, OnDisconnectBundle>>,
 }
 
 /// An object sent to a protocol handler task; the task assumes control of a protocol-relevant item `T`,
