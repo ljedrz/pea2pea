@@ -15,6 +15,22 @@ pub enum Topology {
     Star,
 }
 
+impl Topology {
+    /// Returns the expected total number of connections for the given number of nodes.
+    pub fn num_expected_connections(&self, num_nodes: usize) -> usize {
+        if num_nodes == 0 {
+            return 0;
+        }
+
+        match self {
+            Self::Line => (num_nodes - 1) * 2,
+            Self::Ring => num_nodes * 2,
+            Self::Mesh => (num_nodes - 1) * num_nodes,
+            Self::Star => (num_nodes - 1) * 2,
+        }
+    }
+}
+
 /// Connects the provided list of nodes in order to form the given [`Topology`].
 pub async fn connect_nodes<T: Pea2Pea>(nodes: &[T], topology: Topology) -> io::Result<()> {
     let count = nodes.len();
