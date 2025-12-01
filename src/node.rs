@@ -534,22 +534,30 @@ impl Node {
     fn check_and_reserve(&self, addr: SocketAddr) -> io::Result<ConnectionGuard<'_>> {
         // this lock is held for the duration of the check to prevent races
         let mut connecting = self.connecting.lock();
+        let num_connecting = connecting.len();
+
+        // check the cap on the number of connecting entries
+        if num_connecting >= self.config.max_connecting as usize {
+            return Err(io::Error::new(
+                io::ErrorKind::ConnectionRefused,
+                "too many pending connections",
+            ));
+        }
 
         // check if already connecting (duplicate connection attempt from same node)
         if connecting.contains(&addr) {
             return Err(io::ErrorKind::AlreadyExists.into());
         }
 
-        // check global limits
+        // check the global connection limit
         let num_connected = self.connections.num_connected();
-        let num_connecting = connecting.len();
         let limit = self.config.max_connections as usize;
         if num_connected + num_connecting >= limit {
             warn!(parent: self.span(), "maximum number of connections ({limit}) reached");
             return Err(io::ErrorKind::PermissionDenied.into());
         }
 
-        // check per-IP limits
+        // check the per-IP limit
         let ip = addr.ip();
         let mut ip_counts = self.ip_counts.lock();
         let count = *ip_counts.get(&ip).unwrap_or(&0);
