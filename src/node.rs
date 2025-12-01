@@ -534,10 +534,21 @@ impl Node {
     fn check_and_reserve(&self, addr: SocketAddr) -> io::Result<ConnectionGuard<'_>> {
         // this lock is held for the duration of the check to prevent races
         let mut connecting = self.connecting.lock();
+
+        // check the per-IP limit first
+        let ip = addr.ip();
+        let mut ip_counts = self.ip_counts.lock();
+        let count = *ip_counts.get(&ip).unwrap_or(&0);
+        if count >= self.config.max_connections_per_ip as usize {
+            return Err(io::ErrorKind::PermissionDenied.into());
+        }
+        *ip_counts.entry(ip).or_insert(0) += 1;
+        drop(ip_counts);
+
         let num_connecting = connecting.len();
 
         // check the cap on the number of connecting entries
-        if num_connecting >= self.config.max_connecting as usize {
+        if connecting.len() >= self.config.max_connecting as usize {
             return Err(io::Error::new(
                 io::ErrorKind::ConnectionRefused,
                 "too many pending connections",
@@ -557,17 +568,8 @@ impl Node {
             return Err(io::ErrorKind::PermissionDenied.into());
         }
 
-        // check the per-IP limit
-        let ip = addr.ip();
-        let mut ip_counts = self.ip_counts.lock();
-        let count = *ip_counts.get(&ip).unwrap_or(&0);
-        if count >= self.config.max_connections_per_ip as usize {
-            return Err(io::ErrorKind::PermissionDenied.into());
-        }
-
-        // reserve
+        // reserve a connecting slot
         connecting.insert(addr);
-        *ip_counts.entry(ip).or_insert(0) += 1;
 
         Ok(ConnectionGuard {
             addr,
