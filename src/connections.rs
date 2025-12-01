@@ -180,3 +180,11 @@ impl Connection {
         self.info.stats()
     }
 }
+
+impl Drop for Connection {
+    fn drop(&mut self) {
+        for task in self.tasks.iter().rev() {
+            task.abort();
+        }
+    }
+}

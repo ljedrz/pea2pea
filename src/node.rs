@@ -468,7 +468,9 @@ impl Node {
             }
         }
 
-        if let Some(ref conn) = conn {
+        let disconnected = conn.is_some();
+
+        if let Some(conn) = conn {
             debug!(parent: self.span(), "disconnecting from {}", conn.addr());
 
             // ensure that any OnDisconnect-related writes can conclude
@@ -483,16 +485,14 @@ impl Node {
             }
 
             // shut the associated tasks down
-            for task in conn.tasks.iter().rev() {
-                task.abort();
-            }
+            drop(conn);
 
             debug!(parent: self.span(), "disconnected from {addr}");
         } else {
             debug!(parent: self.span(), "couldn't disconnect from {addr}, as it wasn't connected");
         }
 
-        conn.is_some()
+        disconnected
     }
 
     /// Returns a list containing addresses of active connections.
