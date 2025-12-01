@@ -1,7 +1,7 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{HashMap, HashSet, hash_map::Entry},
     io,
-    net::SocketAddr,
+    net::{IpAddr, SocketAddr},
     ops::Deref,
     sync::{
         Arc,
@@ -88,6 +88,8 @@ pub struct InnerNode {
     pub(crate) protocols: Protocols,
     /// A list of connections that have not been finalized yet.
     connecting: Mutex<HashSet<SocketAddr>>,
+    /// Tracks the number of connections (pending + established) per IP.
+    ip_counts: Mutex<HashMap<IpAddr, usize>>,
     /// Contains objects related to the node's active connections.
     pub(crate) connections: Connections,
     /// Collects statistics related to the node itself.
@@ -100,11 +102,25 @@ pub struct InnerNode {
 struct ConnectionGuard<'a> {
     addr: SocketAddr,
     connecting: &'a Mutex<HashSet<SocketAddr>>,
+    ip_counts: &'a Mutex<HashMap<IpAddr, usize>>,
+    completed: bool,
 }
 
 impl<'a> Drop for ConnectionGuard<'a> {
     fn drop(&mut self) {
         self.connecting.lock().remove(&self.addr);
+
+        // if the connection wasn't successfully established, decrement the ip count
+        if !self.completed {
+            let mut counts = self.ip_counts.lock();
+            if let Entry::Occupied(mut e) = counts.entry(self.addr.ip()) {
+                if *e.get() > 1 {
+                    *e.get_mut() -= 1;
+                } else {
+                    e.remove();
+                }
+            }
+        }
     }
 }
 
@@ -125,6 +141,7 @@ impl Node {
             listening_addr: Default::default(),
             protocols: Default::default(),
             connecting: Default::default(),
+            ip_counts: Default::default(),
             connections: Default::default(),
             stats: Default::default(),
             tasks: Default::default(),
@@ -280,7 +297,7 @@ impl Node {
         stream: TcpStream,
         peer_addr: SocketAddr,
         own_side: ConnectionSide,
-        guard: ConnectionGuard<'_>,
+        mut guard: ConnectionGuard<'_>,
     ) -> io::Result<()> {
         // register the port seen by the peer
         if own_side == ConnectionSide::Initiator {
@@ -304,6 +321,7 @@ impl Node {
 
         // connecting -> connected
         self.connections.add(connection);
+        guard.completed = true;
         drop(guard);
 
         // send the aforementioned notification so that reading from the socket can commence
@@ -441,6 +459,15 @@ impl Node {
         // ones; this is only done here, because OnDisconnect might attempt to send a message to the peer
         let conn = self.connections.remove(addr);
 
+        // decrement the per-IP connection count
+        if let Entry::Occupied(mut e) = self.ip_counts.lock().entry(addr.ip()) {
+            if *e.get() > 1 {
+                *e.get_mut() -= 1;
+            } else {
+                e.remove();
+            }
+        }
+
         if let Some(ref conn) = conn {
             debug!(parent: self.span(), "disconnecting from {}", conn.addr());
 
@@ -513,42 +540,32 @@ impl Node {
             return Err(io::ErrorKind::AlreadyExists.into());
         }
 
-        // check the global connection limit
+        // check global limits
         let num_connected = self.connections.num_connected();
         let num_connecting = connecting.len();
         let limit = self.config.max_connections as usize;
-
         if num_connected + num_connecting >= limit {
             warn!(parent: self.span(), "maximum number of connections ({limit}) reached");
             return Err(io::ErrorKind::PermissionDenied.into());
         }
 
-        // check the per-IP connection limit
+        // check per-IP limits
         let ip = addr.ip();
-
-        // count established connections from this IP
-        let established_count = self
-            .connections
-            .0
-            .read()
-            .values()
-            .filter(|info| info.addr().ip() == ip)
-            .count();
-
-        // count pending connections from this IP
-        let pending_count = connecting.iter().filter(|addr| addr.ip() == ip).count();
-
-        if established_count + pending_count >= self.config.max_connections_per_ip as usize {
+        let mut ip_counts = self.ip_counts.lock();
+        let count = *ip_counts.get(&ip).unwrap_or(&0);
+        if count >= self.config.max_connections_per_ip as usize {
             return Err(io::ErrorKind::PermissionDenied.into());
         }
 
-        // reserve a slot
+        // reserve
         connecting.insert(addr);
+        *ip_counts.entry(ip).or_insert(0) += 1;
 
-        // return the guard that will remove the address from 'connecting' on drop
         Ok(ConnectionGuard {
             addr,
             connecting: &self.connecting,
+            ip_counts: &self.ip_counts,
+            completed: false,
         })
     }
 
