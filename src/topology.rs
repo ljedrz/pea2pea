@@ -54,6 +54,9 @@ impl Topology {
 }
 
 /// Connects the provided list of nodes in order to form the given [`Topology`].
+///
+/// note: This is primarily a test utility; the connections are established sequentially,
+/// and it expects all the connections to succeed.
 pub async fn connect_nodes<T: Pea2Pea>(nodes: &[T], topology: Topology) -> io::Result<()> {
     let count = nodes.len();
     if count < 2 {
