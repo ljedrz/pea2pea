@@ -315,9 +315,12 @@ impl Node {
 
             // receive the handle for the running task
             if let Ok(handle) = receiver.await {
-                // add the task to the connection so it gets aborted on disconnect
                 if let Some(conn) = self.connections.active.write().get_mut(&peer_addr) {
+                    // add the task to the connection so it gets aborted in case of a disconnect
                     conn.tasks.push(handle);
+                } else {
+                    // the connection has just been terminated; abort the OnConnect work
+                    handle.abort();
                 }
             }
         }
