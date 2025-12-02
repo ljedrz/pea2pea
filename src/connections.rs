@@ -1,13 +1,13 @@
 //! Objects associated with connection handling.
 
 use std::{
-    collections::HashMap,
-    net::SocketAddr,
+    collections::{HashMap, HashSet, hash_map::Entry},
+    net::{IpAddr, SocketAddr},
     ops::Not,
     sync::{Arc, atomic::AtomicBool},
 };
 
-use parking_lot::RwLock;
+use parking_lot::{Mutex, RwLock};
 use tokio::{
     io::{AsyncRead, AsyncWrite},
     net::TcpStream,
@@ -21,19 +21,24 @@ use crate::Stats;
 use crate::protocols::{Handshake, Reading, Writing};
 
 #[derive(Default)]
-pub(crate) struct Connections(pub(crate) RwLock<HashMap<SocketAddr, Connection>>);
+pub(crate) struct Connections {
+    /// The list of fully established connections.
+    pub(crate) active: RwLock<HashMap<SocketAddr, Connection>>,
+    /// Tracks the connection-related limits.
+    pub(crate) limits: Mutex<ConnectionLimits>,
+}
 
 impl Connections {
     pub(crate) fn add(&self, conn: Connection) {
-        self.0.write().insert(conn.addr(), conn);
+        self.active.write().insert(conn.addr(), conn);
     }
 
     pub(crate) fn get_info(&self, addr: SocketAddr) -> Option<ConnectionInfo> {
-        self.0.read().get(&addr).map(|conn| conn.info.clone())
+        self.active.read().get(&addr).map(|conn| conn.info.clone())
     }
 
     pub(crate) fn infos(&self) -> HashMap<SocketAddr, ConnectionInfo> {
-        self.0
+        self.active
             .read()
             .iter()
             .map(|(addr, conn)| (*addr, conn.info.clone()))
@@ -41,19 +46,19 @@ impl Connections {
     }
 
     pub(crate) fn is_connected(&self, addr: SocketAddr) -> bool {
-        self.0.read().contains_key(&addr)
+        self.active.read().contains_key(&addr)
     }
 
     pub(crate) fn remove(&self, addr: SocketAddr) -> Option<Connection> {
-        self.0.write().remove(&addr)
+        self.active.write().remove(&addr)
     }
 
     pub(crate) fn num_connected(&self) -> usize {
-        self.0.read().len()
+        self.active.read().len()
     }
 
     pub(crate) fn addrs(&self) -> Vec<SocketAddr> {
-        self.0.read().keys().copied().collect()
+        self.active.read().keys().copied().collect()
     }
 }
 
@@ -185,6 +190,43 @@ impl Drop for Connection {
     fn drop(&mut self) {
         for task in self.tasks.iter().rev() {
             task.abort();
+        }
+    }
+}
+
+/// A helper object allowing all the connection-related limits to be modified at the same time.
+#[derive(Default)]
+pub(crate) struct ConnectionLimits {
+    /// A list of connections that have not been finalized yet.
+    pub(crate) connecting: HashSet<SocketAddr>,
+    /// Tracks the number of connections (pending + established) per IP.
+    pub(crate) ip_counts: HashMap<IpAddr, usize>,
+}
+
+// A helper object which ensures that a connecting entry is unique and eventually cleaned up.
+pub(crate) struct ConnectionGuard<'a> {
+    /// The applicable connection's address.
+    pub(crate) addr: SocketAddr,
+    /// A reference to the list of all connections.
+    pub(crate) connections: &'a Connections,
+    /// Indicates whether the connection has been finalized.
+    pub(crate) completed: bool,
+}
+
+impl<'a> Drop for ConnectionGuard<'a> {
+    fn drop(&mut self) {
+        let mut limits = self.connections.limits.lock();
+        limits.connecting.remove(&self.addr);
+
+        // if the connection wasn't successfully established, decrement the ip count
+        if !self.completed {
+            if let Entry::Occupied(mut e) = limits.ip_counts.entry(self.addr.ip()) {
+                if *e.get() > 1 {
+                    *e.get_mut() -= 1;
+                } else {
+                    e.remove();
+                }
+            }
         }
     }
 }

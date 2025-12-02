@@ -1,7 +1,7 @@
 use std::{
-    collections::{HashMap, HashSet, hash_map::Entry},
-    io,
-    net::{IpAddr, SocketAddr},
+    collections::{HashMap, hash_map::Entry},
+    io::{self, ErrorKind},
+    net::SocketAddr,
     ops::Deref,
     sync::{
         Arc,
@@ -22,7 +22,7 @@ use tracing::*;
 
 use crate::{
     Config, Stats,
-    connections::{Connection, ConnectionInfo, ConnectionSide, Connections},
+    connections::{Connection, ConnectionGuard, ConnectionInfo, ConnectionSide, Connections},
     protocols::{Protocol, Protocols},
 };
 
@@ -36,7 +36,7 @@ macro_rules! enable_protocol {
 
             match conn_retriever.await {
                 Ok(Ok(conn)) => conn,
-                Err(_) => return Err(io::ErrorKind::BrokenPipe.into()),
+                Err(_) => return Err(ErrorKind::BrokenPipe.into()),
                 Ok(e) => return e,
             }
         } else {
@@ -86,42 +86,12 @@ pub struct InnerNode {
     listening_addr: RwLock<Option<SocketAddr>>,
     /// Contains objects used by the protocols implemented by the node.
     pub(crate) protocols: Protocols,
-    /// A list of connections that have not been finalized yet.
-    connecting: Mutex<HashSet<SocketAddr>>,
-    /// Tracks the number of connections (pending + established) per IP.
-    ip_counts: Mutex<HashMap<IpAddr, usize>>,
     /// Contains objects related to the node's active connections.
     pub(crate) connections: Connections,
     /// Collects statistics related to the node itself.
     stats: Stats,
     /// The node's tasks.
     pub(crate) tasks: Mutex<HashMap<NodeTask, JoinHandle<()>>>,
-}
-
-// A helper object which ensures that a connecting entry is unique and eventually cleaned up.
-struct ConnectionGuard<'a> {
-    addr: SocketAddr,
-    connecting: &'a Mutex<HashSet<SocketAddr>>,
-    ip_counts: &'a Mutex<HashMap<IpAddr, usize>>,
-    completed: bool,
-}
-
-impl<'a> Drop for ConnectionGuard<'a> {
-    fn drop(&mut self) {
-        self.connecting.lock().remove(&self.addr);
-
-        // if the connection wasn't successfully established, decrement the ip count
-        if !self.completed {
-            let mut counts = self.ip_counts.lock();
-            if let Entry::Occupied(mut e) = counts.entry(self.addr.ip()) {
-                if *e.get() > 1 {
-                    *e.get_mut() -= 1;
-                } else {
-                    e.remove();
-                }
-            }
-        }
-    }
 }
 
 impl Node {
@@ -140,8 +110,6 @@ impl Node {
             config,
             listening_addr: Default::default(),
             protocols: Default::default(),
-            connecting: Default::default(),
-            ip_counts: Default::default(),
             connections: Default::default(),
             stats: Default::default(),
             tasks: Default::default(),
@@ -168,74 +136,83 @@ impl Node {
             Ok(None)
         } else {
             let listener_addr = self.config().listener_addr.ok_or_else(|| {
-                error!("the listener was toggled on, but Config::listener_addr is not set");
-                io::ErrorKind::AddrNotAvailable
+                error!(parent: self.span(), "the listener was toggled on, but Config::listener_addr is not set");
+                ErrorKind::AddrNotAvailable
             })?;
+            trace!(parent: self.span(), "attempting to listen on {listener_addr}");
             let listener = TcpListener::bind(listener_addr).await?;
             let port = listener.local_addr()?.port(); // discover the port if it was unspecified
             let new_listening_addr = (listener_addr.ip(), port).into();
 
+            // start listening
+            self.start_listening(listener).await;
+            debug!(parent: self.span(), "listening on {new_listening_addr}");
+
             // update the node's listening address
             *listening_addr = Some(new_listening_addr);
-
-            // use a channel to know when the listening task is ready
-            let (tx, rx) = oneshot::channel();
-
-            // spawn a task responsible for listening for inbound connections
-            let node = self.clone();
-            let listening_task = tokio::spawn(async move {
-                trace!(parent: node.span(), "spawned the listening task");
-                if tx.send(()).is_err() {
-                    error!(parent: node.span(), "listener setup interrupted; shutting down the listening task");
-                    return;
-                }
-
-                loop {
-                    match listener.accept().await {
-                        Ok((stream, addr)) => {
-                            // handle connection requests asynchronously
-                            let node = node.clone();
-                            tokio::spawn(async move {
-                                node.handle_connection_request(stream, addr).await
-                            });
-                        }
-                        Err(e) => {
-                            error!(parent: node.span(), "couldn't accept a connection: {e}");
-                            // if we ran out of FDs, sleep to avoid spinning 100% CPU
-                            // while waiting for a slot to free up
-                            sleep(Duration::from_millis(500)).await;
-                        }
-                    }
-                }
-            });
-            self.tasks.lock().insert(NodeTask::Listener, listening_task);
-            let _ = rx.await;
-            debug!(parent: self.span(), "listening on {new_listening_addr}");
 
             Ok(Some(new_listening_addr))
         }
     }
 
-    /// Processes a single inbound connection request. Only used in [`Node::start_listening`].
-    async fn handle_connection_request(&self, stream: TcpStream, addr: SocketAddr) {
-        debug!(parent: self.span(), "tentatively accepted a connection from {addr}");
+    /// Spawn a task responsible for listening for inbound connections.
+    async fn start_listening(&self, listener: TcpListener) {
+        // use a channel to know when the listening task is ready
+        let (tx, rx) = oneshot::channel();
 
-        // attempt to reserve a connection slot atomically
-        let guard = match self.check_and_reserve(addr) {
-            Ok(guard) => guard,
-            Err(e) => {
-                debug!(parent: self.span(), "rejecting connection from {addr}: {e}");
+        let node = self.clone();
+        let listening_task = tokio::spawn(async move {
+            trace!(parent: node.span(), "spawned the listening task");
+            if tx.send(()).is_err() {
+                error!(parent: node.span(), "listener setup interrupted; shutting down the listening task");
                 return;
             }
-        };
+
+            loop {
+                match listener.accept().await {
+                    Ok((stream, addr)) => {
+                        // handle connection requests asynchronously
+                        let node = node.clone();
+                        tokio::spawn(async move {
+                            debug!(parent: node.span(), "tentatively accepted a connection from {addr}");
+                            node.handle_connection_request(stream, addr).await.inspect_err(|e|
+                                match e.kind() {
+                                    ErrorKind::QuotaExceeded | ErrorKind::AlreadyExists => {
+                                        debug!(parent: node.span(), "rejecting connection from {addr}: {e}");
+                                    }
+                                    _ => {
+                                        error!(parent: node.span(), "couldn't accept a connection from {addr}: {e}");
+                                    }
+                                }
+                            )
+                        });
+                    }
+                    Err(e) => {
+                        error!(parent: node.span(), "couldn't accept a connection: {e}");
+                        // if we ran out of FDs, sleep to avoid spinning 100% CPU
+                        // while waiting for a slot to free up
+                        sleep(Duration::from_millis(500)).await;
+                    }
+                }
+            }
+        });
+
+        self.tasks.lock().insert(NodeTask::Listener, listening_task);
+        let _ = rx.await;
+    }
+
+    /// Processes a single inbound connection request. Only used in [`Node::start_listening`].
+    async fn handle_connection_request(
+        &self,
+        stream: TcpStream,
+        addr: SocketAddr,
+    ) -> io::Result<()> {
+        // check connection limits and set up a connection guard
+        let guard = self.check_and_reserve(addr)?;
 
         // finalize the connection
-        if let Err(e) = self
-            .adapt_stream(stream, addr, ConnectionSide::Responder, guard)
+        self.adapt_stream(stream, addr, ConnectionSide::Responder, guard)
             .await
-        {
-            error!(parent: self.span(), "couldn't accept a connection from {addr}: {e}");
-        }
     }
 
     /// Returns the name assigned to the node.
@@ -271,7 +248,7 @@ impl Node {
             .await
             .as_ref()
             .copied()
-            .ok_or_else(|| io::ErrorKind::AddrNotAvailable.into())
+            .ok_or_else(|| ErrorKind::AddrNotAvailable.into())
     }
 
     /// Enable the applicable protocols for a new connection.
@@ -339,7 +316,7 @@ impl Node {
             // receive the handle for the running task
             if let Ok(handle) = receiver.await {
                 // add the task to the connection so it gets aborted on disconnect
-                if let Some(conn) = self.connections.0.write().get_mut(&peer_addr) {
+                if let Some(conn) = self.connections.active.write().get_mut(&peer_addr) {
                     conn.tasks.push(handle);
                 }
             }
@@ -362,7 +339,7 @@ impl Node {
         {
             Ok(Ok(stream)) => Ok(stream),
             Ok(err) => err,
-            Err(err) => Err(io::Error::new(io::ErrorKind::TimedOut, err)),
+            Err(err) => Err(io::Error::new(ErrorKind::TimedOut, err)),
         }
     }
 
@@ -381,7 +358,9 @@ impl Node {
 
     /// Connects to the provided `SocketAddr`.
     pub async fn connect(&self, addr: SocketAddr) -> io::Result<()> {
-        self.connect_inner(addr, None).await
+        self.connect_inner(addr, None)
+            .await
+            .inspect_err(|e| error!(parent: self.span(), "couldn't connect to {addr}: {e}"))
     }
 
     /// Connects to a `SocketAddr` using the provided `TcpSocket`.
@@ -390,7 +369,9 @@ impl Node {
         addr: SocketAddr,
         socket: TcpSocket,
     ) -> io::Result<()> {
-        self.connect_inner(addr, Some(socket)).await
+        self.connect_inner(addr, Some(socket))
+            .await
+            .inspect_err(|e| error!(parent: self.span(), "couldn't connect to {addr}: {e}"))
     }
 
     /// Connects to the provided `SocketAddr` using an optional `TcpSocket`.
@@ -400,16 +381,20 @@ impl Node {
             if addr == listening_addr
                 || addr.ip().is_loopback() && addr.port() == listening_addr.port()
             {
-                error!(parent: self.span(), "can't connect to node's own listening address ({addr})");
-                return Err(io::ErrorKind::AddrInUse.into());
+                return Err(io::Error::new(
+                    ErrorKind::AddrInUse,
+                    "can't connect to node's own listening address ({addr})",
+                ));
             }
         }
 
         // make sure the address is not already connected to, unless
         // duplicate connections are permitted in the config
         if !self.config.allow_duplicate_connections && self.connections.is_connected(addr) {
-            warn!(parent: self.span(), "already connected to {addr}");
-            return Err(io::ErrorKind::AlreadyExists.into());
+            return Err(io::Error::new(
+                ErrorKind::AlreadyExists,
+                "already connected to {addr}",
+            ));
         }
 
         // attempt to reserve a connection slot atomically
@@ -421,16 +406,12 @@ impl Node {
         // attempt to finalize the connection
         self.adapt_stream(stream, addr, ConnectionSide::Initiator, guard)
             .await
-            .map_err(|e| {
-                error!(parent: self.span(), "couldn't connect to {addr}: {e}");
-                e
-            })
     }
 
     /// Disconnects from the provided `SocketAddr`; returns `true` if an actual disconnect took place.
     pub async fn disconnect(&self, addr: SocketAddr) -> bool {
         // claim the disconnect to avoid duplicate executions, or return early if already claimed
-        if let Some(conn) = self.connections.0.read().get(&addr) {
+        if let Some(conn) = self.connections.active.read().get(&addr) {
             if conn.disconnecting.swap(true, Relaxed) {
                 // valid connection, but someone else is already disconnecting it
                 return false;
@@ -447,7 +428,7 @@ impl Node {
             if let Ok((handle, waiter)) = receiver.await {
                 // register the associated task with the connection, in case
                 // it gets terminated before its completion
-                if let Some(conn) = self.connections.0.write().get_mut(&addr) {
+                if let Some(conn) = self.connections.active.write().get_mut(&addr) {
                     conn.tasks.push(handle);
                 }
                 // wait for the OnDisconnect protocol to perform its specified actions
@@ -460,7 +441,7 @@ impl Node {
         let conn = self.connections.remove(addr);
 
         // decrement the per-IP connection count
-        if let Entry::Occupied(mut e) = self.ip_counts.lock().entry(addr.ip()) {
+        if let Entry::Occupied(mut e) = self.connections.limits.lock().ip_counts.entry(addr.ip()) {
             if *e.get() > 1 {
                 *e.get_mut() -= 1;
             } else {
@@ -507,7 +488,7 @@ impl Node {
 
     /// Checks if the node is currently setting up a connection with the provided address.
     pub fn is_connecting(&self, addr: SocketAddr) -> bool {
-        self.connecting.lock().contains(&addr)
+        self.connections.limits.lock().connecting.contains(&addr)
     }
 
     /// Returns the number of active connections.
@@ -517,7 +498,7 @@ impl Node {
 
     /// Returns the number of connections that are currently being set up.
     pub fn num_connecting(&self) -> usize {
-        self.connecting.lock().len()
+        self.connections.limits.lock().connecting.len()
     }
 
     /// Returns basic information related to a connection.
@@ -533,48 +514,54 @@ impl Node {
     /// Atomically checks connection limits and reserves a slot if available.
     fn check_and_reserve(&self, addr: SocketAddr) -> io::Result<ConnectionGuard<'_>> {
         // this lock is held for the duration of the check to prevent races
-        let mut connecting = self.connecting.lock();
+        let mut limits = self.connections.limits.lock();
 
         // check the per-IP limit first
         let ip = addr.ip();
-        let mut ip_counts = self.ip_counts.lock();
-        let count = *ip_counts.get(&ip).unwrap_or(&0);
-        if count >= self.config.max_connections_per_ip as usize {
-            return Err(io::ErrorKind::PermissionDenied.into());
-        }
-        *ip_counts.entry(ip).or_insert(0) += 1;
-        drop(ip_counts);
-
-        let num_connecting = connecting.len();
-
-        // check the cap on the number of connecting entries
-        if connecting.len() >= self.config.max_connecting as usize {
+        let num_ip_conns = *limits.ip_counts.get(&ip).unwrap_or(&0);
+        let per_ip_limit = self.config.max_connections_per_ip as usize;
+        if num_ip_conns >= per_ip_limit {
             return Err(io::Error::new(
-                io::ErrorKind::ConnectionRefused,
-                "too many pending connections",
+                ErrorKind::QuotaExceeded,
+                "maximum number ({per_ip_limit}) of per-IP connections reached with {ip}",
+            ));
+        }
+
+        // check the global connecting count limit
+        let num_connecting = limits.connecting.len();
+        let connecting_limit = self.config.max_connecting as usize;
+        if num_connecting >= connecting_limit {
+            return Err(io::Error::new(
+                ErrorKind::QuotaExceeded,
+                "maximum number ({connecting_limit}) of pending connections reached",
+            ));
+        }
+
+        // check the global connection count limit
+        let num_connected = self.connections.num_connected();
+        let connection_limit = self.config.max_connections as usize;
+        if num_connected + num_connecting >= connection_limit {
+            return Err(io::Error::new(
+                ErrorKind::QuotaExceeded,
+                "maximum number ({connection_limit}) of connections reached",
             ));
         }
 
         // check if already connecting (duplicate connection attempt from same node)
-        if connecting.contains(&addr) {
-            return Err(io::ErrorKind::AlreadyExists.into());
-        }
-
-        // check the global connection limit
-        let num_connected = self.connections.num_connected();
-        let limit = self.config.max_connections as usize;
-        if num_connected + num_connecting >= limit {
-            warn!(parent: self.span(), "maximum number of connections ({limit}) reached");
-            return Err(io::ErrorKind::PermissionDenied.into());
+        if limits.connecting.contains(&addr) {
+            return Err(io::Error::new(
+                ErrorKind::AlreadyExists,
+                "already connecting to {addr}",
+            ));
         }
 
         // reserve a connecting slot
-        connecting.insert(addr);
+        *limits.ip_counts.entry(ip).or_insert(0) += 1;
+        limits.connecting.insert(addr);
 
         Ok(ConnectionGuard {
             addr,
-            connecting: &self.connecting,
-            ip_counts: &self.ip_counts,
+            connections: &self.connections,
             completed: false,
         })
     }

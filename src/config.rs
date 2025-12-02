@@ -24,14 +24,17 @@ pub struct Config {
     pub listener_addr: Option<SocketAddr>,
     /// The maximum number of active connections the node can maintain at any given time.
     ///
-    /// note: This number can very briefly be breached by 1 in case of inbound connection attempts. It can never be
-    /// breached by outbound connection attempts, though.
+    /// note: For accuracy and performance, the pending connections are also included when checking
+    /// this limit - it is assumed that they may all conclude successfully.
     pub max_connections: u16,
     /// The maximum number of active connections the node can maintain with a single IP.
     ///
     /// note: It should not be greater than `max_connections`, as it will override it.
+    ///
+    /// note: Like `max_connections`, pending connections are also included in the related
+    /// calculations.
     pub max_connections_per_ip: u16,
-    /// The maximum number of simultaneous connection attempts.
+    /// The maximum number of simultaneous connection attempts (a.k.a. pending connections).
     ///
     /// note: It should not be greater than `max_connections`, as it will clash with it.
     pub max_connecting: u16,
