@@ -34,17 +34,30 @@ where
     /// attacks.
     const MESSAGE_QUEUE_DEPTH: usize = 64;
 
-    /// Determines whether backpressure should be exerted in case the number of queued messages reaches
-    /// `MESSAGE_QUEUE_DEPTH`; if not, messages beyond the queue's capacity will be dropped.
+    /// Determines whether TCP backpressure should be exerted in case the number of queued messages
+    /// reaches `MESSAGE_QUEUE_DEPTH`; if not, messages beyond the queue's capacity will be dropped.
+    ///
+    /// note: Setting this to `false` creates UDP-like behavior over TCP - the sender will receive
+    /// no indication that their message was discarded. Only use this if your application protocol
+    /// tolerates gaps in the data stream.
     const BACKPRESSURE: bool = true;
 
-    /// The initial size of a per-connection buffer for reading inbound messages. Can be set to the maximum expected size
-    /// of the inbound message in order to only allocate it once.
+    /// The initial size of a per-connection buffer for reading inbound messages. Can be set to the
+    /// maximum expected size of the inbound message in order to only allocate it once.
+    ///
+    /// note: This setting does **not** limit the maximum buffer growth. To prevent memory
+    /// exhaustion attacks (where a peer sends a frame header declaring a massive size), you
+    /// must enforce limits within your [`Self::Codec`] implementation.
     const INITIAL_BUFFER_SIZE: usize = 64 * 1024;
 
     /// The maximum time (in milliseconds) the node will wait for a new message
     /// before considering the connection dead. If it is set to `0`, there is no
     /// timeout.
+    ///
+    /// note: `pea2pea` does not enable TCP Keepalives on sockets by default. If you set this to
+    /// `0` (disabled), a peer that loses power or has its cable pulled (without sending a TCP
+    /// FIN/RST) will remain connected in your node's state indefinitely, consuming a connection
+    /// slot.
     const IDLE_TIMEOUT_MS: u64 = 60_000;
 
     /// The final (deserialized) type of inbound messages.
@@ -113,6 +126,12 @@ where
     fn codec(&self, addr: SocketAddr, side: ConnectionSide) -> Self::Codec;
 
     /// Processes an inbound message. Can be used to update state, send replies etc.
+    ///
+    /// note: This method is `await`ed sequentially in the connection's read loop. If it blocks or
+    /// takes a long time to complete (e.g., database queries, heavy computation), the subsequent
+    /// messages from this peer will be blocked. For any non-trivial work that doesn't need to be
+    /// executed sequentially, use [`tokio::spawn`] to move processing to a background task to keep
+    /// the connection loop responsive.
     fn process_message(
         &self,
         source: SocketAddr,

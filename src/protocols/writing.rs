@@ -2,6 +2,8 @@ use std::{
     any::Any, collections::HashMap, future::Future, io, net::SocketAddr, sync::Arc, time::Duration,
 };
 
+#[cfg(doc)]
+use bytes::Bytes;
 use futures_util::sink::SinkExt;
 use parking_lot::RwLock;
 use tokio::{
@@ -157,6 +159,12 @@ where
     /// be sent to all the peers, without waiting for the actual delivery. This method doesn't provide the
     /// means to check when and if the messages actually get delivered; you can achieve that by calling
     /// [`Writing::unicast`] for each address returned by [`Node::connected_addrs`].
+    ///
+    /// note: This method clones the message for every connected peer, and serialization via
+    /// [`Writing::Codec`] happens individually for each connection. If your serialization is
+    /// expensive (e.g., large JSON/Bincode structs), manually serialize your message into
+    /// [`Bytes`] *before* calling broadcast. This ensures serialization happens only once,
+    /// rather than N times.
     ///
     /// # Errors
     ///

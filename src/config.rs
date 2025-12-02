@@ -3,7 +3,7 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 #[cfg(doc)]
 use crate::{
     Node,
-    protocols::{self, Handshake, Reading, Writing},
+    protocols::{self, Handshake, OnConnect, Reading, Writing},
 };
 
 /// The node's configuration. See the source of [`Config::default`] for the defaults.
@@ -29,10 +29,16 @@ pub struct Config {
     pub max_connections: u16,
     /// The maximum number of active connections the node can maintain with a single IP.
     ///
-    /// note: It should not be greater than `max_connections`, as it will override it.
+    /// note: It should not be greater than [`Config::max_connections`], as it will override it.
     ///
-    /// note: Like `max_connections`, pending connections are also included in the related
-    /// calculations.
+    /// note: Like [`Config::max_connections`], pending connections are also included in the
+    /// related calculations.
+    ///
+    /// note: This limit matches the exact IP address. It does not aggregate subnets. An attacker
+    /// with an IPv6 `/64` subnet can bypass this limit by assigning a unique address for every
+    /// connection (up to [`Config::max_connections`]). If you expose your node to the public IPv6
+    /// internet, rely on the global connection limit for resource protection, or implement an
+    /// application-level subnet filter in [`OnConnect`].
     pub max_connections_per_ip: u16,
     /// The maximum number of simultaneous connection attempts (a.k.a. pending connections).
     ///

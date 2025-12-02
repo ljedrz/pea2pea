@@ -20,6 +20,8 @@ use tokio::{
 };
 use tracing::*;
 
+#[cfg(doc)]
+use crate::protocols::Handshake;
 use crate::{
     Config, Stats,
     connections::{Connection, ConnectionGuard, ConnectionInfo, ConnectionSide, Connections},
@@ -360,6 +362,12 @@ impl Node {
     }
 
     /// Connects to the provided `SocketAddr`.
+    ///
+    /// note: `pea2pea` identifies connections by their socket address (IP + port). If Node A
+    /// connects to Node B, and Node B simultaneously connects to Node A, the library considers
+    /// these two distinct connections (one outgoing, one incoming). To ensure a single logical
+    /// connection per peer, you must implement a tie-breaking mechanism in your application logic
+    /// in the [`Handshake`] protocol.
     pub async fn connect(&self, addr: SocketAddr) -> io::Result<()> {
         self.connect_inner(addr, None)
             .await

@@ -7,6 +7,7 @@ use tokio::{net::TcpStream, task::JoinSet, time::sleep};
 async fn persistent_connection_swarm() {
     // ensure your OS limits are high enough!
     // this involves the ulimit, SYN flood protection, etc.
+    // 100k should be perfectly doable with additional fine-tuning
     const TARGET_CONNS: usize = 10_000;
 
     // create the server, including some extra margins

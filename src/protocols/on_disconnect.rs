@@ -86,5 +86,10 @@ where
     /// Any extra actions to be executed during a disconnect; in order to still be able to
     /// communicate with the peer in the usual manner (i.e. via [`Writing`]), only its [`SocketAddr`]
     /// (as opposed to the related [`Connection`] object) is provided as an argument.
+    ///
+    /// note: The [`Node::disconnect`] and [`Node::shut_down`] methods wait for this future to
+    /// complete. If this method hangs (e.g., waiting for a lock, or an async resource that is
+    /// already gone), the node's shutdown will hang as well. It is recommended that you use
+    /// timeouts inside this method or ensure that its logic is strictly non-blocking.
     fn on_disconnect(&self, addr: SocketAddr) -> impl Future<Output = ()> + Send;
 }

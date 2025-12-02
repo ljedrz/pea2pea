@@ -69,5 +69,10 @@ where
     /// Any initial actions to be executed after the handshake is concluded; in order to be able to
     /// communicate with the peer in the usual manner (i.e. via [`Writing`]), only its [`SocketAddr`]
     /// (as opposed to the related [`Connection`] object) is provided as an argument.
+    ///
+    /// note: If your implementation panics, the node will **not** automatically disconnect the
+    /// peer - the connection will remain active in the node's state, potentially creating a
+    /// "zombie" peer that is connected at the TCP level but uninitialized in your application
+    /// logic.
     fn on_connect(&self, addr: SocketAddr) -> impl Future<Output = ()> + Send;
 }
