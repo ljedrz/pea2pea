@@ -38,6 +38,7 @@ These examples involve complex state machines, high-load stress testing, or heav
 | **[Dense Mesh](dense_mesh.rs)** | Spawns a high density of nodes (default 25) and measures exact RAM usage per node and per connection using the `peak_alloc` allocator. Demonstrates the library's tunable memory footprint. | Memory Profiling, High Density, Metrics |
 | **[Dining Philosophers](dining_philosophers.rs)** | A complex concurrency problem mapped to P2P. Nodes must negotiate access to shared resources ("forks") using stateful request/response flows. | Ring Topology, Shared State, Deadlock Avoidance |
 | **[Libp2p Interop](libp2p.rs)** | A fully compatible `libp2p` node that performs a Noise handshake and multiplexes streams using Yamux to talk to `rust-libp2p` nodes. | Interop, Noise Encryption, Yamux Multiplexing, Complex Handshake |
+| **[Packet Cannon](packet_cannon.rs)** | A raw throughput benchmark measuring Packets Per Second (PPS). Uses zero-allocation codecs to isolate the library's internal overhead and measure the upper limits of message frequency. | PPS Benchmarking, Zero-Copy Codecs, Backpressure |
 
 ## 🧩 Common Utilities
 
