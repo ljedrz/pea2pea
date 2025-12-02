@@ -22,7 +22,7 @@ use pea2pea::{
 use tokio::{sync::Notify, time::sleep};
 use tracing_subscriber::filter::LevelFilter;
 
-const NUM_NODES: usize = 100;
+const NUM_NODES: usize = 10_000;
 const ROUNDS: usize = 10;
 
 #[derive(Clone)]
