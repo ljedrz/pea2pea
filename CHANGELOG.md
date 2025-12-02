@@ -1,3 +1,37 @@
+# 0.53.0
+
+### Added
+
+- several new examples and tests
+- `Writing::TIMEOUT_MS` with a default value of 10s, in order to guard against write starvation
+- `Reading::IDLE_TIMEOUT_MS` with a default value of 60s; after that time, the connection is
+considered dead
+- `Topology::num_expected_connections`, returning the total number of expected connections for the
+applicable topology
+- `Topology::{Grid, Tree, Random}`; the enum was marked as `#[non_exhaustive]` too, just in case
+- `Config::max_connecting` with a default of 100, in order to guard against too many concurrent
+connection attempts (from anyone)
+
+### Changed
+
+- all the per-connection protocol tasks are now created without awaiting, speeding up connection
+setup; they are also accounted for and subject to cleanup
+- the per-IP connection count limit check is now O(1)
+- `Node::connect` will now return `ErrorKind::QuotaExceeded` instead of `::PermissionDenied` if one
+of the connection limits is breached
+
+### Fixed
+
+- a race condition that made it possible to breach the maximum permitted number of connections by
+a small number
+- tasks spawned by `OnConnect` and `OnDisconnect` protocols are no longer detached and are cleaned
+up in case of disconnect/shutdown
+- added a small (500ms) backoff whenever a TCP connection fails to be accepted, in order to avoid
+spinning the CPU in case e.g. file descriptors are exhausted
+- the `Connection` object will now abort all its task on `Drop`, in order to avoid edge cases where
+it might leak
+- the `OnConnect` work will now immediately be aborted if the fresh connection is dropped
+
 # 0.52.0
 
 ### Added
