@@ -128,7 +128,7 @@ where
     ///
     /// The following errors can be returned:
     /// - [`io::ErrorKind::NotConnected`] if the node is not connected to the provided address
-    /// - [`io::ErrorKind::Other`] if the outbound message queue for this address is full
+    /// - [`io::ErrorKind::QuotaExceeded`] if the outbound message queue for this address is full
     /// - [`io::ErrorKind::Unsupported`] if [`Writing::enable_writing`] hadn't been called yet
     fn unicast(
         &self,
@@ -144,7 +144,7 @@ where
                     .try_send(msg)
                     .map_err(|e| {
                         error!(parent: self.node().span(), "can't send a message to {addr}: {e}");
-                        io::ErrorKind::Other.into()
+                        io::ErrorKind::QuotaExceeded.into()
                     })
                     .map(|_| delivery.unwrap()) // infallible
             } else {

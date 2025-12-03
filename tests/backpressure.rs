@@ -135,7 +135,7 @@ async fn outbound_queue_saturation() {
             }
             Err(e) => {
                 // validate that the error is indeed due to queue saturation
-                if e.kind() == io::ErrorKind::Other {
+                if e.kind() == io::ErrorKind::QuotaExceeded {
                     saturated = true;
                     break;
                 } else {
