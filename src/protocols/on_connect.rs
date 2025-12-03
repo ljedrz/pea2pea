@@ -23,10 +23,10 @@ where
     /// handshake.
     fn enable_on_connect(&self) -> impl Future<Output = ()> {
         async {
-            let (from_node_sender, mut from_node_receiver) = mpsc::unbounded_channel::<(
-                SocketAddr,
-                oneshot::Sender<tokio::task::JoinHandle<()>>,
-            )>();
+            let (from_node_sender, mut from_node_receiver) =
+                mpsc::channel::<(SocketAddr, oneshot::Sender<tokio::task::JoinHandle<()>>)>(
+                    self.node().config().max_connecting as usize,
+                );
 
             // use a channel to know when the on_connect task is ready
             let (tx, rx) = oneshot::channel::<()>();

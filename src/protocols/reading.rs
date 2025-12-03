@@ -72,7 +72,8 @@ where
             // create a JoinSet to track all in-flight setup tasks
             let mut setup_tasks = JoinSet::new();
 
-            let (conn_sender, mut conn_receiver) = mpsc::unbounded_channel();
+            let (conn_sender, mut conn_receiver) =
+                mpsc::channel(self.node().config().max_connecting as usize);
 
             // use a channel to know when the reading task is ready
             let (tx_reading, rx_reading) = oneshot::channel();

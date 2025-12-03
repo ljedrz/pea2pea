@@ -58,7 +58,8 @@ where
             // create a JoinSet to track all in-flight setup tasks
             let mut setup_tasks = JoinSet::new();
 
-            let (conn_sender, mut conn_receiver) = mpsc::unbounded_channel();
+            let (conn_sender, mut conn_receiver) =
+                mpsc::channel(self.node().config().max_connecting as usize);
 
             // the conn_senders are used to send messages from the Node to individual connections
             let conn_senders: WritingSenders = Default::default();
@@ -358,8 +359,8 @@ pub(crate) struct WritingHandler {
 }
 
 impl Protocol<Connection, io::Result<Connection>> for WritingHandler {
-    fn trigger(&self, item: ReturnableConnection) {
-        self.handler.trigger(item);
+    async fn trigger(&self, item: ReturnableConnection) {
+        self.handler.trigger(item).await;
     }
 }
 

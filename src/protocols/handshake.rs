@@ -32,7 +32,7 @@ where
             let mut setup_tasks = JoinSet::new();
 
             let (conn_sender, mut conn_receiver) =
-                mpsc::unbounded_channel::<ReturnableConnection>();
+                mpsc::channel::<ReturnableConnection>(self.node().config().max_connecting as usize);
 
             // use a channel to know when the handshake task is ready
             let (tx, rx) = oneshot::channel();

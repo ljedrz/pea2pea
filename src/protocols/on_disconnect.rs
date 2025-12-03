@@ -39,10 +39,11 @@ where
     /// necessary cleanup (e.g., notifying a database) is finished before the function returns.
     fn enable_on_disconnect(&self) -> impl Future<Output = ()> {
         async {
-            let (from_node_sender, mut from_node_receiver) = mpsc::unbounded_channel::<(
-                SocketAddr,
-                oneshot::Sender<(JoinHandle<()>, oneshot::Receiver<()>)>,
-            )>();
+            let (from_node_sender, mut from_node_receiver) =
+                mpsc::channel::<(
+                    SocketAddr,
+                    oneshot::Sender<(JoinHandle<()>, oneshot::Receiver<()>)>,
+                )>(self.node().config().max_connecting as usize);
 
             // use a channel to know when the disconnect task is ready
             let (tx, rx) = oneshot::channel::<()>();
