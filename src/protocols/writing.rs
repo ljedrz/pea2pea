@@ -139,14 +139,38 @@ where
         if let Some(handler) = self.node().protocols.writing.get() {
             // find the message sender for the given address
             if let Some(sender) = handler.senders.read().get(&addr).cloned() {
-                let (msg, delivery) = WrappedMessage::new(Box::new(message));
+                let (msg, delivery) = WrappedMessage::new(Box::new(message), true);
                 sender
                     .try_send(msg)
                     .map_err(|e| {
                         error!(parent: self.node().span(), "can't send a message to {addr}: {e}");
                         io::ErrorKind::Other.into()
                     })
-                    .map(|_| delivery)
+                    .map(|_| delivery.unwrap()) // infallible
+            } else {
+                Err(io::ErrorKind::NotConnected.into())
+            }
+        } else {
+            Err(io::ErrorKind::Unsupported.into())
+        }
+    }
+
+    /// Sends the provided message to the specified [`SocketAddr`], and returns as soon as the
+    /// message is queued to be sent, without waiting for the actual delivery.
+    ///
+    /// # Errors
+    ///
+    /// See the error section for [`Writing::unicast`].
+    fn unicast_fast(&self, addr: SocketAddr, message: Self::Message) -> io::Result<()> {
+        // access the protocol handler
+        if let Some(handler) = self.node().protocols.writing.get() {
+            // find the message sender for the given address
+            if let Some(sender) = handler.senders.read().get(&addr).cloned() {
+                let (msg, _) = WrappedMessage::new(Box::new(message), false);
+                sender.try_send(msg).map_err(|e| {
+                    error!(parent: self.node().span(), "can't send a message to {addr}: {e}");
+                    io::ErrorKind::QuotaExceeded.into()
+                })
             } else {
                 Err(io::ErrorKind::NotConnected.into())
             }
@@ -177,7 +201,7 @@ where
         if let Some(handler) = self.node().protocols.writing.get() {
             let senders = handler.senders.read().clone();
             for (addr, message_sender) in senders {
-                let (msg, _delivery) = WrappedMessage::new(Box::new(message.clone()));
+                let (msg, _) = WrappedMessage::new(Box::new(message.clone()), false);
                 let _ = message_sender.try_send(msg).map_err(|e| {
                     error!(parent: self.node().span(), "can't send a message to {addr}: {e}");
                 });
@@ -271,14 +295,18 @@ impl<W: Writing> WritingInternal for W {
 
                 match self_clone.write_to_stream(*msg, &mut framed).await {
                     Ok(len) => {
-                        let _ = wrapped_msg.delivery_notification.send(Ok(()));
+                        if let Some(tx) = wrapped_msg.delivery_notification {
+                            let _ = tx.send(Ok(()));
+                        }
                         conn_stats.register_sent_message(len);
                         node.stats().register_sent_message(len);
                         trace!(parent: node.span(), "sent {len}B to {addr}");
                     }
                     Err(e) => {
                         error!(parent: node.span(), "couldn't send a message to {addr}: {e}");
-                        let _ = wrapped_msg.delivery_notification.send(Err(e));
+                        if let Some(tx) = wrapped_msg.delivery_notification {
+                            let _ = tx.send(Err(e));
+                        }
                         break;
                     }
                 }
@@ -296,15 +324,24 @@ impl<W: Writing> WritingInternal for W {
     }
 }
 
-/// Used to queue messages for delivery.
+/// Used to queue messages for delivery and return its confirmation.
 pub(crate) struct WrappedMessage {
     msg: Box<dyn Any + Send>,
-    delivery_notification: oneshot::Sender<io::Result<()>>,
+    delivery_notification: Option<oneshot::Sender<io::Result<()>>>,
 }
 
 impl WrappedMessage {
-    fn new(msg: Box<dyn Any + Send>) -> (Self, oneshot::Receiver<io::Result<()>>) {
-        let (tx, rx) = oneshot::channel();
+    fn new(
+        msg: Box<dyn Any + Send>,
+        confirmation: bool,
+    ) -> (Self, Option<oneshot::Receiver<io::Result<()>>>) {
+        let (tx, rx) = if confirmation {
+            let (tx, rx) = oneshot::channel();
+            (Some(tx), Some(rx))
+        } else {
+            (None, None)
+        };
+
         let wrapped_msg = Self {
             msg,
             delivery_notification: tx,

@@ -206,7 +206,7 @@ async fn run_naive_test() {
 
     let handle = tokio::spawn(async move {
         while start.elapsed() < BENCH_DURATION {
-            match sender_clone.unicast(addr, PAYLOAD_BYTE) {
+            match sender_clone.unicast_fast(addr, PAYLOAD_BYTE) {
                 Ok(_) => {}
                 Err(e) if e.kind() == io::ErrorKind::Other => tokio::task::yield_now().await,
                 Err(_) => break,
@@ -251,7 +251,7 @@ async fn run_batch_test() {
 
     let handle = tokio::spawn(async move {
         while start.elapsed() < BENCH_DURATION {
-            match sender_clone.unicast(addr, (PAYLOAD_BYTE, BATCH_SIZE)) {
+            match sender_clone.unicast_fast(addr, (PAYLOAD_BYTE, BATCH_SIZE)) {
                 Ok(_) => {}
                 Err(e) if e.kind() == io::ErrorKind::Other => tokio::task::yield_now().await,
                 Err(_) => break,
