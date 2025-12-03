@@ -449,7 +449,7 @@ async fn max_connections_race_condition() {
     }
 
     // wait for all attempts to resolve
-    conn_tasks.join_all().await;
+    while conn_tasks.join_next().await.is_some() {}
 
     // give the target node's event loop a moment to process everything
     sleep(Duration::from_millis(500)).await;

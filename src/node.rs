@@ -15,7 +15,7 @@ use tokio::{
     io::split,
     net::{TcpListener, TcpSocket, TcpStream},
     sync::{RwLock, oneshot},
-    task::{self, JoinHandle},
+    task::{self, JoinHandle, JoinSet},
     time::{sleep, timeout},
 };
 use tracing::*;
@@ -443,6 +443,7 @@ impl Node {
                     conn.tasks.push(handle);
                 }
                 // wait for the OnDisconnect protocol to perform its specified actions
+                // or time out
                 let _ = waiter.await;
             }
         }
@@ -589,9 +590,14 @@ impl Node {
         }
 
         // disconnect from all the peers
+        let mut disconnect_tasks = JoinSet::new();
         for addr in self.connected_addrs() {
-            self.disconnect(addr).await;
+            let node = self.clone();
+            disconnect_tasks.spawn(async move {
+                node.disconnect(addr).await;
+            });
         }
+        while disconnect_tasks.join_next().await.is_some() {}
 
         // abort the remaining tasks, which should now be inert
         for handle in tasks.into_values() {

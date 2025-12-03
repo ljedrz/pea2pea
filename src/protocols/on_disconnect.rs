@@ -1,8 +1,9 @@
-use std::{future::Future, net::SocketAddr};
+use std::{future::Future, net::SocketAddr, time::Duration};
 
 use tokio::{
     sync::{mpsc, oneshot},
     task::JoinHandle,
+    time::timeout,
 };
 use tracing::*;
 
@@ -25,6 +26,11 @@ pub trait OnDisconnect: Pea2Pea
 where
     Self: Clone + Send + Sync + 'static,
 {
+    /// The maximum time (in milliseconds) allowed for the on_disconnect hook to execute.
+    /// If the hook exceeds this time, it will be aborted to ensure the node cleans up
+    /// resources promptly.
+    const TIMEOUT_MS: u64 = 3_000;
+
     /// Attaches the behavior specified in [`OnDisconnect::on_disconnect`] to every occurrence of the
     /// node disconnecting from a peer.
     ///
@@ -59,7 +65,15 @@ where
 
                     let handle = tokio::spawn(async move {
                         // perform the specified extra actions
-                        self_clone2.on_disconnect(addr).await;
+                        if timeout(
+                            Duration::from_millis(Self::TIMEOUT_MS),
+                            self_clone2.on_disconnect(addr),
+                        )
+                        .await
+                        .is_err()
+                        {
+                            warn!(parent: self_clone2.node().span(), "OnDisconnect logic timed out for {addr}");
+                        }
                         // notify on completion
                         let _ = done_tx.send(());
                     });
@@ -86,10 +100,5 @@ where
     /// Any extra actions to be executed during a disconnect; in order to still be able to
     /// communicate with the peer in the usual manner (i.e. via [`Writing`]), only its [`SocketAddr`]
     /// (as opposed to the related [`Connection`] object) is provided as an argument.
-    ///
-    /// note: The [`Node::disconnect`] and [`Node::shut_down`] methods wait for this future to
-    /// complete. If this method hangs (e.g., waiting for a lock, or an async resource that is
-    /// already gone), the node's shutdown will hang as well. It is recommended that you use
-    /// timeouts inside this method or ensure that its logic is strictly non-blocking.
     fn on_disconnect(&self, addr: SocketAddr) -> impl Future<Output = ()> + Send;
 }
