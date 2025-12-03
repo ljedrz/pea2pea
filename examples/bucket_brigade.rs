@@ -63,7 +63,7 @@ impl Reading for Brigadier {
         if let Some(next_hop) = neighbors.into_iter().find(|&addr| addr != source) {
             // we are in the middle of the chain. pass it on!
             // fire-and-forget unicast for maximum speed
-            let _ = self.unicast(next_hop, message.freeze());
+            let _ = self.unicast_fast(next_hop, message.freeze());
         } else {
             // We have no other neighbors; we must be the end of the line
             self.finished.notify_one();
@@ -109,7 +109,7 @@ async fn main() {
         // give the bucket to node 0. it has only 1 neighbor (node 1)
         let first_neighbor = nodes[0].node().connected_addrs()[0];
         nodes[0]
-            .unicast(first_neighbor, Bytes::from_static(b"water"))
+            .unicast_fast(first_neighbor, Bytes::from_static(b"water"))
             .unwrap();
 
         // wait for it to reach node 99

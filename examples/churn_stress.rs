@@ -65,7 +65,7 @@ impl Reading for Server {
 
     async fn process_message(&self, source: SocketAddr, _message: Self::Message) {
         // the server simply replies, not waiting for the delivery
-        let _ = self.unicast(source, Bytes::from_static(b"pong"));
+        let _ = self.unicast_fast(source, Bytes::from_static(b"pong"));
     }
 }
 
@@ -160,7 +160,7 @@ async fn main() {
                 // connect to the server
                 if client.node.connect(server_addr).await.is_ok() {
                     // send a ping
-                    if client.unicast(server_addr, msg.clone()).is_ok() {
+                    if client.unicast_fast(server_addr, msg.clone()).is_ok() {
                         // wait for pong, but timeout if packet is dropped or we are
                         // shutting down; this prevents the client from hanging forever
                         // if the OS drops a packet during high load

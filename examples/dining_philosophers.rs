@@ -100,7 +100,7 @@ impl Philosopher {
                         let left_neighbor = node.left_neighbor.get().unwrap();
                         debug!(parent: node.node().span(), "asking {} for the fork", left_neighbor.1);
                         drop(state);
-                        node.unicast(left_neighbor.0, Message::AreYouUsingTheSharedFork)
+                        node.unicast_fast(left_neighbor.0, Message::AreYouUsingTheSharedFork)
                             .unwrap();
                         sleep(Duration::from_millis(250)).await;
                     }
@@ -108,7 +108,7 @@ impl Philosopher {
                         let right_neighbor = node.right_neighbor.get().unwrap();
                         debug!(parent: node.node().span(), "asking {} for the fork", right_neighbor.1);
                         drop(state);
-                        node.unicast(right_neighbor.0, Message::AreYouUsingTheSharedFork)
+                        node.unicast_fast(right_neighbor.0, Message::AreYouUsingTheSharedFork)
                             .unwrap();
                         sleep(Duration::from_millis(250)).await;
                     }

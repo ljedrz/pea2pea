@@ -117,7 +117,7 @@ impl Reading for RpcNode {
                 // send response
                 let response = Message::Response { id, data: reply };
                 let bytes = Bytes::from(response.encode());
-                let _ = self.unicast(source, bytes);
+                let _ = self.unicast_fast(source, bytes);
             }
             Message::Response { id, data } => {
                 // wake up the caller
@@ -155,7 +155,7 @@ impl RpcNode {
         // convert Vec<u8> -> Bytes for the Writing trait
         let bytes = Bytes::from(msg.encode());
 
-        if let Err(e) = self.unicast(target, bytes) {
+        if let Err(e) = self.unicast_fast(target, bytes) {
             self.pending_requests.lock().remove(&id);
             return Err(e);
         }

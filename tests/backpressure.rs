@@ -70,7 +70,7 @@ async fn drops_messages_wo_backpressure() {
     fast_node.node().connect(rt_node_addr).await.unwrap();
 
     for _ in 0..MSGS_TO_SEND {
-        let _ = fast_node.unicast(rt_node_addr, (&b"gotta go fast!"[..]).into());
+        let _ = fast_node.unicast_fast(rt_node_addr, (&b"gotta go fast!"[..]).into());
     }
 
     // ensure that the realtime node has time to attempt to process everything
@@ -129,7 +129,7 @@ async fn outbound_queue_saturation() {
 
     // spam messages until the queue fills up
     for _ in 0..10 {
-        match sender.unicast(receiver_addr, msg.clone()) {
+        match sender.unicast_fast(receiver_addr, msg.clone()) {
             Ok(_) => {
                 // message queued successfully, keep spamming
             }
