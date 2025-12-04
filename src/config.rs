@@ -3,7 +3,7 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 #[cfg(doc)]
 use crate::{
     Node,
-    protocols::{self, Handshake, OnConnect, Reading, Writing},
+    protocols::{self, Handshake, Reading, Writing},
 };
 
 /// The node's configuration. See the source of [`Config::default`] for the defaults.
@@ -38,7 +38,7 @@ pub struct Config {
     /// with an IPv6 `/64` subnet can bypass this limit by assigning a unique address for every
     /// connection (up to [`Config::max_connections`]). If you expose your node to the public IPv6
     /// internet, rely on the global connection limit for resource protection, or implement an
-    /// application-level subnet filter in [`OnConnect`].
+    /// application-level subnet filter in [`Handshake`].
     pub max_connections_per_ip: u16,
     /// The maximum number of simultaneous connection attempts (a.k.a. pending connections).
     ///
