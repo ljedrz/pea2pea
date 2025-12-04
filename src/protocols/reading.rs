@@ -16,7 +16,7 @@ use crate::{Config, protocols::Handshake};
 use crate::{
     ConnectionInfo, ConnectionSide, Node, Pea2Pea, Stats,
     node::NodeTask,
-    protocols::{ProtocolHandler, ReturnableConnection},
+    protocols::{DisconnectOnDrop, ProtocolHandler, ReturnableConnection},
 };
 
 /// Can be used to specify and enable reading, i.e. receiving inbound messages. If the [`Handshake`]
@@ -187,6 +187,9 @@ impl<R: Reading> ReadingInternal for R {
                 return;
             }
 
+            // disconnect automatically regardless of how this task concludes
+            let _conn_cleanup = DisconnectOnDrop::new(node.clone(), addr);
+
             while let Some(msg) = inbound_message_receiver.recv().await {
                 self_clone.process_message(addr, msg).await;
             }
@@ -209,6 +212,9 @@ impl<R: Reading> ReadingInternal for R {
             // postpone reads until the connection is fully established; if the process fails,
             // this task gets aborted, so there is no need for a dedicated timeout
             let _ = rx_conn_ready.await;
+
+            // disconnect automatically regardless of how this task concludes
+            let _conn_cleanup = DisconnectOnDrop::new(node.clone(), addr);
 
             loop {
                 let next_frame_future = framed.next();
@@ -258,8 +264,6 @@ impl<R: Reading> ReadingInternal for R {
                     None => break, // end of stream
                 }
             }
-
-            let _ = node.disconnect(addr).await;
         }));
         let _ = rx_reader.await;
         conn.tasks.push(reader_task);

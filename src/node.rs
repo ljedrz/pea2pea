@@ -443,7 +443,8 @@ impl Node {
                     conn.tasks.push(handle);
                 }
                 // wait for the OnDisconnect protocol to perform its specified actions
-                // or time out
+                // time out, or even panic - we're already disconnecting, so ignore the
+                // result
                 let _ = waiter.await;
             }
         }

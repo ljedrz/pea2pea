@@ -12,7 +12,7 @@ use tokio::{
     task::JoinHandle,
 };
 
-use crate::connections::Connection;
+use crate::{connections::Connection, node::Node};
 
 mod handshake;
 mod on_connect;
@@ -56,5 +56,31 @@ impl<T, U> Protocol<T, U> for ProtocolHandler<T, U> {
     async fn trigger(&self, item: ReturnableItem<T, U>) {
         // ignore errors; they can only happen if a disconnect interrupts the protocol setup process
         let _ = self.0.send(item).await;
+    }
+}
+
+/// This object is used to ensure that the related peer is going to be disconnected from
+/// even if the owning task panics due to a user implementation error.
+pub(crate) struct DisconnectOnDrop {
+    pub(crate) node: Option<Node>,
+    pub(crate) addr: SocketAddr,
+}
+
+impl DisconnectOnDrop {
+    pub(crate) fn new(node: Node, addr: SocketAddr) -> Self {
+        Self {
+            node: Some(node),
+            addr,
+        }
+    }
+}
+
+impl Drop for DisconnectOnDrop {
+    fn drop(&mut self) {
+        if let Some(node) = self.node.take() {
+            let addr = self.addr;
+            // can't await inside Drop.
+            tokio::spawn(async move { node.disconnect(addr).await });
+        }
     }
 }

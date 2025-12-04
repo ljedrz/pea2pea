@@ -8,7 +8,11 @@ use crate::{
     Connection, Node,
     protocols::{Handshake, OnDisconnect, Reading, Writing},
 };
-use crate::{Pea2Pea, node::NodeTask, protocols::ProtocolHandler};
+use crate::{
+    Pea2Pea,
+    node::NodeTask,
+    protocols::{DisconnectOnDrop, ProtocolHandler},
+};
 
 /// Can be used to automatically perform some initial actions when a connection with a peer is
 /// fully established. The reason for its existence (instead of including such behavior in the
@@ -44,8 +48,13 @@ where
                 while let Some((addr, notifier)) = from_node_receiver.recv().await {
                     let self_clone2 = self_clone.clone();
                     let handle = tokio::spawn(async move {
+                        // disconnect automatically if the OnConnect impl panics
+                        let mut conn_cleanup =
+                            DisconnectOnDrop::new(self_clone2.node().clone(), addr);
                         // perform the specified initial actions
                         self_clone2.on_connect(addr).await;
+                        // if there was no panic, do not disconnect - this "defuses" the auto-cleanup
+                        conn_cleanup.node.take();
                     });
                     // notify the node that the initial actions have been scheduled
                     let _ = notifier.send(handle); // can't really fail
@@ -69,10 +78,5 @@ where
     /// Any initial actions to be executed after the handshake is concluded; in order to be able to
     /// communicate with the peer in the usual manner (i.e. via [`Writing`]), only its [`SocketAddr`]
     /// (as opposed to the related [`Connection`] object) is provided as an argument.
-    ///
-    /// note: If your implementation panics, the node will **not** automatically disconnect the
-    /// peer - the connection will remain active in the node's state, potentially creating a
-    /// "zombie" peer that is connected at the TCP level but uninitialized in your application
-    /// logic.
     fn on_connect(&self, addr: SocketAddr) -> impl Future<Output = ()> + Send;
 }
