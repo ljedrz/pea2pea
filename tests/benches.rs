@@ -129,8 +129,7 @@ async fn run_bench_scenario(sender_count: usize) -> f64 {
                 } else {
                     // fast path: ignore the returned Receiver to avoid overhead, but
                     // unwrap to make sure that the message isn't dropped
-                    #[allow(clippy::let_underscore_future)]
-                    let _ = sender
+                    sender
                         .unicast_fast(receiver_addr, crate::RANDOM_BYTES.clone())
                         .unwrap();
                 }
