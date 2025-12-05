@@ -19,6 +19,7 @@ use tracing::*;
 use crate::{Config, Node, protocols::Handshake};
 use crate::{
     Connection, ConnectionSide, Pea2Pea,
+    connections::create_connection_span,
     node::NodeTask,
     protocols::{DisconnectOnDrop, Protocol, ProtocolHandler, ReturnableConnection},
 };
@@ -141,10 +142,11 @@ where
             // find the message sender for the given address
             if let Some(sender) = handler.senders.read().get(&addr).cloned() {
                 let (msg, delivery) = WrappedMessage::new(Box::new(message), true);
+                let conn_span = create_connection_span(addr, self.node().span());
                 sender
                     .try_send(msg)
                     .map_err(|e| {
-                        error!(parent: self.node().span(), "can't send a message to {addr}: {e}");
+                        error!(parent: conn_span, "can't send a message: {e}");
                         io::ErrorKind::QuotaExceeded.into()
                     })
                     .map(|_| delivery.unwrap()) // infallible
@@ -168,8 +170,9 @@ where
             // find the message sender for the given address
             if let Some(sender) = handler.senders.read().get(&addr).cloned() {
                 let (msg, _) = WrappedMessage::new(Box::new(message), false);
+                let conn_span = create_connection_span(addr, self.node().span());
                 sender.try_send(msg).map_err(|e| {
-                    error!(parent: self.node().span(), "can't send a message to {addr}: {e}");
+                    error!(parent: conn_span, "can't send a message: {e}");
                     io::ErrorKind::QuotaExceeded.into()
                 })
             } else {
@@ -203,8 +206,9 @@ where
             let senders = handler.senders.read().clone();
             for (addr, message_sender) in senders {
                 let (msg, _) = WrappedMessage::new(Box::new(message.clone()), false);
+                let conn_span = create_connection_span(addr, self.node().span());
                 let _ = message_sender.try_send(msg).map_err(|e| {
-                    error!(parent: self.node().span(), "can't send a message to {addr}: {e}");
+                    error!(parent: conn_span, "can't send a message: {e}");
                 });
             }
 
@@ -256,7 +260,7 @@ impl<W: Writing> WritingInternal for W {
         let addr = conn.addr();
         let codec = self.codec(addr, !conn.side());
         let Some(writer) = conn.writer.take() else {
-            error!(parent: self.node().span(), "the stream was not returned during the handshake!");
+            error!(parent: conn.span(), "the stream was not returned during the handshake!");
             return;
         };
         let mut framed = FramedWrite::new(writer, codec);
@@ -283,11 +287,12 @@ impl<W: Writing> WritingInternal for W {
         // the task for writing outbound messages
         let self_clone = self.clone();
         let conn_stats = conn.stats().clone();
+        let conn_span = conn.span().clone();
         let writer_task = tokio::spawn(Box::pin(async move {
             let node = self_clone.node();
-            trace!(parent: node.span(), "spawned a task for writing messages to {addr}");
+            trace!(parent: &conn_span, "spawned a task for writing messages");
             if tx_writer.send(()).is_err() {
-                error!(parent: node.span(), "Writing for {addr} was interrupted; shutting down its task");
+                error!(parent: &conn_span, "Writing was interrupted; shutting down its task");
                 return;
             }
 
@@ -307,10 +312,10 @@ impl<W: Writing> WritingInternal for W {
                         }
                         conn_stats.register_sent_message(len);
                         node.stats().register_sent_message(len);
-                        trace!(parent: node.span(), "sent {len}B to {addr}");
+                        trace!(parent: &conn_span, "wrote {len}B");
                     }
                     Err(e) => {
-                        error!(parent: node.span(), "couldn't send a message to {addr}: {e}");
+                        error!(parent: &conn_span, "couldn't write: {e}");
                         if let Some(tx) = wrapped_msg.delivery_notification {
                             let _ = tx.send(Err(e));
                         }
@@ -323,8 +328,9 @@ impl<W: Writing> WritingInternal for W {
         conn.tasks.push(writer_task);
 
         // return the Connection to the Node, resuming Node::adapt_stream
+        let conn_span = conn.span().clone();
         if conn_returner.send(Ok(conn)).is_err() {
-            error!(parent: self.node().span(), "couldn't return a Connection with {addr} from the Writing handler");
+            error!(parent: &conn_span, "couldn't return a Connection from the Writing handler");
         }
     }
 }

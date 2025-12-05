@@ -20,7 +20,7 @@ use tracing::*;
 #[cfg(doc)]
 use crate::{Config, protocols::Handshake};
 use crate::{
-    ConnectionInfo, ConnectionSide, Node, Pea2Pea, Stats,
+    Connection, ConnectionSide, Node, Pea2Pea, Stats,
     node::NodeTask,
     protocols::{DisconnectOnDrop, ProtocolHandler, ReturnableConnection},
 };
@@ -158,7 +158,7 @@ trait ReadingInternal: Reading {
     fn map_codec<T: AsyncRead>(
         &self,
         framed: FramedRead<T, Self::Codec>,
-        info: &ConnectionInfo,
+        conn: &Connection,
     ) -> FramedRead<T, CountingCodec<Self::Codec>>;
 }
 
@@ -167,11 +167,11 @@ impl<R: Reading> ReadingInternal for R {
         let addr = conn.addr();
         let codec = self.codec(addr, !conn.side());
         let Some(reader) = conn.reader.take() else {
-            error!("The stream was not returned during the handshake with {addr}!");
+            error!(parent: conn.span(), "the stream was not returned during the handshake!");
             return;
         };
         let framed = FramedRead::with_capacity(reader, codec, Self::INITIAL_BUFFER_SIZE);
-        let mut framed = self.map_codec(framed, conn.info());
+        let mut framed = self.map_codec(framed, &conn);
 
         // the connection will notify the reading task once it's fully ready
         let (tx_conn_ready, rx_conn_ready) = oneshot::channel();
@@ -185,11 +185,12 @@ impl<R: Reading> ReadingInternal for R {
 
         // the task for processing parsed messages
         let self_clone = self.clone();
+        let conn_span = conn.span().clone();
         let inbound_processing_task = tokio::spawn(Box::pin(async move {
             let node = self_clone.node();
-            trace!(parent: node.span(), "spawned a task for processing messages from {addr}");
+            trace!(parent: &conn_span, "spawned a task for processing messages");
             if tx_processing.send(()).is_err() {
-                error!(parent: node.span(), "Reading (processing) for {addr} was interrupted; shutting down its task");
+                error!(parent: &conn_span, "Reading (processing) was interrupted; shutting down its task");
                 return;
             }
 
@@ -208,10 +209,11 @@ impl<R: Reading> ReadingInternal for R {
 
         // the task for reading messages from a stream
         let node = self.node().clone();
+        let conn_span = conn.span().clone();
         let reader_task = tokio::spawn(Box::pin(async move {
-            trace!(parent: node.span(), "spawned a task for reading messages from {addr}");
+            trace!(parent: &conn_span, "spawned a task for reading messages");
             if tx_reader.send(()).is_err() {
-                error!(parent: node.span(), "Reading (IO) for {addr} was interrupted; shutting down its task");
+                error!(parent: &conn_span, "Reading (IO) was interrupted; shutting down its task");
                 return;
             }
 
@@ -238,7 +240,7 @@ impl<R: Reading> ReadingInternal for R {
                     {
                         Ok(res) => res, // IO completed (success or error)
                         Err(_) => {
-                            debug!(parent: node.span(), "connection with {addr} timed out due to inactivity");
+                            debug!(parent: &conn_span, "connection timed out due to inactivity");
                             break;
                         }
                     }
@@ -252,7 +254,7 @@ impl<R: Reading> ReadingInternal for R {
                         match Self::BACKPRESSURE {
                             true => {
                                 if let Err(e) = inbound_message_sender.send(msg).await {
-                                    error!(parent: node.span(), "can't process a message from {addr}: {e}");
+                                    error!(parent: &conn_span, "can't process a message: {e}");
                                     break;
                                 }
                             }
@@ -264,32 +266,30 @@ impl<R: Reading> ReadingInternal for R {
                                             dropped_count += 1;
                                             if last_drop_log.elapsed() >= Duration::from_secs(1) {
                                                 warn_about_dropped_messages(
-                                                    &node,
-                                                    addr,
+                                                    &conn_span,
                                                     &mut dropped_count,
                                                     &mut last_drop_log,
                                                 );
                                             }
                                         }
                                         mpsc::error::TrySendError::Closed(_) => {
-                                            error!(parent: node.span(), "inbound channel closed for {addr}");
+                                            error!(parent: &conn_span, "inbound channel closed");
                                             break;
                                         }
                                     }
                                 } else if dropped_count != 0 {
                                     warn_about_dropped_messages(
-                                        &node,
-                                        addr,
+                                        &conn_span,
                                         &mut dropped_count,
                                         &mut last_drop_log,
                                     );
-                                    debug!(parent: node.span(), "the inbound queue for {addr} is no longer saturated");
+                                    debug!(parent: &conn_span, "the inbound queue is no longer saturated");
                                 }
                             }
                         }
                     }
                     Some(Err(e)) => {
-                        error!(parent: node.span(), "can't read from {addr}: {e}");
+                        error!(parent: &conn_span, "couldn't read: {e}");
                         // `tokio_util` codecs fuse on error, but break just to be safe
                         break;
                     }
@@ -301,22 +301,23 @@ impl<R: Reading> ReadingInternal for R {
         conn.tasks.push(reader_task);
 
         // return the Connection to the Node, resuming Node::adapt_stream
+        let conn_span = conn.span().clone();
         if conn_returner.send(Ok(conn)).is_err() {
-            error!(parent: self.node().span(), "couldn't return a Connection with {addr} from the Reading handler");
+            error!(parent: &conn_span, "couldn't return a Connection from the Reading handler");
         }
     }
 
     fn map_codec<T: AsyncRead>(
         &self,
         framed: FramedRead<T, Self::Codec>,
-        info: &ConnectionInfo,
+        conn: &Connection,
     ) -> FramedRead<T, CountingCodec<Self::Codec>> {
         framed.map_decoder(|codec| CountingCodec {
             codec,
             node: self.node().clone(),
-            addr: info.addr(),
-            stats: info.stats().clone(),
+            stats: conn.stats().clone(),
             acc: 0,
+            span: conn.span().clone(),
         })
     }
 }
@@ -325,9 +326,9 @@ impl<R: Reading> ReadingInternal for R {
 struct CountingCodec<D: Decoder> {
     codec: D,
     node: Node,
-    addr: SocketAddr,
     stats: Arc<Stats>,
     acc: usize,
+    span: Span,
 }
 
 impl<D: Decoder> Decoder for CountingCodec<D> {
@@ -341,7 +342,7 @@ impl<D: Decoder> Decoder for CountingCodec<D> {
         let read_len = initial_buf_len - final_buf_len + self.acc;
 
         if read_len != 0 {
-            trace!(parent: self.node.span(), "read {read_len}B from {}", self.addr);
+            trace!(parent: &self.span, "read {read_len}B");
 
             if ret.is_some() {
                 self.acc = 0;
@@ -358,15 +359,14 @@ impl<D: Decoder> Decoder for CountingCodec<D> {
 
 /// Warns that some messages were dropped and resets the related counters.
 fn warn_about_dropped_messages(
-    node: &Node,
-    addr: SocketAddr,
+    span: &Span,
     dropped_count: &mut usize,
     last_drop_log: &mut Instant,
 ) {
     warn!(
-        parent: node.span(),
-        "dropped {dropped_count} messages from {addr} due\
-        to inbound queue saturation (BACKPRESSURE = false)",
+        parent: span,
+        "dropped {dropped_count} messages due to\
+        inbound queue saturation (BACKPRESSURE = false)",
     );
 
     // reset counters

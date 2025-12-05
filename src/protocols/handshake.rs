@@ -122,9 +122,9 @@ trait HandshakeInternal: Handshake {
 
 impl<H: Handshake> HandshakeInternal for H {
     async fn handle_new_connection(&self, (conn, conn_returner): ReturnableConnection) {
-        let addr = conn.addr();
+        let conn_span = conn.span().clone();
 
-        debug!(parent: self.node().span(), "shaking hands with {addr} as the {:?}", !conn.side());
+        debug!(parent: &conn_span, "shaking hands as the {:?}", !conn.side());
         let result = timeout(
             Duration::from_millis(Self::TIMEOUT_MS),
             self.perform_handshake(conn),
@@ -133,22 +133,22 @@ impl<H: Handshake> HandshakeInternal for H {
 
         let ret = match result {
             Ok(Ok(conn)) => {
-                debug!(parent: self.node().span(), "successfully handshaken with {addr}");
+                debug!(parent: &conn_span, "successfully handshaken");
                 Ok(conn)
             }
             Ok(Err(e)) => {
-                error!(parent: self.node().span(), "handshake with {addr} failed: {e}");
+                error!(parent: &conn_span, "handshake failed: {e}");
                 Err(e)
             }
             Err(_) => {
-                error!(parent: self.node().span(), "handshake with {addr} timed out");
+                error!(parent: &conn_span, "handshake timed out");
                 Err(io::ErrorKind::TimedOut.into())
             }
         };
 
         // return the Connection to the Node, resuming Node::adapt_stream
         if conn_returner.send(ret).is_err() {
-            error!(parent: self.node().span(), "couldn't return a Connection with {addr} from the Handshake handler");
+            error!(parent: conn_span, "couldn't return a Connection from the Handshake handler");
         }
     }
 }

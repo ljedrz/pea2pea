@@ -24,7 +24,10 @@ use tracing::*;
 use crate::protocols::Handshake;
 use crate::{
     Config, Stats,
-    connections::{Connection, ConnectionGuard, ConnectionInfo, ConnectionSide, Connections},
+    connections::{
+        Connection, ConnectionGuard, ConnectionInfo, ConnectionSide, Connections,
+        create_connection_span,
+    },
     protocols::{Protocol, Protocols},
 };
 
@@ -290,7 +293,8 @@ impl Node {
             }
         }
 
-        let connection = Connection::new(peer_addr, stream, !own_side);
+        let conn_span = create_connection_span(peer_addr, self.span());
+        let connection = Connection::new(peer_addr, stream, !own_side, conn_span);
 
         // enact the enabled protocols
         let mut connection = self.enable_protocols(connection).await?;

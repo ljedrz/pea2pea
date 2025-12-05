@@ -12,7 +12,9 @@ use crate::{
     Connection, Node,
     protocols::{Reading, Writing},
 };
-use crate::{Pea2Pea, node::NodeTask, protocols::ProtocolHandler};
+use crate::{
+    Pea2Pea, connections::create_connection_span, node::NodeTask, protocols::ProtocolHandler,
+};
 
 /// Can be used to automatically perform some extra actions when the connection with a peer is
 /// severed, which is especially practical if the disconnect is triggered automatically, e.g. due
@@ -73,7 +75,8 @@ where
                         .await
                         .is_err()
                         {
-                            warn!(parent: self_clone2.node().span(), "OnDisconnect logic timed out for {addr}");
+                            let conn_span = create_connection_span(addr, self_clone2.node().span());
+                            warn!(parent: conn_span, "OnDisconnect logic timed out");
                         }
                         // notify on completion
                         let _ = done_tx.send(());
