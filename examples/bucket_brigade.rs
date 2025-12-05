@@ -20,8 +20,8 @@ use pea2pea::{
     protocols::{Reading, Writing},
 };
 use tokio::{sync::Notify, time::sleep};
-use tracing_subscriber::filter::LevelFilter;
 
+// be mindful of your `ulimit`
 const NUM_NODES: usize = 10_000;
 const ROUNDS: usize = 10;
 
@@ -73,8 +73,6 @@ impl Reading for Brigadier {
 
 #[tokio::main]
 async fn main() {
-    common::start_logger(LevelFilter::WARN);
-
     println!("--- The Bucket Brigade ---");
 
     let finished = Arc::new(Notify::new());
@@ -91,12 +89,18 @@ async fn main() {
         };
         node.enable_reading().await;
         node.enable_writing().await;
-        node.node().toggle_listener().await.unwrap();
+        node.node()
+            .toggle_listener()
+            .await
+            .inspect_err(common::check_for_24)
+            .unwrap();
         nodes.push(node);
     }
 
-    // connect in a line (a-b-c-d...)
-    connect_nodes(&nodes, Topology::Line).await.unwrap();
+    connect_nodes(&nodes, Topology::Line)
+        .await
+        .inspect_err(common::check_for_24)
+        .unwrap();
 
     // allow topology to stabilize
     sleep(Duration::from_millis(500)).await;

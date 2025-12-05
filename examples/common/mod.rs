@@ -63,3 +63,9 @@ impl<M> Default for TestCodec<M> {
         Self(inner, PhantomData)
     }
 }
+
+pub fn check_for_24(err: &io::Error) {
+    if let Some(24) = err.raw_os_error() {
+        eprintln!("\nToo many open files! You need to increase your ulimit or reduce NUM_NODES.");
+    }
+}

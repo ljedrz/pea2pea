@@ -25,14 +25,13 @@ use pea2pea::{
 };
 use peak_alloc::PeakAlloc;
 use tokio::sync::Notify;
-use tracing_subscriber::filter::LevelFilter;
 
 // use the `peak_alloc` global allocator to track heap use
 #[global_allocator]
 static PEAK_ALLOC: PeakAlloc = PeakAlloc;
 
-// adjust this number based on your `ulimit`
-const NUM_NODES: usize = 25; // 600 connections
+// be mindful of your `ulimit`
+const NUM_NODES: usize = 200; // 39800 connections
 
 #[derive(Clone)]
 struct MeshNode {
@@ -83,8 +82,6 @@ impl Writing for MeshNode {
 
 #[tokio::main]
 async fn main() {
-    common::start_logger(LevelFilter::WARN); // keep logs quiet to focus on stats
-
     let initial_mem = PEAK_ALLOC.current_usage();
     println!("--- Dense Mesh Benchmark (RAM & Throughput) ---");
     println!("Initial Heap Usage: {:.2} MB", to_mb(initial_mem));
@@ -103,6 +100,8 @@ async fn main() {
         let config = Config {
             name: Some(format!("node_{i}")),
             max_connections: NUM_NODES as u16 + 10,
+            max_connections_per_ip: NUM_NODES as u16 + 10,
+            max_connecting: NUM_NODES as u16 + 10,
             listener_addr: Some("127.0.0.1:0".parse().unwrap()),
             ..Default::default()
         };
@@ -116,7 +115,11 @@ async fn main() {
 
         node.enable_reading().await;
         node.enable_writing().await;
-        node.node().toggle_listener().await.unwrap();
+        node.node()
+            .toggle_listener()
+            .await
+            .inspect_err(common::check_for_24)
+            .unwrap();
 
         nodes.push(node);
     }
@@ -140,7 +143,10 @@ async fn main() {
     println!("\n[2/3] Establishing Full Mesh ({expected_connections} connections)...");
     let start_conn = Instant::now();
 
-    connect_nodes(&nodes, Topology::Mesh).await.unwrap();
+    connect_nodes(&nodes, Topology::Mesh)
+        .await
+        .inspect_err(common::check_for_24)
+        .unwrap();
 
     let conn_duration = start_conn.elapsed();
     let mem_after_mesh = PEAK_ALLOC.current_usage();

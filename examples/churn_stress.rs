@@ -27,7 +27,6 @@ use tokio::{
     task::JoinSet,
     time::{sleep, timeout},
 };
-use tracing_subscriber::filter::LevelFilter;
 
 // number of concurrent clients
 const CLIENT_COUNT: usize = 100;
@@ -110,9 +109,6 @@ impl Reading for Client {
 
 #[tokio::main]
 async fn main() {
-    // keep the logs down
-    common::start_logger(LevelFilter::WARN);
-
     println!("--- High-Churn Stress Test ---");
     println!("Spawning 1 Server and {CLIENT_COUNT} distinct Client Nodes.");
 
