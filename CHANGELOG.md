@@ -1,3 +1,25 @@
+# 0.54.0
+
+### Added
+
+- `Writing::unicast_fast`, a fire-and-forget variant of `::unicast`
+- `Disconnect::TIMEOUT_MS` with a default value of 3s; after that time, the OnDisconnect logic
+is aborted in order to promptly conclude the disconnect
+
+### Changed
+
+- when the `Writing` queue gets saturated, `ErrorKind::QuotaExceeded` is now used instead of
+`::Other`
+
+### Fixed
+
+- the protocol setup channels are no longer unbounded; it likely wasn't exploitable, but there
+is no harm in this extra safeguard
+- the `OnConnect`, `Reading` and `Writing` tasks will no longer leave any "zombie" tasks in case
+the user implementation of their required methods causes a panic
+- in case `Reading::BACKPRESSURE == false`, the dropped messages will no longer cause a log flood
+(which previously would have been the case if there were a lot of them)
+
 # 0.53.0
 
 ### Added
