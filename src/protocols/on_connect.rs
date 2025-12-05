@@ -29,7 +29,7 @@ where
         async {
             let (from_node_sender, mut from_node_receiver) =
                 mpsc::channel::<(SocketAddr, oneshot::Sender<tokio::task::JoinHandle<()>>)>(
-                    self.node().config().max_connecting as usize,
+                    self.node().config().max_connections as usize,
                 );
 
             // use a channel to know when the on_connect task is ready
