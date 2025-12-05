@@ -1,4 +1,10 @@
-use std::{future::Future, io, net::SocketAddr, sync::Arc, time::Duration};
+use std::{
+    future::Future,
+    io,
+    net::SocketAddr,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use bytes::BytesMut;
 use futures_util::StreamExt;
@@ -216,6 +222,10 @@ impl<R: Reading> ReadingInternal for R {
             // disconnect automatically regardless of how this task concludes
             let _conn_cleanup = DisconnectOnDrop::new(node.clone(), addr);
 
+            // dropped message log suppression helpers
+            let mut dropped_count: usize = 0;
+            let mut last_drop_log = Instant::now();
+
             loop {
                 let next_frame_future = framed.next();
 
@@ -248,10 +258,32 @@ impl<R: Reading> ReadingInternal for R {
                             }
                             false => {
                                 if let Err(e) = inbound_message_sender.try_send(msg) {
-                                    error!(parent: node.span(), "can't process a message from {addr}: {e}");
-                                    if matches!(e, mpsc::error::TrySendError::Closed(_)) {
-                                        break;
+                                    match e {
+                                        mpsc::error::TrySendError::Full(_) => {
+                                            // avoid log flooding
+                                            dropped_count += 1;
+                                            if last_drop_log.elapsed() >= Duration::from_secs(1) {
+                                                warn_about_dropped_messages(
+                                                    &node,
+                                                    addr,
+                                                    &mut dropped_count,
+                                                    &mut last_drop_log,
+                                                );
+                                            }
+                                        }
+                                        mpsc::error::TrySendError::Closed(_) => {
+                                            error!(parent: node.span(), "inbound channel closed for {addr}");
+                                            break;
+                                        }
                                     }
+                                } else if dropped_count != 0 {
+                                    warn_about_dropped_messages(
+                                        &node,
+                                        addr,
+                                        &mut dropped_count,
+                                        &mut last_drop_log,
+                                    );
+                                    debug!(parent: node.span(), "the inbound queue for {addr} is no longer saturated");
                                 }
                             }
                         }
@@ -322,4 +354,22 @@ impl<D: Decoder> Decoder for CountingCodec<D> {
 
         Ok(ret)
     }
+}
+
+/// Warns that some messages were dropped and resets the related counters.
+fn warn_about_dropped_messages(
+    node: &Node,
+    addr: SocketAddr,
+    dropped_count: &mut usize,
+    last_drop_log: &mut Instant,
+) {
+    warn!(
+        parent: node.span(),
+        "dropped {dropped_count} messages from {addr} due\
+        to inbound queue saturation (BACKPRESSURE = false)",
+    );
+
+    // reset counters
+    *dropped_count = 0;
+    *last_drop_log = Instant::now();
 }
