@@ -255,7 +255,10 @@ impl<W: Writing> WritingInternal for W {
     ) {
         let addr = conn.addr();
         let codec = self.codec(addr, !conn.side());
-        let writer = conn.writer.take().expect("missing connection writer!");
+        let Some(writer) = conn.writer.take() else {
+            error!(parent: self.node().span(), "the stream was not returned during the handshake!");
+            return;
+        };
         let mut framed = FramedWrite::new(writer, codec);
 
         if Self::INITIAL_BUFFER_SIZE != 0 {

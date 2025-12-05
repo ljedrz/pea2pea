@@ -10,6 +10,8 @@ is aborted in order to promptly conclude the disconnect
 
 - when the `Writing` queue gets saturated, `ErrorKind::QuotaExceeded` is now used instead of
 `::Other`
+- not returning a `TcpStream` during a handshake no longer causes a panic (but it'll break the
+connection) MK2 - this time the check for the `Writer` was relaxed
 
 ### Fixed
 
