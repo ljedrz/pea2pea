@@ -1,6 +1,6 @@
 [package]
 name = "pea2pea"
-version = "0.53.0"
+version = "0.54.0"
 authors = ["ljedrz <ljedrz@gmail.com>"]
 edition = "2024"
 description = "A lightweight, performant microkernel for TCP peer-to-peer (P2P) networking. Handles connection pooling and framing, leaving the logic to you."

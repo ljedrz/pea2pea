@@ -3,15 +3,16 @@
 ### Added
 
 - `Writing::unicast_fast`, a fire-and-forget variant of `::unicast`
-- `Disconnect::TIMEOUT_MS` with a default value of 3s; after that time, the OnDisconnect logic
+- `OnDisconnect::TIMEOUT_MS` with a default value of 3s; after that time, the `OnDisconnect` logic
 is aborted in order to promptly conclude the disconnect
 
 ### Changed
 
 - when the `Writing` queue gets saturated, `ErrorKind::QuotaExceeded` is now used instead of
-`::Other`
+`::Other`; in the unlikely event that it is completely down, `::BrokenPipe` will be returned
 - not returning a `TcpStream` during a handshake no longer causes a panic (but it'll break the
-connection) MK2 - this time the check for the `Writer` was relaxed
+connection)
+- the tracing logs were greatly improved: every per-connection entry now has its dedicated span
 
 ### Fixed
 
