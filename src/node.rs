@@ -456,9 +456,19 @@ impl Node {
             }
         }
 
-        // as soon as the OnDisconnect protocol does its job, remove the connection from the list of the active
-        // ones; this is only done here, because OnDisconnect might attempt to send a message to the peer
-        let conn = self.connections.remove(addr);
+        // ensure that any OnDisconnect-related writes can conclude
+        if let Some(writing) = self.protocols.writing.get() {
+            // remove the connection's message sender so that
+            // the associated loop can exit organically
+            writing.senders.write().remove(&addr);
+
+            // give the Writing task a chance to process it
+            // and flush any final messages to the kernel
+            task::yield_now().await;
+        }
+
+        // the connection can now be "physically" removed
+        let _ = self.connections.remove(addr);
 
         // decrement the per-IP connection count
         if let Entry::Occupied(mut e) = self.connections.limits.lock().ip_counts.entry(addr.ip()) {
@@ -469,29 +479,9 @@ impl Node {
             }
         }
 
-        let disconnected = conn.is_some();
+        debug!(parent: &conn_span, "fully disconnected");
 
-        if let Some(conn) = conn {
-            // ensure that any OnDisconnect-related writes can conclude
-            if let Some(writing) = self.protocols.writing.get() {
-                // remove the connection's message sender so that
-                // the associated loop can exit organically
-                writing.senders.write().remove(&addr);
-
-                // give the Writing task a chance to process it
-                // and flush any final messages to the kernel
-                task::yield_now().await;
-            }
-
-            // shut the associated tasks down
-            drop(conn);
-
-            debug!(parent: &conn_span, "fully disconnected");
-        } else {
-            // unreachable
-        }
-
-        disconnected
+        true
     }
 
     /// Returns a list containing addresses of active connections.
