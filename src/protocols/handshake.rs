@@ -15,9 +15,9 @@ use crate::{
     protocols::{ProtocolHandler, ReturnableConnection},
 };
 
-/// Can be used to specify and enable network handshakes. Upon establishing a connection, both sides will
-/// need to adhere to the specified handshake rules in order to finalize the connection and be able to send
-/// or receive any messages.
+/// Can be used to specify and enable network handshakes, and to configure the sockets. Upon establishing
+/// a connection, both sides will need to adhere to the specified handshake rules in order to finalize
+/// the connection and be able to send or receive any messages.
 pub trait Handshake: Pea2Pea
 where
     Self: Clone + Send + Sync + 'static,
@@ -83,6 +83,10 @@ where
 
     /// Performs the handshake; temporarily assumes control of the [`Connection`] and returns it if the handshake is
     /// successful.
+    ///
+    /// Since it provides access to the underlying [`TcpStream`] (via `Handshake::borrow_stream`),
+    /// this is the appropriate place to configure socket options such as `TCP_NODELAY`,
+    /// `SO_KEEPALIVE`, or buffer sizes (`SO_RCVBUF` / `SO_SNDBUF`).
     fn perform_handshake(
         &self,
         conn: Connection,
