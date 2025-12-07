@@ -7,6 +7,7 @@ To run any example, use the standard cargo command followed by the example name 
 ## 🎮 Fun & Visual (Tutorials)
 
 These examples are the best place to start. They use gamified scenarios to demonstrate core concepts like network topologies, message passing, and basic state synchronization.
+We recommend running them with RUST_LOG=debug (or even trace) to see the step-by-step flow of a P2P network.
 
 | Example | Description | Key Features |
 | :--- | :--- | :--- |
