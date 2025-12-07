@@ -28,7 +28,7 @@ pub trait OnDisconnect: Pea2Pea
 where
     Self: Clone + Send + Sync + 'static,
 {
-    /// The maximum time (in milliseconds) allowed for the on_disconnect hook to execute.
+    /// The maximum time (in milliseconds) allowed for the [`OnDisconnect::on_disconnect`] hook to execute.
     /// If the hook exceeds this time, it will be aborted to ensure the node cleans up
     /// resources promptly.
     const TIMEOUT_MS: u64 = 3_000;

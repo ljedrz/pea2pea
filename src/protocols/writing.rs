@@ -41,13 +41,13 @@ where
     /// of the outbound message in order to only allocate it once.
     const INITIAL_BUFFER_SIZE: usize = 64 * 1024;
 
-    // The maximum time (in milliseconds) allowed for a single message write to flush
+    /// The maximum time (in milliseconds) allowed for a single message write to flush
     /// to the underlying stream before the connection is considered dead.
     const TIMEOUT_MS: u64 = 10_000;
 
     /// The type of the outbound messages; unless their serialization is expensive and the message
     /// is broadcasted (in which case it would get serialized multiple times), serialization should
-    /// be done in the implementation of [`Self::Codec`].
+    /// be done in the implementation of [`Writing::Codec`].
     type Message: Send;
 
     /// The user-supplied [`Encoder`] used to write outbound messages to the target stream.

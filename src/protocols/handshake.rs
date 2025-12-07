@@ -84,7 +84,7 @@ where
     /// Performs the handshake; temporarily assumes control of the [`Connection`] and returns it if the handshake is
     /// successful.
     ///
-    /// Since it provides access to the underlying [`TcpStream`] (via `Handshake::borrow_stream`),
+    /// note: Since it provides access to the underlying [`TcpStream`] (via [`Handshake::borrow_stream`]),
     /// this is the appropriate place to configure socket options such as `TCP_NODELAY`,
     /// `SO_KEEPALIVE`, or buffer sizes (`SO_RCVBUF` / `SO_SNDBUF`).
     fn perform_handshake(

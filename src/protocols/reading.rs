@@ -41,7 +41,7 @@ where
     const MESSAGE_QUEUE_DEPTH: usize = 64;
 
     /// Determines whether TCP backpressure should be exerted in case the number of queued messages
-    /// reaches `MESSAGE_QUEUE_DEPTH`; if not, messages beyond the queue's capacity will be dropped.
+    /// reaches [`Reading::MESSAGE_QUEUE_DEPTH`]; if not, messages beyond the queue's capacity will be dropped.
     ///
     /// note: Setting this to `false` creates UDP-like behavior over TCP - the sender will receive
     /// no indication that their message was discarded. Only use this if your application protocol
@@ -53,7 +53,7 @@ where
     ///
     /// note: This setting does **not** limit the maximum buffer growth. To prevent memory
     /// exhaustion attacks (where a peer sends a frame header declaring a massive size), you
-    /// must enforce limits within your [`Self::Codec`] implementation.
+    /// must enforce limits within your [`Reading::Codec`] implementation.
     const INITIAL_BUFFER_SIZE: usize = 64 * 1024;
 
     /// The maximum time (in milliseconds) the node will wait for a new message
