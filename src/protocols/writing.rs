@@ -129,6 +129,7 @@ where
     /// # Errors
     ///
     /// The following errors can be returned:
+    /// - [`io::ErrorKind::BrokenPipe`] if the outbound message channel is down
     /// - [`io::ErrorKind::NotConnected`] if the node is not connected to the provided address
     /// - [`io::ErrorKind::QuotaExceeded`] if the outbound message queue for this address is full
     /// - [`io::ErrorKind::Unsupported`] if [`Writing::enable_writing`] hadn't been called yet
@@ -147,7 +148,14 @@ where
                     .try_send(msg)
                     .map_err(|e| {
                         error!(parent: conn_span, "can't send a message: {e}");
-                        io::ErrorKind::QuotaExceeded.into()
+                        match e {
+                            mpsc::error::TrySendError::Full(_) => {
+                                io::ErrorKind::QuotaExceeded.into()
+                            }
+                            mpsc::error::TrySendError::Closed(_) => {
+                                io::ErrorKind::BrokenPipe.into()
+                            }
+                        }
                     })
                     .map(|_| delivery.unwrap()) // infallible
             } else {
@@ -174,7 +182,10 @@ where
                 let conn_span = create_connection_span(addr, self.node().span());
                 sender.try_send(msg).map_err(|e| {
                     error!(parent: conn_span, "can't send a message: {e}");
-                    io::ErrorKind::QuotaExceeded.into()
+                    match e {
+                        mpsc::error::TrySendError::Full(_) => io::ErrorKind::QuotaExceeded.into(),
+                        mpsc::error::TrySendError::Closed(_) => io::ErrorKind::BrokenPipe.into(),
+                    }
                 })
             } else {
                 Err(io::ErrorKind::NotConnected.into())
