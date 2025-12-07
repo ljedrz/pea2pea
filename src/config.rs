@@ -29,8 +29,6 @@ pub struct Config {
     pub max_connections: u16,
     /// The maximum number of active connections the node can maintain with a single IP.
     ///
-    /// note: It should not be greater than [`Config::max_connections`], as it will override it.
-    ///
     /// note: Like [`Config::max_connections`], pending connections are also included in the
     /// related calculations.
     ///
