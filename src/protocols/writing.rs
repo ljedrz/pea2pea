@@ -159,7 +159,8 @@ where
     }
 
     /// Sends the provided message to the specified [`SocketAddr`], and returns as soon as the
-    /// message is queued to be sent, without waiting for the actual delivery.
+    /// message is queued to be sent, without waiting for the actual delivery (as opposed to
+    /// [`Writing::unicast`], which does provide delivery feedback).
     ///
     /// # Errors
     ///
