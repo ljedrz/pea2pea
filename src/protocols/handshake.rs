@@ -124,7 +124,7 @@ impl<H: Handshake> HandshakeInternal for H {
     async fn handle_new_connection(&self, (conn, conn_returner): ReturnableConnection) {
         let conn_span = conn.span().clone();
 
-        debug!(parent: &conn_span, "shaking hands as the {:?}", !conn.side());
+        debug!(parent: &conn_span, "executing Handshake logic...");
         let result = timeout(
             Duration::from_millis(Self::TIMEOUT_MS),
             self.perform_handshake(conn),
@@ -133,7 +133,7 @@ impl<H: Handshake> HandshakeInternal for H {
 
         let ret = match result {
             Ok(Ok(conn)) => {
-                debug!(parent: &conn_span, "successfully handshaken");
+                debug!(parent: &conn_span, "handshake succeeded");
                 Ok(conn)
             }
             Ok(Err(e)) => {

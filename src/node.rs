@@ -179,7 +179,6 @@ impl Node {
                         // handle connection requests asynchronously
                         let node = node.clone();
                         tokio::spawn(async move {
-                            debug!(parent: node.span(), "tentatively accepted a connection from {addr}");
                             node.handle_connection_request(stream, addr).await.inspect_err(|e|
                                 match e.kind() {
                                     ErrorKind::QuotaExceeded | ErrorKind::AlreadyExists => {
@@ -281,20 +280,19 @@ impl Node {
         own_side: ConnectionSide,
         mut guard: ConnectionGuard<'_>,
     ) -> io::Result<()> {
+        let conn_span = create_connection_span(peer_addr, self.span());
+        debug!(parent: &conn_span, "establishing connection as the {own_side:?}");
+
         // register the port seen by the peer
         if own_side == ConnectionSide::Initiator {
             if let Ok(addr) = stream.local_addr() {
-                debug!(
-                    parent: self.span(), "establishing connection with {peer_addr}; the peer is connected on port {}",
-                    addr.port()
-                );
+                trace!(parent: &conn_span, "the peer is connected on port {}", addr.port());
             } else {
-                warn!(parent: self.span(), "couldn't determine the peer's port");
+                warn!(parent: &conn_span, "couldn't determine the peer-side port");
             }
         }
 
-        let conn_span = create_connection_span(peer_addr, self.span());
-        let connection = Connection::new(peer_addr, stream, !own_side, conn_span);
+        let connection = Connection::new(peer_addr, stream, !own_side, conn_span.clone());
 
         // enact the enabled protocols
         let mut connection = self.enable_protocols(connection).await?;
@@ -312,10 +310,11 @@ impl Node {
             let _ = tx.send(());
         }
 
-        debug!(parent: self.span(), "fully connected to {peer_addr}");
+        debug!(parent: &conn_span, "fully connected");
 
         // if enabled, enact OnConnect
         if let Some(handler) = self.protocols.on_connect.get() {
+            trace!(parent: &conn_span, "executing OnConnect logic...");
             let (sender, receiver) = oneshot::channel();
             handler.trigger((peer_addr, sender)).await;
 
@@ -436,8 +435,12 @@ impl Node {
             return false;
         };
 
+        let conn_span = create_connection_span(addr, self.span());
+        debug!(parent: &conn_span, "disconnecting...");
+
         // if the OnDisconnect protocol is enabled, trigger it
         if let Some(handler) = self.protocols.on_disconnect.get() {
+            trace!(parent: &conn_span, "executing OnDisconnect logic...");
             let (sender, receiver) = oneshot::channel();
             handler.trigger((addr, sender)).await;
             if let Ok((handle, waiter)) = receiver.await {
@@ -469,8 +472,6 @@ impl Node {
         let disconnected = conn.is_some();
 
         if let Some(conn) = conn {
-            debug!(parent: self.span(), "disconnecting from {}", conn.addr());
-
             // ensure that any OnDisconnect-related writes can conclude
             if let Some(writing) = self.protocols.writing.get() {
                 // remove the connection's message sender so that
@@ -485,9 +486,9 @@ impl Node {
             // shut the associated tasks down
             drop(conn);
 
-            debug!(parent: self.span(), "disconnected from {addr}");
+            debug!(parent: &conn_span, "fully disconnected");
         } else {
-            debug!(parent: self.span(), "couldn't disconnect from {addr}, as it wasn't connected");
+            // unreachable
         }
 
         disconnected
