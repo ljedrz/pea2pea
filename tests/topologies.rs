@@ -100,7 +100,30 @@ async fn topology_grid_conn_counts() {
     connect_nodes(&nodes, topology).await.unwrap();
     barrier.wait().await;
 
-    // TODO
+    assert!(nodes.iter().enumerate().all(|(i, node)| {
+        let row = i / 5;
+        let col = i % 5;
+        let mut expected = 0;
+
+        // check Up
+        if row > 0 {
+            expected += 1;
+        }
+        // check Down (height is 2, so max row is 1)
+        if row < 1 {
+            expected += 1;
+        }
+        // check Left
+        if col > 0 {
+            expected += 1;
+        }
+        // check Right (width is 5, so max col is 4)
+        if col < 4 {
+            expected += 1;
+        }
+
+        node.node().num_connected() == expected
+    }));
 }
 
 #[tokio::test]
@@ -116,7 +139,26 @@ async fn topology_tree_conn_counts() {
     connect_nodes(&nodes, Topology::Tree).await.unwrap();
     barrier.wait().await;
 
-    // TODO
+    assert!(nodes.iter().enumerate().all(|(i, node)| {
+        let mut expected = 0;
+
+        // check for parent (Node 0 has no parent)
+        if i > 0 {
+            expected += 1;
+        }
+
+        // check for left child
+        if 2 * i + 1 < N {
+            expected += 1;
+        }
+
+        // check for right child
+        if 2 * i + 2 < N {
+            expected += 1;
+        }
+
+        node.node().num_connected() == expected
+    }));
 }
 
 #[tokio::test]
@@ -134,5 +176,12 @@ async fn topology_random_conn_counts() {
     connect_nodes(&nodes, topology).await.unwrap();
     barrier.wait().await;
 
-    // TODO
+    // verify every node has at least the minimum degree (2)
+    assert!(nodes.iter().all(|node| node.node().num_connected() >= 2));
+
+    // verify the global total of connections matches the expectation
+    let total_connections: usize = nodes.iter().map(|n| n.node().num_connected()).sum();
+
+    // N (10) * degree (2) * 2 sides = 40
+    assert_eq!(total_connections, N * 2 * 2);
 }
