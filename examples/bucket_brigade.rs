@@ -1,7 +1,7 @@
 //! "The Bucket Brigade" Latency Test.
 //!
-//! Spawns 100 nodes in a linear chain (Line Topology).
-//! Passes a message from Node 0 -> Node 99.
+//! Spawns 10k nodes in a linear chain (Line Topology).
+//! Passes a message from Node 0 -> Node 9999.
 //!
 //! Measures the "Per-Hop" latency. This demonstrates the near-zero
 //! processing overhead of the library.

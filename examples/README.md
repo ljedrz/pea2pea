@@ -34,9 +34,9 @@ These examples involve complex state machines, high-load stress testing, or heav
 
 | Example | Description | Key Features |
 | :--- | :--- | :--- |
-| **[Bucket Brigade](bucket_brigade.rs)** | A 100-node linear chain that passes a message from start to end. Measures per-hop latency, demonstrating the minimal overhead of the protocol stack. | Latency Testing, Topology, Forwarding |
+| **[Bucket Brigade](bucket_brigade.rs)** | A 10k-node linear chain that passes a message from start to end. Measures per-hop latency, demonstrating the minimal overhead of the protocol stack. | Latency Testing, Topology, Forwarding |
 | **[Connection Churn](churn_stress.rs)** | A "thundering herd" simulation where clients rapidly connect, exchange data, and disconnect. Demonstrates low overhead in connection lifecycle management. | Stress Testing, High Churn, Performance |
-| **[Dense Mesh](dense_mesh.rs)** | Spawns a high density of nodes (default 25) and measures exact RAM usage per node and per connection using the `peak_alloc` allocator. Demonstrates the library's tunable memory footprint. | Memory Profiling, High Density, Metrics |
+| **[Dense Mesh](dense_mesh.rs)** | Spawns a high density of nodes (default 200) and measures exact RAM usage per node and per connection using the `peak_alloc` allocator. Demonstrates the library's tunable memory footprint. | Memory Profiling, High Density, Metrics |
 | **[Dining Philosophers](dining_philosophers.rs)** | A complex concurrency problem mapped to P2P. Nodes must negotiate access to shared resources ("forks") using stateful request/response flows. | Ring Topology, Shared State, Deadlock Avoidance |
 | **[Libp2p Interop](libp2p.rs)** | A fully compatible `libp2p` node that performs a Noise handshake and multiplexes streams using Yamux to talk to `rust-libp2p` nodes. | Interop, Noise Encryption, Yamux Multiplexing, Complex Handshake |
 | **[Packet Cannon](packet_cannon.rs)** | A raw throughput benchmark measuring Packets Per Second (PPS). Uses zero-allocation codecs to isolate the library's internal overhead and measure the upper limits of message frequency. | PPS Benchmarking, Zero-Copy Codecs, Backpressure |
