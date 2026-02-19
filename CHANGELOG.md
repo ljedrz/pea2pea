@@ -1,3 +1,9 @@
+# 0.54.1
+
+### Added
+
+- `ConnectionInfo::span`
+
 # 0.54.0
 
 ### Added

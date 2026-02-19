@@ -94,6 +94,8 @@ impl<T: AsyncWrite + Unpin + Send + Sync> AW for T {}
 /// Basic information related to a connection.
 #[derive(Clone)]
 pub struct ConnectionInfo {
+    /// The tracing span.
+    span: Span,
     /// The address of the connection.
     addr: SocketAddr,
     /// The connection's side in relation to the node.
@@ -121,6 +123,12 @@ impl ConnectionInfo {
     pub const fn stats(&self) -> &Arc<Stats> {
         &self.stats
     }
+
+    /// Returns the tracing [`Span`] associated with the connection.
+    #[inline]
+    pub const fn span(&self) -> &Span {
+        &self.span
+    }
 }
 
 /// Created for each active connection; used by the protocols to obtain a handle for
@@ -141,8 +149,6 @@ pub struct Connection {
     pub(crate) disconnecting: AtomicBool,
     /// Handles to tasks spawned for the connection.
     pub(crate) tasks: Vec<JoinHandle<()>>,
-    /// The tracing span.
-    pub(crate) span: Span,
 }
 
 impl Connection {
@@ -155,6 +161,7 @@ impl Connection {
     ) -> Self {
         Self {
             info: ConnectionInfo {
+                span,
                 addr,
                 side,
                 stats: Default::default(),
@@ -165,7 +172,6 @@ impl Connection {
             readiness_notifier: None,
             disconnecting: Default::default(),
             tasks: Default::default(),
-            span,
         }
     }
 
@@ -197,7 +203,7 @@ impl Connection {
     /// Returns the tracing [`Span`] associated with the connection.
     #[inline]
     pub const fn span(&self) -> &Span {
-        &self.span
+        &self.info.span
     }
 }
 
