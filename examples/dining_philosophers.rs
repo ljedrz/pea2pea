@@ -15,14 +15,14 @@ use pea2pea::{
     Config, ConnectionSide, Node, Pea2Pea, Topology, connect_nodes,
     protocols::{Reading, Writing},
 };
-use rand::{Rng, SeedableRng, rngs::SmallRng};
+use rand::{RngExt, SeedableRng, rngs::SmallRng};
 use tokio::{sync::RwLock, time::sleep};
 use tokio_util::codec::{Decoder, Encoder, LengthDelimitedCodec};
 use tracing::*;
 use tracing_subscriber::filter::LevelFilter;
 
 static RNG: LazyLock<parking_lot::Mutex<SmallRng>> =
-    LazyLock::new(|| parking_lot::Mutex::new(SmallRng::from_os_rng()));
+    LazyLock::new(|| parking_lot::Mutex::new(SmallRng::from_rng(&mut rand::rng())));
 
 const MIN_EATING_TIME_MS: u64 = 500;
 const MAX_EATING_TIME_MS: u64 = 1000;

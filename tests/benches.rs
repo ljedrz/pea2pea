@@ -1,5 +1,5 @@
 use bytes::{Bytes, BytesMut};
-use rand::{Rng, SeedableRng, distr::StandardUniform, rngs::SmallRng};
+use rand::{RngExt, distr::StandardUniform};
 use tokio::sync::{Barrier, Notify};
 use tokio_util::codec::Decoder;
 
@@ -30,7 +30,7 @@ const MSG_SIZE: usize = 32 * 1024;
 
 static RANDOM_BYTES: LazyLock<Bytes> = LazyLock::new(|| {
     Bytes::from(
-        (&mut SmallRng::from_os_rng())
+        (&mut rand::rng())
             .sample_iter(StandardUniform)
             .take(MSG_SIZE - 2)
             .collect::<Vec<_>>(),

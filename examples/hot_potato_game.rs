@@ -20,7 +20,7 @@ use pea2pea::{
     Connection, ConnectionSide, Node, Pea2Pea, Topology, connect_nodes,
     protocols::{Handshake, Reading, Writing},
 };
-use rand::{Rng, SeedableRng, rngs::SmallRng, seq::IteratorRandom};
+use rand::{RngExt, SeedableRng, rngs::SmallRng, seq::IteratorRandom};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     time::sleep,
@@ -29,7 +29,8 @@ use tokio_util::codec::{Decoder, Encoder};
 use tracing::*;
 use tracing_subscriber::filter::LevelFilter;
 
-static RNG: LazyLock<Mutex<SmallRng>> = LazyLock::new(|| Mutex::new(SmallRng::from_os_rng()));
+static RNG: LazyLock<Mutex<SmallRng>> =
+    LazyLock::new(|| Mutex::new(SmallRng::from_rng(&mut rand::rng())));
 
 type PlayerName = String;
 

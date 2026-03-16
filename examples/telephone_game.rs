@@ -8,7 +8,7 @@ use pea2pea::{
     ConnectionSide, Node, Pea2Pea, Topology, connect_nodes,
     protocols::{Reading, Writing},
 };
-use rand::Rng;
+use rand::RngExt;
 use tokio::time::sleep;
 use tracing::*;
 use tracing_subscriber::filter::LevelFilter;

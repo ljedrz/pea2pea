@@ -1,6 +1,6 @@
 use bytes::Bytes;
 use deadline::deadline;
-use rand::{Rng, SeedableRng, rngs::SmallRng};
+use rand::RngExt;
 
 mod common;
 use std::time::Duration;
@@ -12,7 +12,7 @@ use pea2pea::{
 
 #[tokio::test]
 async fn message_stats() {
-    let mut rng = SmallRng::from_os_rng();
+    let mut rng = rand::rng();
 
     let reader = crate::test_node!("reader");
     let reader_addr = reader.node().toggle_listener().await.unwrap().unwrap();

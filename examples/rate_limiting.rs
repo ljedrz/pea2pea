@@ -9,7 +9,7 @@ use pea2pea::{
     ConnectionSide, Node, Pea2Pea,
     protocols::{Reading, Writing},
 };
-use rand::{Rng, SeedableRng, rngs::SmallRng};
+use rand::RngExt;
 use tokio::time::sleep;
 use tracing::*;
 use tracing_subscriber::filter::LevelFilter;
@@ -51,7 +51,7 @@ async fn main() {
     common::start_logger(LevelFilter::INFO);
 
     // obtain a source of randomness
-    let mut rng = SmallRng::from_os_rng();
+    let mut rng = rand::rng();
 
     // start several nodes
     let mut nodes = Vec::with_capacity(NUM_PEERS);

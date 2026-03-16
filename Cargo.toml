@@ -42,7 +42,7 @@ libp2p = { version = "0.56", default-features = false, features = ["macros", "no
 native-tls = "0.2"
 peak_alloc = "0.3"
 prost = "0.14"
-rand = { version = "0.9", default-features = false, features = ["small_rng"] }
+rand = { version = "0.10", default-features = false, features = ["thread_rng"] }
 snow = "0.10"
 test-cert-gen = "0.9"
 tokio = { version = "1.24", features = ["rt-multi-thread"] }

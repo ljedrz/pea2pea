@@ -1,6 +1,5 @@
 use deadline::deadline;
 use parking_lot::RwLock;
-use rand::{Rng, SeedableRng, rngs::SmallRng};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpStream,
@@ -30,7 +29,7 @@ impl HandshakingNode {
     fn new() -> Self {
         Self {
             node: Node::new(Default::default()),
-            own_nonce: SmallRng::from_os_rng().random(),
+            own_nonce: rand::random(),
             peer_nonces: Default::default(),
         }
     }
