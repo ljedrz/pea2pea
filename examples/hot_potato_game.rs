@@ -13,7 +13,6 @@ use std::{
     time::Duration,
 };
 
-use bincode::{Decode, Encode};
 use bytes::BytesMut;
 use parking_lot::Mutex;
 use pea2pea::{
@@ -124,7 +123,7 @@ impl Handshake for Player {
     }
 }
 
-#[derive(Clone, Decode, Encode)]
+#[derive(Clone, serde::Deserialize, serde::Serialize)]
 enum Message {
     HotPotato,
     IHaveThePotato(PlayerName),
@@ -138,11 +137,10 @@ impl Decoder for common::TestCodec<Message> {
         self.0
             .decode(src)?
             .map(|b| {
-                bincode::borrow_decode_from_slice(&b, bincode::config::standard())
+                postcard::from_bytes::<Self::Item>(&b)
                     .map_err(|_| io::ErrorKind::InvalidData.into())
             })
             .transpose()
-            .map(|r| r.map(|t| t.0))
     }
 }
 
@@ -188,9 +186,7 @@ impl<M> Encoder<Message> for common::TestCodec<M> {
     type Error = io::Error;
 
     fn encode(&mut self, item: Message, dst: &mut BytesMut) -> Result<(), Self::Error> {
-        let bytes = bincode::encode_to_vec(&item, bincode::config::standard())
-            .unwrap()
-            .into();
+        let bytes = postcard::to_stdvec(&item).unwrap().into();
         self.0.encode(bytes, dst)
     }
 }

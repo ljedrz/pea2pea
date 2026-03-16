@@ -9,7 +9,6 @@ use std::{
     time::Duration,
 };
 
-use bincode::{Decode, Encode};
 use bytes::BytesMut;
 use pea2pea::{
     Config, ConnectionSide, Node, Pea2Pea, Topology, connect_nodes,
@@ -51,7 +50,7 @@ enum State {
     Eating(Duration),
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Decode, Encode)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Deserialize, serde::Serialize)]
 enum Message {
     AreYouUsingTheSharedFork,
     Yes(Option<Duration>), // eating duration (if the responder is eating)
@@ -146,9 +145,8 @@ impl Decoder for Codec {
             return Ok(None);
         }
 
-        let message = bincode::decode_from_slice(&bytes.unwrap(), bincode::config::standard())
-            .map_err(|_| io::ErrorKind::InvalidData)?
-            .0;
+        let message = postcard::from_bytes::<Self::Item>(&bytes.unwrap())
+            .map_err(|_| io::ErrorKind::InvalidData)?;
 
         Ok(Some(message))
     }
@@ -158,9 +156,7 @@ impl Encoder<Message> for Codec {
     type Error = io::Error;
 
     fn encode(&mut self, item: Message, dst: &mut BytesMut) -> Result<(), Self::Error> {
-        let bytes = bincode::encode_to_vec(item, bincode::config::standard())
-            .unwrap()
-            .into();
+        let bytes = postcard::to_stdvec(&item).unwrap().into();
         self.0.encode(bytes, dst)
     }
 }
