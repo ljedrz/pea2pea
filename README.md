@@ -178,7 +178,9 @@ Despite the `0.x` versioning, `pea2pea` is considered **production-ready**. The 
 
 Please see [CONTRIBUTING.md](CONTRIBUTING.md) for details on our strict scope policy.
 
-### License
+---
+
+### 📜 License
 
 This project is dual-licensed under either:
 
