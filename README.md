@@ -177,3 +177,12 @@ Despite the `0.x` versioning, `pea2pea` is considered **production-ready**. The 
 ### 🤝 Contributing
 
 Please see [CONTRIBUTING.md](CONTRIBUTING.md) for details on our strict scope policy.
+
+### License
+
+This project is dual-licensed under either:
+
+* CC0 1.0 Universal ([LICENSE-CC0](LICENSE-CC0) or https://creativecommons.org/publicdomain/zero/1.0/)
+* MIT License ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
+
+at your option.

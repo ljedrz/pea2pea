@@ -1,3 +1,9 @@
+# 0.54.2
+
+### Added
+
+- the option to use under the MIT license
+
 # 0.54.1
 
 ### Added
