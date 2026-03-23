@@ -18,6 +18,7 @@
 - [📦 Installation](#-installation)
 - [🚧 Project Status](#-project-status)
 - [🤝 Contributing](#-contributing)
+- [📜 License](#-license)
 
 ---
 
