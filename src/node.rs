@@ -397,7 +397,7 @@ impl Node {
             {
                 return Err(io::Error::new(
                     ErrorKind::AddrInUse,
-                    "can't connect to node's own listening address ({addr})",
+                    format!("can't connect to node's own listening address ({addr})"),
                 ));
             }
         }
@@ -407,7 +407,7 @@ impl Node {
         if !self.config.allow_duplicate_connections && self.connections.is_connected(addr) {
             return Err(io::Error::new(
                 ErrorKind::AlreadyExists,
-                "already connected to {addr}",
+                format!("already connected to {addr}"),
             ));
         }
 
@@ -531,7 +531,7 @@ impl Node {
         if num_ip_conns >= per_ip_limit {
             return Err(io::Error::new(
                 ErrorKind::QuotaExceeded,
-                "maximum number ({per_ip_limit}) of per-IP connections reached with {ip}",
+                format!("maximum number ({per_ip_limit}) of per-IP connections reached with {ip}"),
             ));
         }
 
@@ -541,7 +541,7 @@ impl Node {
         if num_connecting >= connecting_limit {
             return Err(io::Error::new(
                 ErrorKind::QuotaExceeded,
-                "maximum number ({connecting_limit}) of pending connections reached",
+                format!("maximum number ({connecting_limit}) of pending connections reached"),
             ));
         }
 
@@ -551,7 +551,7 @@ impl Node {
         if num_connected + num_connecting >= connection_limit {
             return Err(io::Error::new(
                 ErrorKind::QuotaExceeded,
-                "maximum number ({connection_limit}) of connections reached",
+                format!("maximum number ({connection_limit}) of connections reached"),
             ));
         }
 
@@ -559,7 +559,7 @@ impl Node {
         if limits.connecting.contains(&addr) {
             return Err(io::Error::new(
                 ErrorKind::AlreadyExists,
-                "already connecting to {addr}",
+                format!("already connecting to {addr}"),
             ));
         }
 
