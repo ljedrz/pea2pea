@@ -426,7 +426,7 @@ impl Node {
     pub async fn disconnect(&self, addr: SocketAddr) -> bool {
         // claim the disconnect to avoid duplicate executions, or return early if already claimed
         if let Some(conn) = self.connections.active.read().get(&addr) {
-            if conn.disconnecting.swap(true, Relaxed) {
+            if conn.disconnecting.swap(true, AcqRel) {
                 // valid connection, but someone else is already disconnecting it
                 return false;
             }
