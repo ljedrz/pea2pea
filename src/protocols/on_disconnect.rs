@@ -45,7 +45,7 @@ where
                 mpsc::channel::<(
                     SocketAddr,
                     oneshot::Sender<(JoinHandle<()>, oneshot::Receiver<()>)>,
-                )>(self.node().config().max_connecting as usize);
+                )>(self.node().config().max_connections as usize);
 
             // use a channel to know when the disconnect task is ready
             let (tx, rx) = oneshot::channel::<()>();
