@@ -167,7 +167,9 @@ impl<R: Reading> ReadingInternal for R {
         let addr = conn.addr();
         let codec = self.codec(addr, !conn.side());
         let Some(reader) = conn.reader.take() else {
-            error!(parent: conn.span(), "the stream was not returned during the handshake!");
+            let err = io::Error::other("the stream was not returned during the handshake");
+            error!(parent: conn.span(), "{err}");
+            let _ = conn_returner.send(Err(err));
             return;
         };
         let framed = FramedRead::with_capacity(reader, codec, Self::INITIAL_BUFFER_SIZE);

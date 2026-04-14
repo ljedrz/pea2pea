@@ -272,7 +272,9 @@ impl<W: Writing> WritingInternal for W {
         let addr = conn.addr();
         let codec = self.codec(addr, !conn.side());
         let Some(writer) = conn.writer.take() else {
-            error!(parent: conn.span(), "the stream was not returned during the handshake!");
+            let err = io::Error::other("the stream was not returned during the handshake");
+            error!(parent: conn.span(), "{err}");
+            let _ = conn_returner.send(Err(err));
             return;
         };
         let mut framed = FramedWrite::new(writer, codec);
