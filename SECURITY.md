@@ -34,6 +34,6 @@ Because `pea2pea` is a micro-kernel, it handles low-level plumbing while you han
 
 ## ⚠️ Disclaimer & Vendoring
 
-As stated in the [LICENSE](LICENSE), this software is provided **"as is"**, without warranty of any kind.
+As stated in the licenses, this software is provided **"as is"**, without warranty of any kind.
 
 If you vendor this library, **you act as the maintainer for your copy.** You are responsible for monitoring this repository for security updates and applying them to your codebase.

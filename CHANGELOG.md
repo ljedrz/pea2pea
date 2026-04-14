@@ -2,14 +2,14 @@
 
 ### Changed
 
-- the atomic ordering for the flag indicating an ongoing disconnect was changed from Relaxed to AcqRel
+- the atomic ordering for the flag indicating an ongoing disconnect was changed from `Relaxed` to `AcqRel`
 - `Handshake::{borrow_stream, take_stream}` now produce more human-friendly error messages
 - the `OnDisconnect` channel is now bounded by `Config::max_connections` instead of `::max_connecting`, in order to not slow down shutdowns
 - the callers of `handle_new_connection` are now notified in case of a missing stream, resulting in a nicer error
 
 ### Fixed
 
-- a few IO errors were missing a format! macro wrapper, which would lead to unsubstituted values
+- a few IO errors were missing a `format!` macro wrapper, which would lead to unsubstituted values
 
 # 0.54.2
 
