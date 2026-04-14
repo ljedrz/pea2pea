@@ -255,6 +255,8 @@ impl<W: Writing> WritingInternal for W {
         writer: &mut FramedWrite<A, Self::Codec>,
     ) -> Result<usize, <Self::Codec as Encoder<Self::Message>>::Error> {
         writer.feed(message).await?;
+        // note: this relies on the buffer being empty before `feed`, which
+        // holds because the write loop processes one message at a time
         let len = writer.write_buffer().len();
         // guard against write starvation
         match timeout(Duration::from_millis(W::TIMEOUT_MS), writer.flush()).await {
