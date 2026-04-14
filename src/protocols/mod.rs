@@ -79,7 +79,7 @@ impl Drop for DisconnectOnDrop {
     fn drop(&mut self) {
         if let Some(node) = self.node.take() {
             let addr = self.addr;
-            // can't await inside Drop.
+            // this task is intentionally detached, as we can't await inside Drop
             tokio::spawn(async move { node.disconnect(addr).await });
         }
     }

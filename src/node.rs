@@ -458,12 +458,17 @@ impl Node {
 
         // ensure that any OnDisconnect-related writes can conclude
         if let Some(writing) = self.protocols.writing.get() {
-            // remove the connection's message sender so that
-            // the associated loop can exit organically
+            // signal the Writing task to wind down: this breaks the associated
+            // write loop; the writer task's own `SenderCleanup` guard will
+            // attempt the same removal on drop, which is harmless (a no-op
+            // second removal) and serves as a safety net for non-disconnect
+            // exits (e.g. write errors)
             writing.senders.write().remove(&addr);
 
-            // give the Writing task a chance to process it
-            // and flush any final messages to the kernel
+            // yield once so the writer task can observe the closed channel and
+            // flush any final messages to the kernel buffer before the connection
+            // object is dropped and its tasks are aborted; under extreme load
+            // this is best-effort, not a guarantee
             task::yield_now().await;
         }
 
