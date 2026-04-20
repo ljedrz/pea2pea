@@ -65,6 +65,10 @@ where
     type Codec: Encoder<Self::Message, Error = io::Error> + Send;
 
     /// Prepares the node to send messages.
+    ///
+    /// # Panics
+    ///
+    /// Panics if called more than once on the same [`Node`].
     fn enable_writing(&self) -> impl Future<Output = ()> {
         async {
             assert!(

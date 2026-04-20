@@ -9,6 +9,8 @@ use tokio::{
 };
 use tracing::*;
 
+#[cfg(doc)]
+use crate::Node;
 use crate::{
     Connection, Pea2Pea,
     node::NodeTask,
@@ -26,6 +28,10 @@ where
     const TIMEOUT_MS: u64 = 3_000;
 
     /// Prepares the node to perform specified network handshakes.
+    ///
+    /// # Panics
+    ///
+    /// Panics if called more than once on the same [`Node`].
     fn enable_handshake(&self) -> impl Future<Output = ()> + Send {
         async {
             assert!(

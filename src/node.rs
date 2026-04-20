@@ -21,7 +21,7 @@ use tokio::{
 use tracing::*;
 
 #[cfg(doc)]
-use crate::protocols::Handshake;
+use crate::protocols::{Handshake, OnDisconnect, Writing};
 use crate::{
     Config, Stats,
     connections::{

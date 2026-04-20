@@ -73,6 +73,10 @@ where
     type Codec: Decoder<Item = Self::Message, Error = io::Error> + Send;
 
     /// Prepares the node to receive messages.
+    ///
+    /// # Panics
+    ///
+    /// Panics if called more than once on the same [`Node`].
     fn enable_reading(&self) -> impl Future<Output = ()> {
         async {
             assert!(

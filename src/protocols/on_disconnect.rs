@@ -46,6 +46,10 @@ where
     /// note: This hook is executed before the connection is fully removed from the node's internal
     /// state. Calls to [`Node::disconnect`] will wait for it to complete, ensuring that any
     /// necessary cleanup (e.g., notifying a database) is finished before the function returns.
+    ///
+    /// # Panics
+    ///
+    /// Panics if called more than once on the same [`Node`].
     fn enable_on_disconnect(&self) -> impl Future<Output = ()> {
         async {
             assert!(

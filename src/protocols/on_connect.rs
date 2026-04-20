@@ -44,6 +44,10 @@ where
 {
     /// Attaches the behavior specified in [`OnConnect::on_connect`] right after every successful
     /// handshake.
+    ///
+    /// # Panics
+    ///
+    /// Panics if called more than once on the same [`Node`].
     fn enable_on_connect(&self) -> impl Future<Output = ()> {
         async {
             assert!(
