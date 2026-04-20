@@ -1,3 +1,9 @@
+# 0.54.4
+
+### Changed
+
+- disable connection accept backoff in case of `ConnectionAborted`/`ConnectionReset`
+
 # 0.54.3
 
 ### Changed

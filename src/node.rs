@@ -192,10 +192,18 @@ impl Node {
                         });
                     }
                     Err(e) => {
-                        error!(parent: node.span(), "couldn't accept a connection: {e}");
-                        // if we ran out of FDs, sleep to avoid spinning 100% CPU
-                        // while waiting for a slot to free up
-                        sleep(Duration::from_millis(500)).await;
+                        match e.kind() {
+                            // a peer aborted/reset before accept completed; no backoff - the listener is healthy
+                            ErrorKind::ConnectionAborted | ErrorKind::ConnectionReset => {
+                                debug!(parent: node.span(), "transient accept error: {e}");
+                            }
+                            // otherwise, assume fd / memory exhaustion (EMFILE, ENFILE, ENOBUFS, ...)
+                            // and back off so we don't spin at 100% CPU waiting for a slot to free
+                            _ => {
+                                error!(parent: node.span(), "couldn't accept a connection: {e}");
+                                sleep(Duration::from_millis(500)).await;
+                            }
+                        }
                     }
                 }
             }
