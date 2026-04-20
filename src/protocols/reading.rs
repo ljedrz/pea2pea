@@ -22,7 +22,7 @@ use crate::{Config, protocols::Handshake};
 use crate::{
     Connection, ConnectionSide, Node, Pea2Pea, Stats,
     node::NodeTask,
-    protocols::{DisconnectOnDrop, ProtocolHandler, ReturnableConnection},
+    protocols::{DisconnectOnDrop, ProtocolHandler, ReturnableConnection, log_setup_join},
 };
 
 /// Can be used to specify and enable reading, i.e. receiving inbound messages. If the [`Handshake`]
@@ -114,7 +114,9 @@ where
                             }
                         }
                         // task set cleanups
-                        _ = setup_tasks.join_next(), if !setup_tasks.is_empty() => {}
+                        res = setup_tasks.join_next(), if !setup_tasks.is_empty() => {
+                            log_setup_join(self_clone.node().span(), "Reading", res);
+                        }
                     }
                 }
             });

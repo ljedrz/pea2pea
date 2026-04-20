@@ -30,7 +30,9 @@ use crate::{
     Connection, ConnectionSide, Pea2Pea,
     connections::create_connection_span,
     node::NodeTask,
-    protocols::{DisconnectOnDrop, Protocol, ProtocolHandler, ReturnableConnection},
+    protocols::{
+        DisconnectOnDrop, Protocol, ProtocolHandler, ReturnableConnection, log_setup_join,
+    },
 };
 
 type WritingSenders = Arc<RwLock<HashMap<SocketAddr, (u64, mpsc::Sender<WrappedMessage>)>>>;
@@ -114,7 +116,9 @@ where
                             }
                         }
                         // task set cleanups
-                        _ = setup_tasks.join_next(), if !setup_tasks.is_empty() => {}
+                        res = setup_tasks.join_next(), if !setup_tasks.is_empty() => {
+                            log_setup_join(self_clone.node().span(), "Writing", res);
+                        }
                     }
                 }
             });

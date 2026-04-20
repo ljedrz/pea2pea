@@ -12,7 +12,7 @@ use tracing::*;
 use crate::{
     Connection, Pea2Pea,
     node::NodeTask,
-    protocols::{ProtocolHandler, ReturnableConnection},
+    protocols::{ProtocolHandler, ReturnableConnection, log_setup_join},
 };
 
 /// Can be used to specify and enable network handshakes, and to configure the sockets. Upon establishing
@@ -67,7 +67,9 @@ where
                             }
                         }
                         // task set cleanups
-                        _ = setup_tasks.join_next(), if !setup_tasks.is_empty() => {}
+                        res = setup_tasks.join_next(), if !setup_tasks.is_empty() => {
+                            log_setup_join(self_clone.node().span(), "Handshake", res);
+                        }
                     }
                 }
             });

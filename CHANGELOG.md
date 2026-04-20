@@ -7,6 +7,7 @@
 - the test utility, `Topology::connect_nodes`, now returns early on `Random` failures
 - removed the call to `task::yield_now` related to `Writing` during `Node::disconnect`
 - attempting to enable a protocol more than once will now panic immediately
+- issue an `ERROR` log in case of any panics in the protocol setup tasks
 
 ### Fixed
 - update connection limits atomically with the connection count in `Node::disconnect`
