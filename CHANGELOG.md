@@ -3,6 +3,7 @@
 ### Changed
 
 - disable connection accept backoff in case of `ConnectionAborted`/`ConnectionReset`
+- guard against a niche underflow angle in the `CountingCodec` used internally by `Reading`
 
 # 0.54.3
 
