@@ -14,7 +14,7 @@ use parking_lot::Mutex;
 use tokio::{
     io::split,
     net::{TcpListener, TcpSocket, TcpStream},
-    sync::{RwLock, oneshot},
+    sync::{RwLock, Semaphore, oneshot},
     task::{self, JoinHandle, JoinSet},
     time::{sleep, timeout},
 };
@@ -165,6 +165,12 @@ impl Node {
         // use a channel to know when the listening task is ready
         let (tx, rx) = oneshot::channel();
 
+        // cap the number of in-flight inbound connection handlers; the hard
+        // connection limits are still enforced inside `handle_connection_request`
+        // via `check_and_reserve`; this bound exists separately to prevent per-SYN
+        // task-creation overhead from being unbounded under flood
+        let inbound_permits = Arc::new(Semaphore::new(self.config.max_connecting as usize));
+
         let node = self.clone();
         let listening_task = tokio::spawn(async move {
             trace!(parent: node.span(), "spawned the listening task");
@@ -174,11 +180,23 @@ impl Node {
             }
 
             loop {
+                // wait for capacity before accepting
+                let permit = match inbound_permits.clone().acquire_owned().await {
+                    Ok(p) => p,
+                    Err(_) => {
+                        // semaphore is never closed in practice; bail defensively
+                        error!(parent: node.span(), "inbound permit semaphore closed unexpectedly");
+                        return;
+                    }
+                };
+
                 match listener.accept().await {
                     Ok((stream, addr)) => {
                         // handle connection requests asynchronously
                         let node = node.clone();
                         tokio::spawn(async move {
+                            // the permit is released when the connection is accepted
+                            let _permit = permit;
                             node.handle_connection_request(stream, addr).await.inspect_err(|e|
                                 match e.kind() {
                                     ErrorKind::QuotaExceeded | ErrorKind::AlreadyExists => {
@@ -192,6 +210,9 @@ impl Node {
                         });
                     }
                     Err(e) => {
+                        // free the permit immediately
+                        drop(permit);
+
                         match e.kind() {
                             // a peer aborted/reset before accept completed; no backoff - the listener is healthy
                             ErrorKind::ConnectionAborted | ErrorKind::ConnectionReset => {

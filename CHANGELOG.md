@@ -7,6 +7,7 @@
 
 ### Fixed
 - update connection limits atomically with the connection count in `Node::disconnect`
+- bound the number of tasks spawned when accepting connections
 
 # 0.54.3
 
