@@ -647,6 +647,9 @@ impl Node {
         for handle in tasks.into_values() {
             handle.abort();
         }
+
+        // erase the listening address in case toggle_listener is called afterwards
+        *self.listening_addr.write().await = None;
     }
 }
 

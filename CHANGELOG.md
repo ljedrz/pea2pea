@@ -11,6 +11,7 @@
 - update connection limits atomically with the connection count in `Node::disconnect`
 - bound the number of tasks spawned when accepting connections
 - an unexpected `Writing` sender destruction that could happen under **extreme** churn
+- `Node::toggle_listener` will no longer panic after `::shutdown` (an edge case)
 
 # 0.54.3
 
