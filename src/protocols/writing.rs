@@ -1,5 +1,14 @@
 use std::{
-    any::Any, collections::HashMap, future::Future, io, net::SocketAddr, sync::Arc, time::Duration,
+    any::Any,
+    collections::{HashMap, hash_map::Entry},
+    future::Future,
+    io,
+    net::SocketAddr,
+    sync::{
+        Arc,
+        atomic::{AtomicU64, Ordering},
+    },
+    time::Duration,
 };
 
 #[cfg(doc)]
@@ -24,7 +33,7 @@ use crate::{
     protocols::{DisconnectOnDrop, Protocol, ProtocolHandler, ReturnableConnection},
 };
 
-type WritingSenders = Arc<RwLock<HashMap<SocketAddr, mpsc::Sender<WrappedMessage>>>>;
+type WritingSenders = Arc<RwLock<HashMap<SocketAddr, (u64, mpsc::Sender<WrappedMessage>)>>>;
 
 /// Can be used to specify and enable writing, i.e. sending outbound messages. If the [`Handshake`]
 /// protocol is enabled too, it goes into force only after the handshake has been concluded.
@@ -59,6 +68,9 @@ where
             // create a JoinSet to track all in-flight setup tasks
             let mut setup_tasks = JoinSet::new();
 
+            // a monotonic unique Sender ID generator
+            let sender_id_generator: Arc<AtomicU64> = Arc::new(AtomicU64::new(0));
+
             let (conn_sender, mut conn_receiver) =
                 mpsc::channel(self.node().config().max_connecting as usize);
 
@@ -88,8 +100,9 @@ where
                                 Some(returnable_conn) => {
                                     let self_clone2 = self_clone.clone();
                                     let senders = conn_senders.clone();
+                                    let sender_id = sender_id_generator.fetch_add(1, Ordering::Relaxed);
                                     setup_tasks.spawn(async move {
-                                        self_clone2.handle_new_connection(returnable_conn, &senders).await;
+                                        self_clone2.handle_new_connection(returnable_conn, &senders, sender_id).await;
                                     });
                                 }
                                 None => break, // channel closed
@@ -145,6 +158,7 @@ where
                 let (msg, delivery) = WrappedMessage::new(Box::new(message), true);
                 let conn_span = create_connection_span(addr, self.node().span());
                 sender
+                    .1
                     .try_send(msg)
                     .map_err(|e| {
                         error!(parent: conn_span, "can't send a message: {e}");
@@ -180,7 +194,7 @@ where
             if let Some(sender) = handler.senders.read().get(&addr).cloned() {
                 let (msg, _) = WrappedMessage::new(Box::new(message), false);
                 let conn_span = create_connection_span(addr, self.node().span());
-                sender.try_send(msg).map_err(|e| {
+                sender.1.try_send(msg).map_err(|e| {
                     error!(parent: conn_span, "can't send a message: {e}");
                     match e {
                         mpsc::error::TrySendError::Full(_) => io::ErrorKind::QuotaExceeded.into(),
@@ -219,7 +233,7 @@ where
             for (addr, message_sender) in senders {
                 let (msg, _) = WrappedMessage::new(Box::new(message.clone()), false);
                 let conn_span = create_connection_span(addr, self.node().span());
-                let _ = message_sender.try_send(msg).map_err(|e| {
+                let _ = message_sender.1.try_send(msg).map_err(|e| {
                     error!(parent: conn_span, "can't send a message: {e}");
                 });
             }
@@ -245,6 +259,7 @@ trait WritingInternal: Writing {
         &self,
         conn_with_returner: ReturnableConnection,
         conn_senders: &WritingSenders,
+        sender_id: u64,
     );
 }
 
@@ -270,6 +285,7 @@ impl<W: Writing> WritingInternal for W {
         &self,
         (mut conn, conn_returner): ReturnableConnection,
         conn_senders: &WritingSenders,
+        sender_id: u64,
     ) {
         let addr = conn.addr();
         let codec = self.codec(addr, !conn.side());
@@ -289,11 +305,14 @@ impl<W: Writing> WritingInternal for W {
             mpsc::channel(Self::MESSAGE_QUEUE_DEPTH);
 
         // register the connection's message sender with the Writing protocol handler
-        conn_senders.write().insert(addr, outbound_message_sender);
+        conn_senders
+            .write()
+            .insert(addr, (sender_id, outbound_message_sender));
 
         // this will automatically drop the sender upon a disconnect
         let sender_cleanup = SenderCleanup {
             addr,
+            sender_id,
             senders: Arc::clone(conn_senders),
         };
 
@@ -393,10 +412,18 @@ impl Protocol<Connection, io::Result<Connection>> for WritingHandler {
 struct SenderCleanup {
     addr: SocketAddr,
     senders: WritingSenders,
+    sender_id: u64,
 }
 
 impl Drop for SenderCleanup {
     fn drop(&mut self) {
-        self.senders.write().remove(&self.addr);
+        let mut map = self.senders.write();
+        if let Entry::Occupied(e) = map.entry(self.addr) {
+            // only remove if this is still *our* sender; otherwise a newer
+            // connection has reused the addr and we must not touch it
+            if e.get().0 == self.sender_id {
+                e.remove();
+            }
+        }
     }
 }
