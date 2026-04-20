@@ -19,6 +19,25 @@ use crate::{
 /// [`Handshake`] impl) is that it allows the user to utilize [`Writing`] (if implemented and
 /// enabled) and [`OnDisconnect`], while [`Handshake`] is very low-level and doesn't provide any
 /// additional functionality - its purpose is only to establish a connection.
+///
+/// # Concurrency with the connection lifecycle
+///
+/// [`OnConnect::on_connect`] runs concurrently with the rest of the connection. The moment the
+/// handshake concludes, the connection is "live": [`Reading`] starts consuming inbound messages,
+/// [`Writing`] can be used to send them, and [`Node::disconnect`] - whether called explicitly
+/// or triggered automatically by a read/write error or peer-side close - is free to tear it
+/// down. `pea2pea` deliberately does not gate this on `on_connect` completion; once the
+/// handshake is done, the connection belongs to the user.
+///
+/// In particular, **there is no guarantee that `on_connect` completes before
+/// [`OnDisconnect::on_disconnect`] runs for the same address.** A short-lived peer that
+/// immediately closes the socket after handshaking can produce that exact ordering.
+///
+/// Treat `on_connect` as a best-effort hook for quick, idempotent setup: populating an
+/// `addr -> peer_id` map, sending a greeting, registering the peer with an external service,
+/// etc. If your application needs a strict "setup-before-teardown" ordering, enforce it in
+/// your own state - for example, mark the peer "ready" at the end of `on_connect` and have
+/// `OnDisconnect::on_disconnect` skip (or defer) work for peers that were never marked ready.
 pub trait OnConnect: Pea2Pea
 where
     Self: Clone + Send + Sync + 'static,

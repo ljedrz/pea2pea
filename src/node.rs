@@ -15,7 +15,7 @@ use tokio::{
     io::split,
     net::{TcpListener, TcpSocket, TcpStream},
     sync::{RwLock, Semaphore, oneshot},
-    task::{self, JoinHandle, JoinSet},
+    task::{JoinHandle, JoinSet},
     time::{sleep, timeout},
 };
 use tracing::*;
@@ -400,6 +400,16 @@ impl Node {
     /// these two distinct connections (one outgoing, one incoming). To ensure a single logical
     /// connection per peer, you must implement a tie-breaking mechanism in your application logic
     /// in the [`Handshake`] protocol.
+    ///
+    /// note: A best-effort self-connect check is performed against the node's listening address
+    /// and the loopback variant of its port. It does **not** enumerate local network interfaces:
+    /// if the node listens on a wildcard address (e.g. `0.0.0.0`) and `connect` is called with
+    /// one of the host's own non-loopback addresses (e.g. its LAN IP, or its public IP), the
+    /// connection will succeed and the node will end up talking to itself over a real TCP loop.
+    /// The library cannot detect this without OS-specific interface enumeration, which it
+    /// deliberately avoids. If your application must reject such connections, do it in
+    /// [`Handshake`] - typically by exchanging a unique node identifier and refusing matches,
+    /// which also handles the simultaneous-connection case above.
     pub async fn connect(&self, addr: SocketAddr) -> io::Result<()> {
         self.connect_inner(addr, None)
             .await
@@ -452,6 +462,11 @@ impl Node {
     }
 
     /// Disconnects from the provided `SocketAddr`; returns `true` if an actual disconnect took place.
+    ///
+    /// If [`OnDisconnect`] is enabled, its hook runs to completion (subject to
+    /// [`OnDisconnect::TIMEOUT_MS`]) before the connection is removed, and is the appropriate place
+    /// to send any final messages. Messages queued via [`Writing`] but not awaited to delivery
+    /// confirmation may be dropped once this function returns.
     pub async fn disconnect(&self, addr: SocketAddr) -> bool {
         // claim the disconnect to avoid duplicate executions, or return early if already claimed
         if let Some(conn) = self.connections.active.read().get(&addr) {
@@ -485,20 +500,15 @@ impl Node {
             }
         }
 
-        // ensure that any OnDisconnect-related writes can conclude
+        // the OnDisconnect hook (above) is the appropriate place to send any final
+        // messages; by the time we get here, the user has already had their chance
+        // to flush; closing the channel below just signals the writer task to wind down
+        //
+        // the writer task's own `SenderCleanup` guard will attempt the same removal
+        // on drop; that's a harmless no-op second removal and serves as a safety
+        // net for non-disconnect exits (e.g. write errors)
         if let Some(writing) = self.protocols.writing.get() {
-            // signal the Writing task to wind down: this breaks the associated
-            // write loop; the writer task's own `SenderCleanup` guard will
-            // attempt the same removal on drop, which is harmless (a no-op
-            // second removal) and serves as a safety net for non-disconnect
-            // exits (e.g. write errors)
             writing.senders.write().remove(&addr);
-
-            // yield once so the writer task can observe the closed channel and
-            // flush any final messages to the kernel buffer before the connection
-            // object is dropped and its tasks are aborted; under extreme load
-            // this is best-effort, not a guarantee
-            task::yield_now().await;
         }
 
         {

@@ -10,7 +10,7 @@ use tracing::*;
 #[cfg(doc)]
 use crate::{
     Connection, Node,
-    protocols::{Reading, Writing},
+    protocols::{OnConnect, Reading, Writing},
 };
 use crate::{
     Pea2Pea, connections::create_connection_span, node::NodeTask, protocols::ProtocolHandler,
@@ -21,9 +21,16 @@ use crate::{
 /// to the peer sending a noncompliant message or when the peer is the one to shut down the
 /// connection with the node.
 ///
-/// note: the node can only tell that a peer disconnected from it if it is actively trying to read
+/// note: The node can only tell that a peer disconnected from it if it is actively trying to read
 /// from the associated connection (i.e. [`Reading`] is enabled) or if it attempts to send a message
 /// to it (i.e. one of the [`Writing`] methods is called).
+///
+/// note: This hook is executed before the connection is fully removed from the node's internal
+/// state. Calls to [`Node::disconnect`] will wait for it to complete, ensuring that any necessary
+/// cleanup (e.g., notifying a database) is finished before the function returns.
+///
+/// note: [`OnDisconnect::on_disconnect`] may run before [`OnConnect::on_connect`] for the same
+/// address has finished, or even started - see [`OnConnect`] for details and recommended patterns.
 pub trait OnDisconnect: Pea2Pea
 where
     Self: Clone + Send + Sync + 'static,

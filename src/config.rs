@@ -21,6 +21,10 @@ pub struct Config {
     /// note: This is a configuration directive, not a live status. If set to `127.0.0.1:0`,
     /// the actual bound port will differ. Always use [`Node::listening_addr`] to retrieve the
     /// active runtime address.
+    ///
+    /// note: Binding to a wildcard address (e.g. `0.0.0.0`) means the library cannot reliably
+    /// detect a self-connect attempt to one of the host's other local addresses. See the note
+    /// on [`Node::connect`] for details.
     pub listener_addr: Option<SocketAddr>,
     /// The maximum number of active connections the node can maintain at any given time.
     ///

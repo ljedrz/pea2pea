@@ -209,10 +209,15 @@ where
         }
     }
 
-    /// Broadcasts the provided message to all connected peers. Returns as soon as the message is queued to
-    /// be sent to all the peers, without waiting for the actual delivery. This method doesn't provide the
-    /// means to check when and if the messages actually get delivered; you can achieve that by calling
-    /// [`Writing::unicast`] for each address returned by [`Node::connected_addrs`].
+    /// Broadcasts the provided message to all connected peers. Returns as soon as the message
+    /// is queued to be sent to all the peers, without waiting for the actual delivery. For any
+    /// peer whose queue is full or whose channel has been closed, the message is silently
+    /// dropped and the failure is logged at `ERROR` level - the call still returns `Ok(())` for
+    /// the broadcast as a whole and continues delivering to the remaining peers.
+    ///
+    /// If you need to know which peers received (or even queued) the message, call
+    /// [`Writing::unicast`] for each address returned by [`Node::connected_addrs`] and inspect
+    /// the returned [`oneshot::Receiver`]s.
     ///
     /// note: This method clones the message for every connected peer, and serialization via
     /// [`Writing::Codec`] happens individually for each connection. If your serialization is
