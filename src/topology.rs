@@ -163,7 +163,7 @@ pub async fn connect_nodes<T: Pea2Pea>(nodes: &[T], topology: Topology) -> io::R
                     // ensure no self-connection and no duplicate outbound connections
                     if target != i && chosen_targets.insert(target) {
                         let addr = nodes[target].node().listening_addr().await?;
-                        let _ = nodes[i].node().connect(addr).await;
+                        nodes[i].node().connect(addr).await?;
                     }
                 }
             }
