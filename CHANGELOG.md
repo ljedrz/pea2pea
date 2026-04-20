@@ -5,6 +5,9 @@
 - disable connection accept backoff in case of `ConnectionAborted`/`ConnectionReset`
 - guard against a niche underflow angle in the `CountingCodec` used internally by `Reading`
 
+### Fixed
+- update connection limits atomically with the connection count in `Node::disconnect`
+
 # 0.54.3
 
 ### Changed

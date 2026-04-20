@@ -480,15 +480,19 @@ impl Node {
             task::yield_now().await;
         }
 
-        // the connection can now be "physically" removed
-        let _ = self.connections.remove(addr);
+        {
+            // drop the connection from the active set under the limits lock, so any
+            // concurrent `check_and_reserve` has a consistent view of connection counts
+            let mut limits = self.connections.limits.lock();
+            let _ = self.connections.remove(addr);
 
-        // decrement the per-IP connection count
-        if let Entry::Occupied(mut e) = self.connections.limits.lock().ip_counts.entry(addr.ip()) {
-            if *e.get() > 1 {
-                *e.get_mut() -= 1;
-            } else {
-                e.remove();
+            // decrement the per-IP connection count
+            if let Entry::Occupied(mut e) = limits.ip_counts.entry(addr.ip()) {
+                if *e.get() > 1 {
+                    *e.get_mut() -= 1;
+                } else {
+                    e.remove();
+                }
             }
         }
 
