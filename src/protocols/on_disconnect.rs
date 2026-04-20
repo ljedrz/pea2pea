@@ -48,6 +48,11 @@ where
     /// necessary cleanup (e.g., notifying a database) is finished before the function returns.
     fn enable_on_disconnect(&self) -> impl Future<Output = ()> {
         async {
+            assert!(
+                self.node().protocols.on_disconnect.get().is_none(),
+                "the OnDisconnect protocol was enabled more than once!"
+            );
+
             let (from_node_sender, mut from_node_receiver) =
                 mpsc::channel::<(
                     SocketAddr,

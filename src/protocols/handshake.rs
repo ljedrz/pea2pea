@@ -28,6 +28,11 @@ where
     /// Prepares the node to perform specified network handshakes.
     fn enable_handshake(&self) -> impl Future<Output = ()> + Send {
         async {
+            assert!(
+                self.node().protocols.handshake.get().is_none(),
+                "the Handshake protocol was enabled more than once!"
+            );
+
             // create a JoinSet to track all in-flight setup tasks
             let mut setup_tasks = JoinSet::new();
 

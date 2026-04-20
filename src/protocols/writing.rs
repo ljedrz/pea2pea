@@ -65,6 +65,11 @@ where
     /// Prepares the node to send messages.
     fn enable_writing(&self) -> impl Future<Output = ()> {
         async {
+            assert!(
+                self.node().protocols.writing.get().is_none(),
+                "the Writing protocol was enabled more than once!"
+            );
+
             // create a JoinSet to track all in-flight setup tasks
             let mut setup_tasks = JoinSet::new();
 

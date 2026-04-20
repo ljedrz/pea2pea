@@ -75,6 +75,11 @@ where
     /// Prepares the node to receive messages.
     fn enable_reading(&self) -> impl Future<Output = ()> {
         async {
+            assert!(
+                self.node().protocols.reading.get().is_none(),
+                "the Reading protocol was enabled more than once!"
+            );
+
             // create a JoinSet to track all in-flight setup tasks
             let mut setup_tasks = JoinSet::new();
 

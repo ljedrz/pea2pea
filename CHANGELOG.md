@@ -6,6 +6,7 @@
 - guard against a niche underflow angle in the `CountingCodec` used internally by `Reading`
 - the test utility, `Topology::connect_nodes`, now returns early on `Random` failures
 - removed the call to `task::yield_now` related to `Writing` during `Node::disconnect`
+- attempting to enable a protocol more than once will now panic immediately
 
 ### Fixed
 - update connection limits atomically with the connection count in `Node::disconnect`

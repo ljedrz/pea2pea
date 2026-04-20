@@ -46,6 +46,11 @@ where
     /// handshake.
     fn enable_on_connect(&self) -> impl Future<Output = ()> {
         async {
+            assert!(
+                self.node().protocols.on_connect.get().is_none(),
+                "the OnConnect protocol was enabled more than once!"
+            );
+
             let (from_node_sender, mut from_node_receiver) =
                 mpsc::channel::<(SocketAddr, oneshot::Sender<tokio::task::JoinHandle<()>>)>(
                     self.node().config().max_connections as usize,
