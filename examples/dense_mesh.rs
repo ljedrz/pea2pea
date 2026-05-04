@@ -10,6 +10,7 @@
 mod common;
 
 use std::{
+    alloc::System,
     net::SocketAddr,
     sync::{
         Arc,
@@ -19,16 +20,16 @@ use std::{
 };
 
 use bytes::{Bytes, BytesMut};
+use heapster::Heapster;
 use pea2pea::{
     Config, ConnectionSide, Node, Pea2Pea, Topology, connect_nodes,
     protocols::{Reading, Writing},
 };
-use peak_alloc::PeakAlloc;
 use tokio::sync::Notify;
 
-// use the `peak_alloc` global allocator to track heap use
+// track heap use
 #[global_allocator]
-static PEAK_ALLOC: PeakAlloc = PeakAlloc;
+static GLOBAL: Heapster<System> = Heapster::new(System);
 
 // be mindful of your `ulimit`
 const NUM_NODES: usize = 200; // 39800 connections
@@ -82,7 +83,7 @@ impl Writing for MeshNode {
 
 #[tokio::main]
 async fn main() {
-    let initial_mem = PEAK_ALLOC.current_usage();
+    let initial_mem = GLOBAL.use_curr();
     println!("--- Dense Mesh Benchmark (RAM & Throughput) ---");
     println!("Initial Heap Usage: {:.2} MB", to_mb(initial_mem));
 
@@ -125,7 +126,7 @@ async fn main() {
     }
 
     let spawn_duration = start_spawn.elapsed();
-    let mem_after_spawn = PEAK_ALLOC.current_usage();
+    let mem_after_spawn = GLOBAL.use_curr();
     let nodes_mem_usage = mem_after_spawn - initial_mem;
 
     println!("      Spawned in:     {:.2?}", spawn_duration);
@@ -149,7 +150,7 @@ async fn main() {
         .unwrap();
 
     let conn_duration = start_conn.elapsed();
-    let mem_after_mesh = PEAK_ALLOC.current_usage();
+    let mem_after_mesh = GLOBAL.use_curr();
     let mesh_mem_usage = mem_after_mesh - mem_after_spawn;
 
     println!("      Connected in:   {:.2?}", conn_duration);

@@ -1,9 +1,9 @@
 use bytes::Bytes;
 use deadline::deadline;
-use peak_alloc::PeakAlloc;
+use heapster::Heapster;
 
 mod common;
-use std::{io, net::SocketAddr, time::Duration};
+use std::{alloc::System, io, net::SocketAddr, time::Duration};
 
 use pea2pea::{
     Pea2Pea,
@@ -15,19 +15,19 @@ use crate::common::WritingExt;
 impl_noop_disconnect_and_handshake!(common::TestNode);
 
 #[global_allocator]
-static PEAK_ALLOC: PeakAlloc = PeakAlloc;
+static GLOBAL: Heapster<System> = Heapster::new(System);
 
 #[tokio::test]
 async fn check_node_cleanups() {
     const NUM_CONNS: usize = 100;
 
     // register heap use before node setup
-    let initial_heap_use = PEAK_ALLOC.current_usage();
+    let initial_heap_use = GLOBAL.use_curr();
 
     let persistent_node = crate::test_node!("persistent");
 
     // measure the size of a node with no functionalities enabled
-    let idle_node_size = PEAK_ALLOC.current_usage() - initial_heap_use;
+    let idle_node_size = GLOBAL.use_curr() - initial_heap_use;
 
     // enable all the protocols and the listener to check for any leaks there too
     persistent_node.enable_handshake().await;
@@ -42,7 +42,7 @@ async fn check_node_cleanups() {
         .unwrap();
 
     // register heap use after node setup
-    let heap_after_node_setup = PEAK_ALLOC.current_usage();
+    let heap_after_node_setup = GLOBAL.use_curr();
 
     // start keeping track of the average heap use
     let mut avg_heap_use = 0;
@@ -94,7 +94,7 @@ async fn check_node_cleanups() {
         drop(temp_node);
 
         // obtain and record current memory use
-        let current_heap_use = PEAK_ALLOC.current_usage();
+        let current_heap_use = GLOBAL.use_curr();
 
         // register heap use once the 33rd connection is established and dropped
         if i == 32 {
@@ -109,11 +109,11 @@ async fn check_node_cleanups() {
     avg_heap_use /= NUM_CONNS;
 
     // check final heap use and calculate heap growth
-    let final_heap_use = PEAK_ALLOC.current_usage();
+    let final_heap_use = GLOBAL.use_curr();
     let heap_growth = final_heap_use - heap_after_32_conns;
 
     // calculate some helper values
-    let max_heap_use = PEAK_ALLOC.peak_usage() / 1000;
+    let max_heap_use = GLOBAL.use_max() / 1000;
     let final_heap_use_kb = final_heap_use / 1000;
     let single_node_size = (heap_after_node_setup - initial_heap_use) / 1000;
 
