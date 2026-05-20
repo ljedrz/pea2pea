@@ -2,9 +2,13 @@
 
 use std::{
     collections::{HashMap, HashSet, hash_map::Entry},
+    io,
     net::{IpAddr, SocketAddr},
     ops::Not,
-    sync::{Arc, atomic::AtomicBool},
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 
 use parking_lot::{Mutex, RwLock};
@@ -21,17 +25,31 @@ use crate::Stats;
 #[cfg(doc)]
 use crate::protocols::{Handshake, Reading, Writing};
 
-#[derive(Default)]
 pub(crate) struct Connections {
     /// The list of fully established connections.
     pub(crate) active: RwLock<HashMap<SocketAddr, Connection>>,
     /// Tracks the connection-related limits.
     pub(crate) limits: Mutex<ConnectionLimits>,
+    /// The node-wide shutdown flag.
+    shutting_down: Arc<AtomicBool>,
 }
 
 impl Connections {
-    pub(crate) fn add(&self, conn: Connection) {
-        self.active.write().insert(conn.addr(), conn);
+    pub(crate) fn new(shutting_down: Arc<AtomicBool>) -> Self {
+        Self {
+            active: Default::default(),
+            limits: Default::default(),
+            shutting_down,
+        }
+    }
+
+    pub(crate) fn add(&self, conn: Connection) -> io::Result<()> {
+        let mut active = self.active.write();
+        if self.shutting_down.load(Ordering::Acquire) {
+            return Err(io::Error::other("shutting down"));
+        }
+        active.insert(conn.addr(), conn);
+        Ok(())
     }
 
     pub(crate) fn get_info(&self, addr: SocketAddr) -> Option<ConnectionInfo> {

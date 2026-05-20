@@ -5,7 +5,7 @@ use std::{
     ops::Deref,
     sync::{
         Arc,
-        atomic::{AtomicUsize, Ordering::*},
+        atomic::{AtomicBool, AtomicUsize, Ordering::*},
     },
     time::Duration,
 };
@@ -97,6 +97,8 @@ pub struct InnerNode {
     stats: Stats,
     /// The node's tasks.
     pub(crate) tasks: Mutex<HashMap<NodeTask, JoinHandle<()>>>,
+    /// Indicates whether the shutdown sequence has begun.
+    shutting_down: Arc<AtomicBool>,
 }
 
 impl Node {
@@ -110,14 +112,18 @@ impl Node {
         // create a tracing span containing the node's name
         let span = create_span(config.name.as_deref().unwrap());
 
+        // create the shutdown flag
+        let shutting_down = Arc::new(AtomicBool::default());
+
         let node = Node(Arc::new(InnerNode {
             span,
             config,
             listening_addr: Default::default(),
             protocols: Default::default(),
-            connections: Default::default(),
+            connections: Connections::new(shutting_down.clone()),
             stats: Default::default(),
             tasks: Default::default(),
+            shutting_down,
         }));
 
         debug!(parent: node.span(), "the node is ready");
@@ -240,6 +246,11 @@ impl Node {
         stream: TcpStream,
         addr: SocketAddr,
     ) -> io::Result<()> {
+        // immediately reject if shutting down
+        if self.shutting_down.load(Acquire) {
+            return Err(io::Error::other("shutting down"));
+        }
+
         // check connection limits and set up a connection guard
         let guard = self.check_and_reserve(addr)?;
 
@@ -330,7 +341,7 @@ impl Node {
         let conn_ready_tx = connection.readiness_notifier.take();
 
         // connecting -> connected
-        self.connections.add(connection);
+        self.connections.add(connection)?;
         guard.completed = true;
         drop(guard);
 
@@ -429,6 +440,11 @@ impl Node {
 
     /// Connects to the provided `SocketAddr` using an optional `TcpSocket`.
     async fn connect_inner(&self, addr: SocketAddr, socket: Option<TcpSocket>) -> io::Result<()> {
+        // immediately abort if shutting down
+        if self.shutting_down.load(Acquire) {
+            return Err(io::Error::other("shutting down"));
+        }
+
         // a simple self-connect attempt check
         if let Ok(listening_addr) = self.listening_addr().await {
             if addr == listening_addr
@@ -624,6 +640,9 @@ impl Node {
 
     /// Gracefully shuts the node down.
     pub async fn shut_down(&self) {
+        // immediately mark the node as shutting down
+        self.shutting_down.store(true, Release);
+
         debug!(parent: self.span(), "shutting down");
 
         let mut tasks = std::mem::take(&mut *self.tasks.lock());

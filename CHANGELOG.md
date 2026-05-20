@@ -1,3 +1,9 @@
+# 0.54.5
+
+### Fixed
+
+- a connection can no longer become accepted during shutdown (an edge case)
+
 # 0.54.4
 
 ### Changed
@@ -10,6 +16,7 @@
 - issue an `ERROR` log in case of any panics in the protocol setup tasks
 
 ### Fixed
+
 - update connection limits atomically with the connection count in `Node::disconnect`
 - bound the number of tasks spawned when accepting connections
 - an unexpected `Writing` sender destruction that could happen under **extreme** churn
