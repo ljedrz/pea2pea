@@ -39,28 +39,28 @@ use tokio_util::codec::LengthDelimitedCodec;
 // =========================================================================
 
 /// Maximum number of nodes that may exist in the pool at any one time.
-const MAX_NODES: usize = 16;
+const MAX_NODES: usize = 24;
 /// Number of worker tasks issuing random actions in parallel.
-const NUM_WORKERS: usize = 12;
+const NUM_WORKERS: usize = 16;
 /// How often the metrics printer wakes up.
 const METRICS_INTERVAL: Duration = Duration::from_secs(5);
 /// Per-action sleep range. Tight enough to keep the runtime busy, slack
 /// enough to let other workers interleave between actions.
-const MIN_ACTION_DELAY_US: u64 = 50;
-const MAX_ACTION_DELAY_US: u64 = 2_000;
+const MIN_ACTION_DELAY_US: u64 = 0;
+const MAX_ACTION_DELAY_US: u64 = 1_000;
 /// Message size bounds.
-const MIN_MSG_SIZE: usize = 16;
-const MAX_MSG_SIZE: usize = 4_096;
+const MIN_MSG_SIZE: usize = 1;
+const MAX_MSG_SIZE: usize = 8_192;
 
 // Action mix (cumulative thresholds out of 256). Skewed toward connect /
 // send churn but with deliberately heavy spawn/shutdown weight, since
 // shutdown is the most interesting code path.
-const W_SPAWN: u8 = 26; // ~10%
-const W_SHUTDOWN: u8 = 51; // ~10%
-const W_CONNECT: u8 = 115; // ~25%
-const W_DISCONNECT: u8 = 166; // ~20%
-const W_BROADCAST: u8 = 205; // ~15%
-// remainder: unicast (~20%)
+const W_SPAWN: u8 = 28; // ~11%
+const W_SHUTDOWN: u8 = 58; // ~12%
+const W_CONNECT: u8 = 130; // ~28%
+const W_DISCONNECT: u8 = 180; // ~20%
+const W_BROADCAST: u8 = 210; // ~12%
+// remainder: unicast (~18%)
 
 // =========================================================================
 // Stats
@@ -396,7 +396,7 @@ fn print_metrics(start: Instant, alive: usize, cur: &Snapshot, prev: &Snapshot) 
     let rate = |c: usize, p: usize| (c.saturating_sub(p)) as f64 / dt;
 
     println!(
-        "[t={elapsed:>7.1}s] alive={alive:>2}/{max} | \
+        "[t={elapsed:>5.0}s] alive={alive:>2}/{max} | \
          nodes spawned/shut={ns}/{nd} | \
          conn att/ok/err={ca}/{cs}/{ce} | disc={dc} | \
          bcast={bc} ucast att/ok={ua}/{us} send-err={se} | \
@@ -417,7 +417,7 @@ fn print_metrics(start: Instant, alive: usize, cur: &Snapshot, prev: &Snapshot) 
         od = cur.on_disconnect_fired,
     );
     println!(
-        "             Δ/s: conn={:.1} disc={:.1} bcast={:.1} ucast={:.1} recv={:.1}",
+        "           Δ/s: conn={:.1} disc={:.1} bcast={:.1} ucast={:.1} recv={:.1}",
         rate(cur.connects_succeeded, prev.connects_succeeded),
         rate(cur.disconnects, prev.disconnects),
         rate(cur.broadcasts, prev.broadcasts),
@@ -440,7 +440,7 @@ async fn infinite_chaos() {
         .unwrap_or_else(rand::random);
     println!(
         "pea2pea stress test — {NUM_WORKERS} workers, up to {MAX_NODES} nodes\n\
-         seed: {master_seed}  (rerun with STRESS_SEED={master_seed})\n\
+         seed: {master_seed}\n\
          press Ctrl-C to stop\n"
     );
 
