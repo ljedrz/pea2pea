@@ -499,6 +499,9 @@ impl Node {
                 // it gets terminated before its completion
                 if let Some(conn) = self.connections.active.write().get_mut(&addr) {
                     conn.tasks.push(handle);
+                } else {
+                    // can't really happen, since disconnects are exclusive and atomic
+                    handle.abort();
                 }
                 // wait for the OnDisconnect protocol to perform its specified actions
                 // time out, or even panic - we're already disconnecting, so ignore the
