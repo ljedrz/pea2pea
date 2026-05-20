@@ -3,6 +3,7 @@
 ### Fixed
 
 - a connection can no longer become accepted during shutdown (an edge case)
+- a TOCTOU race condition for connection initialization (an edge case)
 
 # 0.54.4
 
