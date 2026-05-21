@@ -6,11 +6,10 @@
 //! rates every few seconds.
 //!
 //! Run with:
-//!     cargo test --release stress_test -- --ignored --nocapture
+//!     cargo test --release chaos -- --ignored --nocapture
 //!
-//! Stop with Ctrl-C. The starting seed is logged at startup; set
-//! `STRESS_SEED=<u64>` in the environment to reproduce a particular run.
-//! Note that reproducibility is best-effort — per-worker action sequences
+//! Set `CHAOS_SEED=<u64>` in the environment to reproduce a particular run.
+//! Note that reproducibility is best-effort - per-worker action sequences
 //! are deterministic given the seed, but the interleaving between workers
 //! depends on the tokio scheduler and is not.
 
@@ -35,7 +34,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio_util::codec::LengthDelimitedCodec;
 
 // =========================================================================
-// Knobs — tune these to taste
+// Knobs
 // =========================================================================
 
 /// Maximum number of nodes that may exist in the pool at any one time.
@@ -61,6 +60,8 @@ const W_CONNECT: u8 = 130; // ~28%
 const W_DISCONNECT: u8 = 180; // ~20%
 const W_BROADCAST: u8 = 210; // ~12%
 // remainder: unicast (~18%)
+
+static MSG_BYTES: &[u8] = &[0xAB; MAX_MSG_SIZE];
 
 // =========================================================================
 // Stats
@@ -213,6 +214,8 @@ impl Writing for StressNode {
 }
 
 impl OnConnect for StressNode {
+    const ABORTABLE: bool = false;
+
     async fn on_connect(&self, _addr: SocketAddr) {
         self.stats.on_connect_fired.fetch_add(1, Ordering::Relaxed);
     }
@@ -264,7 +267,7 @@ fn pop_random(pool: &Pool, rng: &mut SmallRng) -> Option<StressNode> {
 
 fn random_message(rng: &mut SmallRng) -> Bytes {
     let size = rng.random_range(MIN_MSG_SIZE..MAX_MSG_SIZE);
-    Bytes::from(vec![0xAB; size])
+    Bytes::from_static(&MSG_BYTES[..size])
 }
 
 // =========================================================================
@@ -350,7 +353,7 @@ async fn act_unicast(pool: &Pool, stats: &Arc<Stats>, rng: &mut SmallRng) {
     let target = peers[rng.random_range(0..peers.len())];
     let msg = random_message(rng);
     stats.unicasts_attempted.fetch_add(1, Ordering::Relaxed);
-    match a.unicast(target, msg) {
+    match a.unicast_fast(target, msg) {
         Ok(_) => {
             stats.unicasts_succeeded.fetch_add(1, Ordering::Relaxed);
         }
@@ -431,17 +434,20 @@ fn print_metrics(start: Instant, alive: usize, cur: &Snapshot, prev: &Snapshot) 
 // =========================================================================
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "long-running stress test; run with --release ... -- --ignored --nocapture"]
+#[ignore = "long-running stress test"]
 async fn infinite_chaos() {
-    // Determine and log the master seed. STRESS_SEED overrides for reruns.
-    let master_seed: u64 = std::env::var("STRESS_SEED")
+    // Determine and log the master seed. CHAOS_SEED overrides for reruns.
+    let master_seed: u64 = std::env::var("CHAOS_SEED")
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or_else(rand::random);
+    let runtime: Duration = std::env::var("CHAOS_RUNTIME_SECS")
+        .ok()
+        .and_then(|s| s.parse().ok().map(Duration::from_secs))
+        .unwrap_or(Duration::MAX);
     println!(
-        "pea2pea stress test — {NUM_WORKERS} workers, up to {MAX_NODES} nodes\n\
-         seed: {master_seed}\n\
-         press Ctrl-C to stop\n"
+        "pea2pea stress test - {NUM_WORKERS} workers, up to {MAX_NODES} nodes\n\
+         seed: {master_seed}\n"
     );
 
     let mut master_rng = SmallRng::seed_from_u64(master_seed);
@@ -494,18 +500,16 @@ async fn infinite_chaos() {
         }
     });
 
-    // Wait for Ctrl-C.
-    tokio::signal::ctrl_c()
-        .await
-        .expect("failed to listen for Ctrl-C");
-    println!("\n\n^C received — winding down…\n");
+    // Wait for the deadline to expire.
+    tokio::time::sleep(runtime).await;
+    println!("\n\nWinding down…\n");
     shutdown.store(true, Ordering::Release);
 
     // Let workers finish their current action and exit.
     for w in workers {
-        let _ = w.await;
+        w.abort();
     }
-    let _ = metrics.await;
+    metrics.abort();
 
     // Final cleanup: shut down every remaining node in parallel.
     let remaining: Vec<_> = pool.lock().drain(..).collect();
