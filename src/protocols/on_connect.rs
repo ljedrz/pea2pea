@@ -1,6 +1,9 @@
 use std::{future::Future, net::SocketAddr};
 
-use tokio::sync::{mpsc, oneshot};
+use tokio::{
+    sync::{mpsc, oneshot},
+    task::JoinHandle,
+};
 use tracing::*;
 
 #[cfg(doc)]
@@ -13,6 +16,9 @@ use crate::{
     node::NodeTask,
     protocols::{DisconnectOnDrop, ProtocolHandler},
 };
+
+// The value returned to the node is a bit complex, so use an alias to break it down.
+pub(crate) type OnConnectBundle = (JoinHandle<()>, bool);
 
 /// Can be used to automatically perform some initial actions when a connection with a peer is
 /// fully established. The reason for its existence (instead of including such behavior in the
@@ -42,6 +48,24 @@ pub trait OnConnect: Pea2Pea
 where
     Self: Clone + Send + Sync + 'static,
 {
+    /// Determines whether the [`OnConnect`] logic is guaranteed to run to completion.
+    ///
+    /// By default (`true`), if a disconnect happens before the associated task is first polled,
+    /// it gets aborted and [`OnConnect::on_connect`] is silently skipped. This is rare in
+    /// practice, but possible under heavy churn.
+    ///
+    /// Setting this to `false` detaches the task from the connection's lifecycle, so nothing
+    /// can abort it before it runs - useful for bookkeeping that must pair with
+    /// [`OnDisconnect::on_disconnect`] (counters, registries, audit logs, replication of peer
+    /// state into an external store).
+    ///
+    /// In exchange, implementers must ensure that:
+    /// - [`OnConnect::on_connect`] terminates in bounded time, since the library will no longer
+    ///   cancel it on disconnect or shutdown
+    /// - the logic tolerates the connection no longer being live by the time it actually runs,
+    ///   in case a disconnect raced in first
+    const ABORTABLE: bool = true;
+
     /// Attaches the behavior specified in [`OnConnect::on_connect`] right after every successful
     /// handshake.
     ///
@@ -56,7 +80,7 @@ where
             );
 
             let (from_node_sender, mut from_node_receiver) =
-                mpsc::channel::<(SocketAddr, oneshot::Sender<tokio::task::JoinHandle<()>>)>(
+                mpsc::channel::<(SocketAddr, oneshot::Sender<OnConnectBundle>)>(
                     self.node().config().max_connections as usize,
                 );
 
@@ -85,7 +109,7 @@ where
                         conn_cleanup.node.take();
                     });
                     // notify the node that the initial actions have been scheduled
-                    let _ = notifier.send(handle); // can't really fail
+                    let _ = notifier.send((handle, Self::ABORTABLE)); // can't really fail
                 }
             });
             let _ = rx.await;

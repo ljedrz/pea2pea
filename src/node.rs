@@ -359,8 +359,12 @@ impl Node {
             handler.trigger((peer_addr, sender)).await;
 
             // receive the handle for the running task
-            if let Ok(handle) = receiver.await {
-                if let Some(conn) = self.connections.active.write().get_mut(&peer_addr) {
+            if let Ok((handle, abortable)) = receiver.await {
+                if !abortable {
+                    // leak the OnConnect task handle in order to ensure that its logic gets
+                    // executed in full
+                    drop(handle);
+                } else if let Some(conn) = self.connections.active.write().get_mut(&peer_addr) {
                     // add the task to the connection so it gets aborted in case of a disconnect
                     conn.tasks.push(handle);
                 } else {

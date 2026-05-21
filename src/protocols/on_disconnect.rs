@@ -16,6 +16,9 @@ use crate::{
     Pea2Pea, connections::create_connection_span, node::NodeTask, protocols::ProtocolHandler,
 };
 
+// The value returned to the node is a bit complex, so use an alias to break it down.
+pub(crate) type OnDisconnectBundle = (JoinHandle<()>, oneshot::Receiver<()>);
+
 /// Can be used to automatically perform some extra actions when the connection with a peer is
 /// severed, which is especially practical if the disconnect is triggered automatically, e.g. due
 /// to the peer sending a noncompliant message or when the peer is the one to shut down the
@@ -58,10 +61,9 @@ where
             );
 
             let (from_node_sender, mut from_node_receiver) =
-                mpsc::channel::<(
-                    SocketAddr,
-                    oneshot::Sender<(JoinHandle<()>, oneshot::Receiver<()>)>,
-                )>(self.node().config().max_connections as usize);
+                mpsc::channel::<(SocketAddr, oneshot::Sender<OnDisconnectBundle>)>(
+                    self.node().config().max_connections as usize,
+                );
 
             // use a channel to know when the disconnect task is ready
             let (tx, rx) = oneshot::channel::<()>();

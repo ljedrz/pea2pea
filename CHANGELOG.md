@@ -1,3 +1,9 @@
+# 0.55.0
+
+### Added
+
+- `OnConnect::ABORTABLE`; set to `false` to guarantee that `on_connect` runs to completion, even if a disconnect occurs before its logic begins
+
 # 0.54.5
 
 ### Fixed

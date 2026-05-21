@@ -7,12 +7,13 @@
 
 use std::{io, net::SocketAddr, sync::OnceLock};
 
-use tokio::{
-    sync::{mpsc, oneshot},
-    task::JoinHandle,
-};
+use tokio::sync::{mpsc, oneshot};
 
-use crate::{connections::Connection, node::Node};
+use crate::{
+    connections::Connection,
+    node::Node,
+    protocols::{on_connect::OnConnectBundle, on_disconnect::OnDisconnectBundle},
+};
 
 mod handshake;
 mod on_connect;
@@ -26,16 +27,12 @@ pub use on_disconnect::OnDisconnect;
 pub use reading::Reading;
 pub use writing::Writing;
 
-// The value returned to the node by the OnDisconnect protocol is a bit complex,
-// so use an alias to break it down.
-type OnDisconnectBundle = (JoinHandle<()>, oneshot::Receiver<()>);
-
 #[derive(Default)]
 pub(crate) struct Protocols {
     pub(crate) handshake: OnceLock<ProtocolHandler<Connection, io::Result<Connection>>>,
     pub(crate) reading: OnceLock<ProtocolHandler<Connection, io::Result<Connection>>>,
     pub(crate) writing: OnceLock<writing::WritingHandler>,
-    pub(crate) on_connect: OnceLock<ProtocolHandler<SocketAddr, JoinHandle<()>>>,
+    pub(crate) on_connect: OnceLock<ProtocolHandler<SocketAddr, OnConnectBundle>>,
     pub(crate) on_disconnect: OnceLock<ProtocolHandler<SocketAddr, OnDisconnectBundle>>,
 }
 
