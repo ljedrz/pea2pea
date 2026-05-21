@@ -43,7 +43,7 @@ pub(crate) type OnConnectBundle = (JoinHandle<()>, bool);
 /// `addr -> peer_id` map, sending a greeting, registering the peer with an external service,
 /// etc. If your application needs a strict "setup-before-teardown" ordering, enforce it in
 /// your own state - for example, mark the peer "ready" at the end of `on_connect` and have
-/// `OnDisconnect::on_disconnect` skip (or defer) work for peers that were never marked ready.
+/// [`OnDisconnect::on_disconnect`] skip (or defer) work for peers that were never marked ready.
 pub trait OnConnect: Pea2Pea
 where
     Self: Clone + Send + Sync + 'static,
