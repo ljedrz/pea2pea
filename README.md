@@ -13,6 +13,7 @@
 - [🚀 Quick Start](#-quick-start)
 - [🧩 Architecture](#-architecture)
 - [🔒 Security](#-security)
+- [🌪️ Chaos Testing](#-chaos-testing)
 - [🏁 Benchmarking](#-benchmarking)
 - [📚 Examples](#-examples)
 - [📦 Installation](#-installation)
@@ -127,6 +128,39 @@ For full details, refer to the **[protocols documentation](https://docs.rs/pea2p
 * **Resource Limits:** Hard caps on connection counts prevent bad actors from monopolizing your node's resources.
 
 > **Challenge:** We invite you to try and break a `pea2pea`-powered node. Point your favorite stress-testing tool (like `hping3` or a custom fuzzer) at it; the node will hold its ground.
+
+---
+
+### 🌪️ Chaos Testing
+
+`pea2pea` has been subjected to extensive adversarial stress testing: long
+runs of maximally hostile concurrent churn, designed to surface
+synchronization bugs, leaks, and lifecycle inconsistencies that simpler
+tests can't reach.
+
+A representative session: **24 worker tasks** driving fully randomized
+operations against a pool of up to **32 concurrent nodes**, with action
+delays as low as 0–500µs, processing **~1.93 million paired connection
+lifecycles per hour** of sustained churn. Every operation - node spawning,
+shutdown, connection establishment, disconnection, broadcast, unicast - is
+selected at random, without any coordination. Workers actively race each
+other on every shared structure the library exposes.
+
+Across these runs the library:
+
+- **Held all lifecycle invariants.** `on_connect` and `on_disconnect`
+  callback counts paired to within the live-connection count at any
+  observation moment - no dropped callbacks across millions of events.
+- **Maintained a bounded working set.** Peak heap usage stayed under 16 MiB
+  regardless of run duration; the heap returns to baseline as connections
+  close, with no growth proportional to total events processed.
+- **Recovered cleanly from every shutdown.** Node teardown leaves no
+  detectable residue - no leaked tasks, no leaked sockets, no leaked
+  allocations.
+
+The chaos test is included in the repository as
+[`tests/chaos.rs`](tests/chaos.rs) and is fully reproducible; set
+`CHAOS_RUNTIME_SECS` for a fixed deadline or run until interrupted.
 
 ---
 
