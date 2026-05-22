@@ -13,7 +13,7 @@
 - [🚀 Quick Start](#-quick-start)
 - [🧩 Architecture](#-architecture)
 - [🔒 Security](#-security)
-- [🌪️ Chaos Testing](#-chaos-testing)
+- [🌀 Chaos Testing](#-chaos-testing)
 - [🏁 Benchmarking](#-benchmarking)
 - [📚 Examples](#-examples)
 - [📦 Installation](#-installation)
@@ -131,7 +131,7 @@ For full details, refer to the **[protocols documentation](https://docs.rs/pea2p
 
 ---
 
-### 🌪️ Chaos Testing
+### 🌀 Chaos Testing
 
 `pea2pea` has been subjected to extensive adversarial stress testing: long
 runs of maximally hostile concurrent churn, designed to surface
