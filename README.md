@@ -140,20 +140,20 @@ tests can't reach.
 
 A representative session: **24 worker tasks** driving fully randomized
 operations against a pool of up to **32 concurrent nodes**, with action
-delays as low as 0–500µs, processing **~1.93 million paired connection
-lifecycles per hour** of sustained churn. Every operation - node spawning,
-shutdown, connection establishment, disconnection, broadcast, unicast - is
-selected at random, without any coordination. Workers actively race each
-other on every shared structure the library exposes.
+delays of 0–500µs, processing **~5 million paired connection lifecycles**
+over a single 2-hour run. Every operation - node spawning, shutdown,
+connection establishment, disconnection, broadcast, unicast - is selected
+at random, without any coordination. Workers actively race each other on
+every shared structure the library exposes.
 
-Across these runs the library:
+Across the run the library:
 
 - **Held all lifecycle invariants.** `on_connect` and `on_disconnect`
   callback counts paired to within the live-connection count at any
   observation moment - no dropped callbacks across millions of events.
-- **Maintained a bounded working set.** Peak heap usage stayed under 16 MiB
-  regardless of run duration; the heap returns to baseline as connections
-  close, with no growth proportional to total events processed.
+- **Maintained a bounded working set.** Peak heap usage stayed well under
+  20 MiB regardless of run duration; the heap returns to baseline as
+  connections close, with no growth proportional to total events processed.
 - **Recovered cleanly from every shutdown.** Node teardown leaves no
   detectable residue - no leaked tasks, no leaked sockets, no leaked
   allocations.

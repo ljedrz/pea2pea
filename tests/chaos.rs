@@ -12,13 +12,33 @@
 //! Note that reproducibility is best-effort - per-worker action sequences
 //! are deterministic given the seed, but the interleaving between workers
 //! depends on the tokio scheduler and is not.
+//!
+//! ## Tuning
+//!
+//! The defaults below are calibrated for sustained throughput on typical
+//! developer hardware (~200-250 paired connection lifecycles per second
+//! under default Linux network configuration, with TIME_WAIT pool
+//! utilization staying well below kernel ceilings). On a Ryzen-class CPU
+//! with 16+ cores, a 1-hour run produces ~600k-900k paired lifecycles.
+//!
+//! For multi-hour unattended runs (CHAOS_RUNTIME_SECS=43200 or similar),
+//! the following sysctls help avoid OS-level resource pressure even
+//! though the defaults don't strictly require them:
+//!
+//!     sudo sysctl -w net.ipv4.ip_local_port_range="1024 65535"
+//!     sudo sysctl -w net.ipv4.tcp_fin_timeout=10
+//!     sudo sysctl -w net.ipv4.tcp_max_tw_buckets=200000
+//!
+//! For resource-constrained CI runners, halve MAX_NODES and NUM_WORKERS;
+//! the action-mix coverage is preserved and the test still surfaces rare
+//! races, just at proportionally lower throughput.
 
 use std::{
     io,
     net::SocketAddr,
     sync::{
         Arc,
-        atomic::{AtomicBool, AtomicUsize, Ordering},
+        atomic::{AtomicUsize, Ordering},
     },
     time::{Duration, Instant},
 };
@@ -31,22 +51,22 @@ use pea2pea::{
 };
 use rand::{RngExt, SeedableRng, rngs::SmallRng};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio_util::codec::LengthDelimitedCodec;
+use tokio_util::{codec::LengthDelimitedCodec, sync::CancellationToken};
 
 // =========================================================================
 // Knobs
 // =========================================================================
 
 /// Maximum number of nodes that may exist in the pool at any one time.
-const MAX_NODES: usize = 24;
+const MAX_NODES: usize = 32;
 /// Number of worker tasks issuing random actions in parallel.
-const NUM_WORKERS: usize = 16;
+const NUM_WORKERS: usize = 24;
 /// How often the metrics printer wakes up.
 const METRICS_INTERVAL: Duration = Duration::from_secs(5);
 /// Per-action sleep range. Tight enough to keep the runtime busy, slack
 /// enough to let other workers interleave between actions.
 const MIN_ACTION_DELAY_US: u64 = 0;
-const MAX_ACTION_DELAY_US: u64 = 1_000;
+const MAX_ACTION_DELAY_US: u64 = 500;
 /// Message size bounds.
 const MIN_MSG_SIZE: usize = 1;
 const MAX_MSG_SIZE: usize = 8_192;
@@ -54,9 +74,9 @@ const MAX_MSG_SIZE: usize = 8_192;
 // Action mix (cumulative thresholds out of 256). Skewed toward connect /
 // send churn but with deliberately heavy spawn/shutdown weight, since
 // shutdown is the most interesting code path.
-const W_SPAWN: u8 = 28; // ~11%
-const W_SHUTDOWN: u8 = 58; // ~12%
-const W_CONNECT: u8 = 130; // ~28%
+const W_SPAWN: u8 = 18; // ~7%
+const W_SHUTDOWN: u8 = 36; // ~7%
+const W_CONNECT: u8 = 130; // ~37%
 const W_DISCONNECT: u8 = 180; // ~20%
 const W_BROADCAST: u8 = 210; // ~12%
 // remainder: unicast (~18%)
@@ -141,9 +161,9 @@ impl StressNode {
     fn new(stats: Arc<Stats>) -> Self {
         let config = Config {
             listener_addr: Some("127.0.0.1:0".parse().unwrap()),
-            max_connections: 32,
-            max_connections_per_ip: 32,
-            max_connecting: 16,
+            max_connections: 64,
+            max_connections_per_ip: 64,
+            max_connecting: 32,
             ..Default::default()
         };
         Self {
@@ -247,11 +267,14 @@ fn pick_two(pool: &Pool, rng: &mut SmallRng) -> Option<(StressNode, StressNode)>
     let p = pool.lock();
     if p.len() < 2 {
         return None;
+    } else if p.len() == 2 {
+        let i = rng.random_range(0..2);
+        return Some((p[i].clone(), p[1 - i].clone()));
     }
     let i = rng.random_range(0..p.len());
-    let mut j = rng.random_range(0..p.len());
-    while j == i {
-        j = rng.random_range(0..p.len());
+    let mut j = rng.random_range(0..(p.len() - 1));
+    if j >= i {
+        j += 1;
     }
     Some((p[i].clone(), p[j].clone()))
 }
@@ -274,20 +297,31 @@ fn random_message(rng: &mut SmallRng) -> Bytes {
 // Actions
 // =========================================================================
 
-async fn act_spawn(pool: &Pool, stats: &Arc<Stats>) {
+async fn act_spawn(pool: &Pool, stats: &Arc<Stats>, token: &CancellationToken) {
     // cheap pre-check; the real check happens under the lock below
     if pool.lock().len() >= MAX_NODES {
         return;
     }
+
     let node = StressNode::new(stats.clone());
-    if node.install().await.is_ok() {
-        // re-check under the lock to avoid blowing past MAX_NODES with
-        // multiple concurrent spawns
-        if pool.lock().len() < MAX_NODES {
-            pool.lock().push(node);
-            stats.nodes_spawned.fetch_add(1, Ordering::Relaxed);
-        } else {
-            node.node.shut_down().await;
+
+    tokio::select! {
+        biased;
+        _ = token.cancelled() => {},
+        res = node.install() => if res.is_ok() {
+            let pushed = {
+                let mut pool = pool.lock();
+                if !token.is_cancelled() && pool.len() < MAX_NODES {
+                    pool.push(node.clone());
+                    stats.nodes_spawned.fetch_add(1, Ordering::Relaxed);
+                    true
+                } else {
+                    false
+                }
+            };
+            if !pushed {
+                node.node.shut_down().await;
+            }
         }
     }
 }
@@ -301,20 +335,36 @@ async fn act_shutdown(pool: &Pool, stats: &Arc<Stats>, rng: &mut SmallRng) {
     }
 }
 
-async fn act_connect(pool: &Pool, stats: &Arc<Stats>, rng: &mut SmallRng) {
+async fn act_connect(
+    pool: &Pool,
+    stats: &Arc<Stats>,
+    rng: &mut SmallRng,
+    token: &CancellationToken,
+) {
     let Some((a, b)) = pick_two(pool, rng) else {
         return;
     };
     let Ok(target) = b.node().listening_addr().await else {
         return;
     };
-    stats.connects_attempted.fetch_add(1, Ordering::Relaxed);
-    match a.node().connect(target).await {
-        Ok(()) => {
-            stats.connects_succeeded.fetch_add(1, Ordering::Relaxed);
-        }
-        Err(_) => {
-            stats.err_connect.fetch_add(1, Ordering::Relaxed);
+
+    if token.is_cancelled() {
+        return;
+    }
+
+    tokio::select! {
+        biased;
+        _ = token.cancelled() => {},
+        res = a.node().connect(target) => {
+            stats.connects_attempted.fetch_add(1, Ordering::Relaxed);
+            match res {
+                Ok(()) => {
+                    stats.connects_succeeded.fetch_add(1, Ordering::Relaxed);
+                }
+                Err(_) => {
+                    stats.err_connect.fetch_add(1, Ordering::Relaxed);
+                }
+            }
         }
     }
 }
@@ -367,15 +417,15 @@ async fn act_unicast(pool: &Pool, stats: &Arc<Stats>, rng: &mut SmallRng) {
 // Worker
 // =========================================================================
 
-async fn worker(pool: Pool, stats: Arc<Stats>, shutdown: Arc<AtomicBool>, mut rng: SmallRng) {
-    while !shutdown.load(Ordering::Acquire) {
+async fn worker(pool: Pool, stats: Arc<Stats>, token: CancellationToken, mut rng: SmallRng) {
+    while !token.is_cancelled() {
         let roll: u8 = rng.random();
         if roll < W_SPAWN {
-            act_spawn(&pool, &stats).await;
+            act_spawn(&pool, &stats, &token).await;
         } else if roll < W_SHUTDOWN {
             act_shutdown(&pool, &stats, &mut rng).await;
         } else if roll < W_CONNECT {
-            act_connect(&pool, &stats, &mut rng).await;
+            act_connect(&pool, &stats, &mut rng, &token).await;
         } else if roll < W_DISCONNECT {
             act_disconnect(&pool, &stats, &mut rng).await;
         } else if roll < W_BROADCAST {
@@ -384,8 +434,15 @@ async fn worker(pool: Pool, stats: Arc<Stats>, shutdown: Arc<AtomicBool>, mut rn
             act_unicast(&pool, &stats, &mut rng).await;
         }
 
-        let sleep_us = rng.random_range(MIN_ACTION_DELAY_US..MAX_ACTION_DELAY_US);
-        tokio::time::sleep(Duration::from_micros(sleep_us)).await;
+        if token.is_cancelled() {
+            break;
+        }
+
+        let sleep_us = rng.random_range(MIN_ACTION_DELAY_US..=MAX_ACTION_DELAY_US);
+        tokio::select! {
+            _ = tokio::time::sleep(Duration::from_micros(sleep_us)) => {}
+            _ = token.cancelled() => break,
+        }
     }
 }
 
@@ -451,9 +508,9 @@ async fn infinite_chaos() {
     );
 
     let mut master_rng = SmallRng::seed_from_u64(master_seed);
-    let stats: Arc<Stats> = Arc::new(Stats::default());
-    let pool: Pool = Arc::new(Mutex::new(Vec::new()));
-    let shutdown: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
+    let stats: Arc<Stats> = Default::default();
+    let pool: Pool = Default::default();
+    let token = CancellationToken::new();
 
     // Seed the pool with two nodes so workers have something to do immediately.
     for _ in 0..2 {
@@ -471,7 +528,7 @@ async fn infinite_chaos() {
         workers.push(tokio::spawn(worker(
             pool.clone(),
             stats.clone(),
-            shutdown.clone(),
+            token.clone(),
             worker_rng,
         )));
     }
@@ -479,9 +536,9 @@ async fn infinite_chaos() {
     // Spawn the metrics printer.
     let m_stats = stats.clone();
     let m_pool = pool.clone();
-    let m_shutdown = shutdown.clone();
-    let metrics = tokio::spawn(async move {
-        let start = Instant::now();
+    let m_token = token.clone();
+    let start = Instant::now();
+    let _metrics = tokio::spawn(async move {
         let mut prev = Snapshot::default();
         loop {
             tokio::select! {
@@ -491,39 +548,43 @@ async fn infinite_chaos() {
                     print_metrics(start, alive, &snap, &prev);
                     prev = snap;
                 }
-                _ = async {
-                    while !m_shutdown.load(Ordering::Acquire) {
-                        tokio::time::sleep(Duration::from_millis(50)).await;
-                    }
-                } => break,
+                _ = m_token.cancelled() => break,
             }
         }
     });
 
     // Wait for the deadline to expire.
     tokio::time::sleep(runtime).await;
-    println!("\n\nWinding down…\n");
-    shutdown.store(true, Ordering::Release);
+    token.cancel();
 
-    // Let workers finish their current action and exit.
-    for w in workers {
-        w.abort();
-    }
-    metrics.abort();
-
-    // Final cleanup: shut down every remaining node in parallel.
-    let remaining: Vec<_> = pool.lock().drain(..).collect();
-    println!("shutting down {} remaining node(s)…", remaining.len());
+    // Shut down the workers.
     let mut joins = tokio::task::JoinSet::new();
-    for node in remaining {
+    for w in workers {
         joins.spawn(async move {
-            node.node().shut_down().await;
+            let _ = w.await;
         });
     }
     while joins.join_next().await.is_some() {}
 
-    let final_snap = Snapshot::capture(&stats);
-    println!("\n=== final totals ===");
-    print_metrics(Instant::now(), 0, &final_snap, &final_snap);
-    println!();
+    // Shut down any remaining nodes.
+    let remaining: Vec<_> = pool.lock().drain(..).collect();
+    let mut joins = tokio::task::JoinSet::new();
+    for node in remaining {
+        let s_stats = stats.clone();
+        joins.spawn(async move {
+            node.node().shut_down().await;
+            s_stats.nodes_shutdown.fetch_add(1, Ordering::Relaxed);
+        });
+    }
+    while joins.join_next().await.is_some() {}
+
+    // Check some invariants.
+    let snap = Snapshot::capture(&stats);
+    print_metrics(start, 0, &snap, &snap);
+    assert_eq!(snap.nodes_spawned, snap.nodes_shutdown);
+    assert_eq!(snap.on_connect_fired, snap.on_disconnect_fired);
+    assert_eq!(
+        snap.connects_attempted,
+        snap.connects_succeeded + snap.err_connect
+    );
 }
