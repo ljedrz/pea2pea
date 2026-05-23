@@ -674,6 +674,24 @@ impl Node {
         }
         while disconnect_tasks.join_next().await.is_some() {}
 
+        // wait for any concurrent disconnects to finish their cleanup; a concurrent
+        // disconnect (e.g. a user-initiated may have won the `disconnecting` swap
+        // before this `shut_down` began; in that case our spawned disconnect task
+        // above returned `false` without firing `on_disconnect`, and the concurrent
+        // disconnect is still responsible for firing it
+        //
+        // the wait is bounded: `shutting_down` now blocks new entries from
+        // being added (see `Connections::add`), and every remaining entry has
+        // a single owner committed to removing it
+        loop {
+            let notified = self.connections.drain_notify.notified();
+            tokio::pin!(notified);
+            if self.connections.active.read().is_empty() {
+                break;
+            }
+            notified.await;
+        }
+
         // abort the remaining tasks, which should now be inert
         for handle in tasks.into_values() {
             handle.abort();

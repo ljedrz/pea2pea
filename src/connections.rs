@@ -15,7 +15,7 @@ use parking_lot::{Mutex, RwLock};
 use tokio::{
     io::{AsyncRead, AsyncWrite},
     net::TcpStream,
-    sync::oneshot,
+    sync::{Notify, oneshot},
     task::JoinHandle,
 };
 use tracing::*;
@@ -32,6 +32,11 @@ pub(crate) struct Connections {
     pub(crate) limits: Mutex<ConnectionLimits>,
     /// The node-wide shutdown flag.
     shutting_down: Arc<AtomicBool>,
+    /// Signalled each time an entry is removed from `active`. Used by
+    /// `Node::shut_down` to wait for concurrent disconnects (i.e. those
+    /// initiated outside `shut_down`'s own `disconnect_tasks`) to complete
+    /// before the `OnDisconnect` handler is torn down.
+    pub(crate) drain_notify: Notify,
 }
 
 impl Connections {
@@ -40,6 +45,7 @@ impl Connections {
             active: Default::default(),
             limits: Default::default(),
             shutting_down,
+            drain_notify: Notify::new(),
         }
     }
 
@@ -69,7 +75,12 @@ impl Connections {
     }
 
     pub(crate) fn remove(&self, addr: SocketAddr) -> Option<Connection> {
-        self.active.write().remove(&addr)
+        let removed = self.active.write().remove(&addr);
+        if removed.is_some() {
+            // wake any task waiting for `active` to drain
+            self.drain_notify.notify_waiters();
+        }
+        removed
     }
 
     pub(crate) fn num_connected(&self) -> usize {

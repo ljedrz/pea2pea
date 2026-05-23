@@ -1,3 +1,9 @@
+# 0.55.1
+
+### Fixed
+
+- a rare race where concurrent disconnect calls could miss firing `on_disconnect` if `Node::shut_down` was invoked during the disconnect's `OnDisconnect` trigger
+
 # 0.55.0
 
 ### Added
