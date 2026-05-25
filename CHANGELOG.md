@@ -1,3 +1,9 @@
+# 0.55.2
+
+### Changed
+
+- connection spans are no longer created when not needed while sending messages
+
 # 0.55.1
 
 ### Fixed
