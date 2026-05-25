@@ -169,11 +169,11 @@ where
             // find the message sender for the given address
             if let Some(sender) = handler.senders.read().get(&addr).cloned() {
                 let (msg, delivery) = WrappedMessage::new(Box::new(message), true);
-                let conn_span = create_connection_span(addr, self.node().span());
                 sender
                     .1
                     .try_send(msg)
                     .map_err(|e| {
+                        let conn_span = create_connection_span(addr, self.node().span());
                         error!(parent: conn_span, "can't send a message: {e}");
                         match e {
                             mpsc::error::TrySendError::Full(_) => {
@@ -206,8 +206,8 @@ where
             // find the message sender for the given address
             if let Some(sender) = handler.senders.read().get(&addr).cloned() {
                 let (msg, _) = WrappedMessage::new(Box::new(message), false);
-                let conn_span = create_connection_span(addr, self.node().span());
                 sender.1.try_send(msg).map_err(|e| {
+                    let conn_span = create_connection_span(addr, self.node().span());
                     error!(parent: conn_span, "can't send a message: {e}");
                     match e {
                         mpsc::error::TrySendError::Full(_) => io::ErrorKind::QuotaExceeded.into(),
@@ -250,8 +250,8 @@ where
             let senders = handler.senders.read().clone();
             for (addr, message_sender) in senders {
                 let (msg, _) = WrappedMessage::new(Box::new(message.clone()), false);
-                let conn_span = create_connection_span(addr, self.node().span());
                 let _ = message_sender.1.try_send(msg).map_err(|e| {
+                    let conn_span = create_connection_span(addr, self.node().span());
                     error!(parent: conn_span, "can't send a message: {e}");
                 });
             }
