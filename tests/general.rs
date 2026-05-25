@@ -461,6 +461,151 @@ async fn max_connections_race_condition() {
     );
 }
 
+#[tokio::test(flavor = "multi_thread")]
+async fn max_connecting_limit_rejects_new_attempts() {
+    const MAX_CONNECTING: u16 = 3;
+
+    // a node whose handshake intentionally stalls so that the `connecting`
+    // slot stays held for the whole test
+    #[derive(Clone)]
+    struct StallingHandshakeNode(Node);
+    impl Pea2Pea for StallingHandshakeNode {
+        fn node(&self) -> &Node {
+            &self.0
+        }
+    }
+    impl Handshake for StallingHandshakeNode {
+        const TIMEOUT_MS: u64 = 60_000;
+        async fn perform_handshake(
+            &self,
+            conn: pea2pea::Connection,
+        ) -> io::Result<pea2pea::Connection> {
+            sleep(Duration::from_secs(30)).await;
+            Ok(conn)
+        }
+    }
+
+    let config = Config {
+        name: Some("connector".into()),
+        max_connecting: MAX_CONNECTING,
+        max_connections: 100,        // permissive
+        max_connections_per_ip: 100, // permissive
+        ..Default::default()
+    };
+    let connector = StallingHandshakeNode(Node::new(config));
+    connector.enable_handshake().await;
+
+    // bring up enough targets that each connect goes to a distinct addr
+    let mut targets = Vec::with_capacity(MAX_CONNECTING as usize + 1);
+    for _ in 0..=MAX_CONNECTING {
+        let t = Node::new(Default::default());
+        let addr = t.toggle_listener().await.unwrap().unwrap();
+        targets.push((t, addr));
+    }
+
+    // spawn MAX_CONNECTING connects; each will stick in the handshake
+    for (_, addr) in targets.iter().take(MAX_CONNECTING as usize) {
+        let connector = connector.clone();
+        let addr = *addr;
+        tokio::spawn(async move {
+            let _ = connector.0.connect(addr).await;
+        });
+    }
+
+    // wait until the connecting set is full
+    wait_until(Duration::from_secs(2), || {
+        connector.0.num_connecting() == MAX_CONNECTING as usize
+    })
+    .await;
+
+    // the next attempt must fail synchronously with QuotaExceeded
+    let extra_addr = targets.last().unwrap().1;
+    let err = connector.0.connect(extra_addr).await.unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::QuotaExceeded);
+
+    // and the connecting count did not change as a result
+    assert_eq!(connector.0.num_connecting(), MAX_CONNECTING as usize);
+
+    // tidy up - the stalled connect tasks would otherwise keep the runtime busy
+    connector.0.shut_down().await;
+}
+
+#[tokio::test]
+async fn toggle_listener_without_addr_errors() {
+    let config = Config {
+        listener_addr: None,
+        ..Default::default()
+    };
+    let node = Node::new(config);
+
+    let err = node.toggle_listener().await.unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::AddrNotAvailable);
+}
+
+#[tokio::test]
+async fn disconnect_unknown_addr_returns_false() {
+    let node = Node::new(Default::default());
+    let bogus: std::net::SocketAddr = "127.0.0.1:1".parse().unwrap();
+    assert!(!node.disconnect(bogus).await);
+}
+
+#[tokio::test]
+async fn shut_down_is_idempotent() {
+    let node = Node::new(Default::default());
+    node.toggle_listener().await.unwrap();
+
+    // back-to-back shutdowns must not panic, hang, or leave the node in a bad state
+    node.shut_down().await;
+    node.shut_down().await;
+}
+
+#[tokio::test]
+async fn connect_after_shut_down_is_rejected() {
+    let connector = Node::new(Default::default());
+
+    let target = Node::new(Default::default());
+    let target_addr = target.toggle_listener().await.unwrap().unwrap();
+
+    connector.shut_down().await;
+
+    // shut_down() should make subsequent connects fail immediately
+    let err = connector.connect(target_addr).await.unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::Other);
+    // and no slot is taken
+    assert_eq!(connector.num_connecting(), 0);
+    assert_eq!(connector.num_connected(), 0);
+}
+
+#[tokio::test]
+async fn connection_info_side_reflects_role() {
+    let nodes = common::start_test_nodes(2).await;
+    let listener_addr = nodes[1].node().listening_addr().await.unwrap();
+
+    nodes[0].node().connect(listener_addr).await.unwrap();
+
+    wait_until(Duration::from_secs(1), || {
+        nodes[0].node().num_connected() == 1 && nodes[1].node().num_connected() == 1
+    })
+    .await;
+
+    // From the initiator's perspective, its peer is the Responder...
+    let info = nodes[0].node().connection_info(listener_addr).unwrap();
+    assert_eq!(info.side(), ConnectionSide::Responder);
+
+    // ...and vice versa.
+    let initiator_addr = nodes[1].node().connected_addrs()[0];
+    let info = nodes[1].node().connection_info(initiator_addr).unwrap();
+    assert_eq!(info.side(), ConnectionSide::Initiator);
+}
+
+#[tokio::test]
+async fn connection_info_unknown_addr_returns_none() {
+    let node = Node::new(Default::default());
+    let bogus: std::net::SocketAddr = "127.0.0.1:1".parse().unwrap();
+    assert!(node.connection_info(bogus).is_none());
+    assert!(node.connection_infos().is_empty());
+}
+
 #[tokio::test]
 async fn message_stats() {
     let mut rng = rand::rng();
@@ -645,6 +790,218 @@ async fn outbound_queue_saturation() {
 }
 
 #[tokio::test]
+async fn idle_timeout_drops_silent_connection() {
+    #[derive(Clone)]
+    struct ImpatientReader(pea2pea::Node);
+    impl Pea2Pea for ImpatientReader {
+        fn node(&self) -> &pea2pea::Node {
+            &self.0
+        }
+    }
+    impl Reading for ImpatientReader {
+        const IDLE_TIMEOUT_MS: u64 = 250;
+
+        type Message = BytesMut;
+        type Codec = common::TestCodec<BytesMut>;
+
+        fn codec(&self, _: std::net::SocketAddr, _: ConnectionSide) -> Self::Codec {
+            Default::default()
+        }
+
+        async fn process_message(&self, _: std::net::SocketAddr, _: Self::Message) {}
+    }
+
+    let reader = ImpatientReader(pea2pea::Node::new(Default::default()));
+    reader.enable_reading().await;
+    let reader_addr = reader.0.toggle_listener().await.unwrap().unwrap();
+
+    let peer = crate::test_node!("quiet_peer");
+    peer.node().connect(reader_addr).await.unwrap();
+
+    wait_until(Duration::from_secs(1), || reader.0.num_connected() == 1).await;
+
+    // no traffic - the reader should disconnect roughly IDLE_TIMEOUT_MS later
+    let start = Instant::now();
+    wait_until(Duration::from_secs(3), || reader.0.num_connected() == 0).await;
+    let elapsed = start.elapsed();
+
+    assert!(
+        elapsed >= Duration::from_millis(200),
+        "disconnected too quickly: {elapsed:?}"
+    );
+}
+
+/// `IDLE_TIMEOUT_MS = 0` opts out of the timeout entirely; an otherwise-silent
+/// connection should remain up indefinitely.
+#[tokio::test]
+async fn idle_timeout_zero_disables_timeout() {
+    #[derive(Clone)]
+    struct PatientReader(pea2pea::Node);
+    impl Pea2Pea for PatientReader {
+        fn node(&self) -> &pea2pea::Node {
+            &self.0
+        }
+    }
+    impl Reading for PatientReader {
+        const IDLE_TIMEOUT_MS: u64 = 0;
+
+        type Message = BytesMut;
+        type Codec = common::TestCodec<BytesMut>;
+
+        fn codec(&self, _: std::net::SocketAddr, _: ConnectionSide) -> Self::Codec {
+            Default::default()
+        }
+
+        async fn process_message(&self, _: std::net::SocketAddr, _: Self::Message) {}
+    }
+
+    let reader = PatientReader(pea2pea::Node::new(Default::default()));
+    reader.enable_reading().await;
+    let reader_addr = reader.0.toggle_listener().await.unwrap().unwrap();
+
+    let peer = crate::test_node!("silent_peer");
+    peer.node().connect(reader_addr).await.unwrap();
+
+    wait_until(Duration::from_secs(1), || reader.0.num_connected() == 1).await;
+
+    // wait longer than any reasonable per-test timeout
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    assert_eq!(reader.0.num_connected(), 1);
+}
+
+/// `Writing::TIMEOUT_MS` bounds the per-message `flush()` call. With a
+/// peer that never reads, the sender's flush eventually stalls on TCP
+/// backpressure and the timeout must propagate via the delivery `oneshot`,
+/// tearing the connection down.
+///
+/// Note: a default loopback SNDBUF/RCVBUF combo on Linux/macOS lets several
+/// MB of data pipeline before flush() actually blocks, which makes a "send
+/// big messages and hope" approach flaky on machines with autotuned
+/// buffers. We instead shrink the sender's send buffer via
+/// `connect_using_socket` so the writer's flush stalls almost immediately
+/// once the receiver stops accepting bytes. This is the same SO_SNDBUF
+/// knob the `Handshake` docs already point at as the right place for
+/// socket-option tuning.
+#[tokio::test]
+async fn write_timeout_propagates_to_delivery() {
+    use tokio::net::TcpSocket;
+
+    #[derive(Clone)]
+    struct ImpatientWriter(pea2pea::Node);
+    impl Pea2Pea for ImpatientWriter {
+        fn node(&self) -> &pea2pea::Node {
+            &self.0
+        }
+    }
+    impl Writing for ImpatientWriter {
+        const TIMEOUT_MS: u64 = 200;
+        // queue must be deep enough that the *flush*, not try_send, is the
+        // first thing to stall
+        const MESSAGE_QUEUE_DEPTH: usize = 128;
+
+        type Message = Bytes;
+        type Codec = common::TestCodec<Bytes>;
+
+        fn codec(&self, _: std::net::SocketAddr, _: ConnectionSide) -> Self::Codec {
+            Default::default()
+        }
+    }
+
+    let sender = ImpatientWriter(pea2pea::Node::new(Default::default()));
+    sender.enable_writing().await;
+
+    // a receiver that never reads -> kernel recv buffer eventually fills
+    let receiver = crate::test_node!("blackhole");
+    let receiver_addr = receiver.node().toggle_listener().await.unwrap().unwrap();
+
+    // shrink the sender's send buffer so its writer flush stalls within a
+    // handful of messages regardless of the receiver's recv-buffer tuning
+    let socket = TcpSocket::new_v4().unwrap();
+    // 4kB requested; Linux typically doubles this and clamps to wmem_min
+    let _ = socket.set_send_buffer_size(4096);
+    sender
+        .0
+        .connect_using_socket(receiver_addr, socket)
+        .await
+        .unwrap();
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    // 60_000-byte messages (TestCodec's 2-byte length prefix puts the
+    // hard ceiling at 65_535 per message). With the shrunken SNDBUF, only
+    // a couple of flushes complete before flush() stalls and TIMEOUT_MS
+    // fires.
+    let big = Bytes::from(vec![0xAB; 60_000]);
+    let mut delivery_rxs = Vec::new();
+    for _ in 0..32 {
+        let Ok(rx) = sender.unicast(receiver_addr, big.clone()) else {
+            break;
+        };
+        delivery_rxs.push(rx);
+    }
+
+    let mut saw_timeout = false;
+    for rx in delivery_rxs {
+        // once the writer task hits a write error it breaks out of its
+        // recv loop; the remaining queued WrappedMessages get dropped
+        // along with their oneshot senders, so `rx.await` for those
+        // returns RecvError. That's expected - stop looking.
+        let Ok(res) = rx.await else { break };
+        match res {
+            Ok(()) => continue,
+            Err(e) if e.kind() == io::ErrorKind::TimedOut => {
+                saw_timeout = true;
+                break;
+            }
+            Err(e) => panic!("unexpected write error: {e}"),
+        }
+    }
+
+    assert!(
+        saw_timeout,
+        "expected a write to time out under TCP backpressure"
+    );
+
+    // the writer task breaks out of its loop on error, which fires
+    // DisconnectOnDrop -> the connection must be gone shortly after
+    wait_until(Duration::from_secs(1), || sender.0.num_connected() == 0).await;
+}
+
+/// `unicast` / `unicast_fast` / `broadcast` must return `Unsupported`
+/// when `Writing` is not enabled.
+#[tokio::test]
+async fn writing_methods_return_unsupported_when_not_enabled() {
+    let node = crate::test_node!("mute");
+    // intentionally not calling enable_writing()
+
+    let any: std::net::SocketAddr = "127.0.0.1:1".parse().unwrap();
+    let dummy = Bytes::from(&b"x"[..]);
+
+    let err = node.unicast_fast(any, dummy.clone()).unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::Unsupported);
+
+    let err = node.unicast(any, dummy.clone()).unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::Unsupported);
+
+    let err = node.broadcast(dummy).unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::Unsupported);
+}
+
+/// `unicast` (with delivery confirmation) returns `NotConnected` for an
+/// unknown peer - the `unicast_fast` variant of this is already covered
+/// by `drop_connection_on_invalid_message`.
+#[tokio::test]
+async fn unicast_returns_not_connected_for_unknown_peer() {
+    let sender = crate::test_node!("sender");
+    sender.enable_writing().await;
+
+    let unconnected: std::net::SocketAddr = "127.0.0.1:1".parse().unwrap();
+    let err = sender
+        .unicast(unconnected, Bytes::from(&b"x"[..]))
+        .unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::NotConnected);
+}
+
+#[tokio::test]
 async fn simple_broadcast() {
     let random_nodes = common::start_test_nodes(4).await;
     for rando in &random_nodes {
@@ -680,6 +1037,82 @@ async fn simple_broadcast() {
         random_nodes
             .iter()
             .all(|rando| rando.node().stats().received().0 >= 2)
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn broadcast_with_no_peers_is_ok() {
+    let node = crate::test_node!("loner");
+    node.enable_writing().await;
+    // no connections at all - should still return Ok
+    assert!(
+        node.broadcast(Bytes::from(&b"echoes in the void"[..]))
+            .is_ok()
+    );
+}
+
+#[tokio::test]
+async fn broadcast_continues_past_saturated_peer() {
+    // A broadcaster with depth=1 makes per-peer queues trivial to fill.
+    #[derive(Clone)]
+    struct TinyQueueSender(Node);
+    impl Pea2Pea for TinyQueueSender {
+        fn node(&self) -> &Node {
+            &self.0
+        }
+    }
+    impl Writing for TinyQueueSender {
+        const MESSAGE_QUEUE_DEPTH: usize = 1;
+        type Message = Bytes;
+        type Codec = common::TestCodec<Bytes>;
+        fn codec(&self, _: SocketAddr, _: ConnectionSide) -> Self::Codec {
+            Default::default()
+        }
+    }
+
+    let sender = TinyQueueSender(Node::new(Default::default()));
+    sender.enable_writing().await;
+
+    // a peer that won't read -> its queue + kernel buffer saturate
+    let slow = crate::test_node!("slow");
+    let slow_addr = slow.node().toggle_listener().await.unwrap().unwrap();
+
+    // a peer that will read normally
+    let fast = crate::test_node!("fast");
+    fast.enable_reading().await;
+    let fast_addr = fast.node().toggle_listener().await.unwrap().unwrap();
+
+    sender.0.connect(slow_addr).await.unwrap();
+    sender.0.connect(fast_addr).await.unwrap();
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    // saturate the slow peer's pipeline with large messages until try_send fails
+    let big = Bytes::from(vec![0xAB; 60_000]);
+    let mut slow_saturated = false;
+    for _ in 0..200 {
+        if !sender.0.is_connected(slow_addr) {
+            break; // shouldn't happen, but be defensive
+        }
+        if sender.unicast_fast(slow_addr, big.clone()).is_err() {
+            slow_saturated = true;
+            break;
+        }
+    }
+    assert!(
+        slow_saturated,
+        "couldn't saturate the slow peer's outbound queue"
+    );
+
+    let baseline = fast.node().stats().received().0;
+
+    // The broadcast: slow peer drops it (queue full), fast peer must still receive.
+    sender
+        .broadcast(Bytes::from(&b"to all who can hear me"[..]))
+        .unwrap();
+
+    wait_until(Duration::from_secs(2), || {
+        fast.node().stats().received().0 > baseline
     })
     .await;
 }
@@ -821,4 +1254,76 @@ async fn random_conn_counts() {
 
     // N (10) * degree (2) * 2 sides = 40
     assert_eq!(total_connections, N * 2 * 2);
+}
+
+#[tokio::test]
+async fn connect_nodes_with_too_few_nodes_errors() {
+    // zero nodes
+    let nodes: Vec<common::TestNode> = vec![];
+    let err = pea2pea::connect_nodes(&nodes, Topology::Line)
+        .await
+        .unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+
+    // one node
+    let nodes = common::start_test_nodes(1).await;
+    let err = pea2pea::connect_nodes(&nodes, Topology::Mesh)
+        .await
+        .unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+}
+
+#[tokio::test]
+async fn topology_grid_dimension_mismatch_errors() {
+    // 5 nodes, but a 2x3 grid wants 6
+    let nodes = common::start_test_nodes(5).await;
+    let err = pea2pea::connect_nodes(
+        &nodes,
+        Topology::Grid {
+            width: 2,
+            height: 3,
+        },
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+}
+
+#[tokio::test]
+async fn topology_random_degree_too_high_errors() {
+    let nodes = common::start_test_nodes(3).await;
+    // degree must be < N (3); 3 is invalid
+    let err = pea2pea::connect_nodes(
+        &nodes,
+        Topology::Random {
+            degree: 3,
+            seed: 42,
+        },
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+}
+
+#[tokio::test]
+async fn num_expected_connections_zero_nodes() {
+    // every topology should agree that 0 nodes => 0 connections,
+    // without panicking on the `num_nodes - 1` arithmetic
+    assert_eq!(Topology::Line.num_expected_connections(0), 0);
+    assert_eq!(Topology::Ring.num_expected_connections(0), 0);
+    assert_eq!(Topology::Mesh.num_expected_connections(0), 0);
+    assert_eq!(Topology::Star.num_expected_connections(0), 0);
+    assert_eq!(
+        Topology::Grid {
+            width: 0,
+            height: 0
+        }
+        .num_expected_connections(0),
+        0
+    );
+    assert_eq!(Topology::Tree.num_expected_connections(0), 0);
+    assert_eq!(
+        Topology::Random { degree: 0, seed: 0 }.num_expected_connections(0),
+        0
+    );
 }

@@ -4,7 +4,10 @@ use std::{
     collections::{HashMap, HashSet},
     io,
     net::SocketAddr,
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
     time::{Duration, Instant},
 };
 
@@ -19,7 +22,7 @@ use tokio::{
 use tokio_util::codec::Decoder;
 use tracing::*;
 
-use crate::common::{WritingExt, named_node, wait_until};
+use crate::common::{TestCodec, WritingExt, named_node, wait_until};
 
 #[derive(PartialEq, Eq, Hash, Debug, Clone, Copy)]
 enum TestMessage {
@@ -421,6 +424,54 @@ async fn hung_handshake_fails() {
     assert!(connectee.node().num_connecting() == 0);
 }
 
+#[tokio::test]
+async fn handshake_failure_releases_connecting_slot() {
+    #[derive(Clone)]
+    struct AlwaysFailHandshakeNode(Node);
+    impl Pea2Pea for AlwaysFailHandshakeNode {
+        fn node(&self) -> &Node {
+            &self.0
+        }
+    }
+    impl Handshake for AlwaysFailHandshakeNode {
+        async fn perform_handshake(&self, _conn: Connection) -> io::Result<Connection> {
+            Err(io::Error::other("nope"))
+        }
+    }
+
+    // permissive everything *except* the limit we care about
+    let config = Config {
+        name: Some("hs_fail".into()),
+        max_connecting: 1,
+        max_connections: 100,
+        ..Default::default()
+    };
+    let node = AlwaysFailHandshakeNode(Node::new(config));
+    node.enable_handshake().await;
+
+    // a fresh target for every attempt so we don't collide with
+    // `allow_duplicate_connections == false`
+    for _ in 0..3 {
+        let target = Node::new(Default::default());
+        let addr = target.toggle_listener().await.unwrap().unwrap();
+
+        let err = node.0.connect(addr).await.unwrap_err();
+        // The handshake errored - but importantly, the error is NOT
+        // QuotaExceeded from the previous attempt failing to release its slot.
+        assert_ne!(
+            err.kind(),
+            io::ErrorKind::QuotaExceeded,
+            "connecting slot was not released after a previous handshake failure"
+        );
+    }
+
+    // and after the dust settles, the counters are back to zero
+    wait_until(Duration::from_secs(1), || {
+        node.0.num_connecting() == 0 && node.0.num_connected() == 0
+    })
+    .await;
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn timeout_when_spammed_with_connections() {
     const NUM_ATTEMPTS: u16 = 100;
@@ -528,4 +579,198 @@ async fn connect_doesnt_wait_for_on_connect_hook() {
         "node.connect() returned too late!"
     );
     assert_eq!(initiator.node().num_connected(), 1);
+}
+
+#[tokio::test]
+async fn on_connect_non_abortable_runs_to_completion() {
+    #[derive(Clone)]
+    struct StubbornNode {
+        node: Node,
+        completed: Arc<AtomicBool>,
+    }
+    impl Pea2Pea for StubbornNode {
+        fn node(&self) -> &Node {
+            &self.node
+        }
+    }
+    impl OnConnect for StubbornNode {
+        const ABORTABLE: bool = false;
+        async fn on_connect(&self, _: SocketAddr) {
+            // give the test enough time to issue a disconnect *before* this
+            // body finishes
+            sleep(Duration::from_millis(300)).await;
+            self.completed.store(true, Ordering::Release);
+        }
+    }
+
+    let stubborn = StubbornNode {
+        node: Node::new(Default::default()),
+        completed: Arc::new(AtomicBool::new(false)),
+    };
+    stubborn.enable_on_connect().await;
+
+    let target = crate::test_node!("target");
+    let target_addr = target.node().toggle_listener().await.unwrap().unwrap();
+
+    stubborn.node().connect(target_addr).await.unwrap();
+
+    // disconnect before the OnConnect body finishes
+    stubborn.node().disconnect(target_addr).await;
+
+    // despite the disconnect, the non-abortable hook must still run
+    wait_until(Duration::from_secs(2), || {
+        stubborn.completed.load(Ordering::Acquire)
+    })
+    .await;
+}
+
+/// The default (`ABORTABLE = true`) means the OnConnect task is attached
+/// to the connection and is aborted when the connection is dropped.
+#[tokio::test]
+async fn on_connect_abortable_is_cancelled_on_disconnect() {
+    #[derive(Clone)]
+    struct AbortableNode {
+        node: Node,
+        completed: Arc<AtomicBool>,
+    }
+    impl Pea2Pea for AbortableNode {
+        fn node(&self) -> &Node {
+            &self.node
+        }
+    }
+    impl OnConnect for AbortableNode {
+        // ABORTABLE: bool = true is the default
+        async fn on_connect(&self, _: SocketAddr) {
+            // long enough that we can disconnect well before this finishes
+            sleep(Duration::from_secs(5)).await;
+            self.completed.store(true, Ordering::Release);
+        }
+    }
+
+    let abortable = AbortableNode {
+        node: Node::new(Default::default()),
+        completed: Arc::new(AtomicBool::new(false)),
+    };
+    abortable.enable_on_connect().await;
+
+    let target = crate::test_node!("target");
+    let target_addr = target.node().toggle_listener().await.unwrap().unwrap();
+
+    abortable.node().connect(target_addr).await.unwrap();
+    abortable.node().disconnect(target_addr).await;
+
+    // wait substantially less than the OnConnect body would take if it ran -
+    // the body was aborted, so `completed` must still be false.
+    sleep(Duration::from_millis(300)).await;
+    assert!(
+        !abortable.completed.load(Ordering::Acquire),
+        "abortable OnConnect should have been cancelled on disconnect"
+    );
+}
+
+#[tokio::test]
+async fn on_disconnect_timeout_aborts_slow_hook() {
+    #[derive(Clone)]
+    struct SlowDisconnectNode(Node);
+    impl Pea2Pea for SlowDisconnectNode {
+        fn node(&self) -> &Node {
+            &self.0
+        }
+    }
+    impl OnDisconnect for SlowDisconnectNode {
+        const TIMEOUT_MS: u64 = 200;
+        async fn on_disconnect(&self, _: SocketAddr) {
+            sleep(Duration::from_secs(10)).await;
+        }
+    }
+
+    let slow = SlowDisconnectNode(Node::new(Default::default()));
+    slow.enable_on_disconnect().await;
+    let slow_addr = slow.0.toggle_listener().await.unwrap().unwrap();
+
+    let peer = crate::test_node!("peer");
+    peer.node().connect(slow_addr).await.unwrap();
+
+    wait_until(Duration::from_secs(1), || slow.0.num_connected() == 1).await;
+
+    let peer_addr = slow.0.connected_addrs()[0];
+
+    // `disconnect` waits on the hook, but only up to TIMEOUT_MS
+    let start = Instant::now();
+    assert!(slow.0.disconnect(peer_addr).await);
+    let elapsed = start.elapsed();
+
+    assert!(
+        elapsed < Duration::from_secs(2),
+        "OnDisconnect timeout did not fire: disconnect took {elapsed:?}"
+    );
+}
+
+#[tokio::test]
+async fn on_disconnect_fires_on_both_sides() {
+    #[derive(Clone)]
+    struct TrackingNode {
+        node: Node,
+        fired: Arc<AtomicBool>,
+    }
+
+    impl TrackingNode {
+        fn new(name: &str, fired: Arc<AtomicBool>) -> Self {
+            Self {
+                node: Node::new(Config {
+                    name: Some(name.into()),
+                    ..Default::default()
+                }),
+                fired,
+            }
+        }
+    }
+
+    impl Pea2Pea for TrackingNode {
+        fn node(&self) -> &Node {
+            &self.node
+        }
+    }
+
+    impl OnDisconnect for TrackingNode {
+        async fn on_disconnect(&self, _: SocketAddr) {
+            self.fired.store(true, Ordering::Release);
+        }
+    }
+
+    // No-op Reading: needed on the passive side so it notices the peer's FIN
+    // and runs the disconnect cleanup path.
+    impl Reading for TrackingNode {
+        type Message = BytesMut;
+        type Codec = TestCodec<BytesMut>;
+
+        fn codec(&self, _: SocketAddr, _: ConnectionSide) -> Self::Codec {
+            Default::default()
+        }
+
+        async fn process_message(&self, _: SocketAddr, _: Self::Message) {}
+    }
+
+    let a_fired = Arc::new(AtomicBool::new(false));
+    let b_fired = Arc::new(AtomicBool::new(false));
+
+    let a = TrackingNode::new("a", a_fired.clone());
+    let b = TrackingNode::new("b", b_fired.clone());
+
+    // `a` calls disconnect(), so it knows immediately; `b` needs Reading
+    // enabled to detect the FIN and run its OnDisconnect.
+    b.enable_reading().await;
+    a.enable_on_disconnect().await;
+    b.enable_on_disconnect().await;
+
+    let b_addr = b.node().toggle_listener().await.unwrap().unwrap();
+    a.node().connect(b_addr).await.unwrap();
+    wait_until(Duration::from_secs(1), || b.node().num_connected() == 1).await;
+
+    a.node().disconnect(b_addr).await;
+
+    wait_until(Duration::from_secs(1), || {
+        a_fired.load(Ordering::Acquire) && b_fired.load(Ordering::Acquire)
+    })
+    .await;
 }
