@@ -23,7 +23,7 @@ use tokio::{
     time::sleep,
 };
 
-use crate::common::{connect_and_wait, start_listening, wait_for_connections};
+use crate::common::{assert_consistent, connect_and_wait, start_listening, wait_for_connections};
 
 #[tokio::test]
 async fn node_name_gets_auto_assigned() {
@@ -107,6 +107,122 @@ async fn simple_connect_and_disconnect() {
     // that the connection has been broken by node[0]
     assert_eq!(nodes[0].node().num_connected(), 0);
     assert_eq!(nodes[1].node().num_connected(), 1);
+}
+
+#[tokio::test]
+async fn disconnect_isolates_peer() {
+    let hub = Node::new(Default::default());
+
+    let mut peers = Vec::new();
+    for _ in 0..3 {
+        let p = Node::new(Default::default());
+        let addr = p.toggle_listener().await.unwrap().unwrap();
+        hub.connect(addr).await.unwrap();
+        peers.push(addr); // keep the Node alive too
+    }
+    assert_eq!(hub.num_connected(), 3);
+
+    // disconnect the middle peer
+    assert!(hub.disconnect(peers[1]).await);
+
+    assert_consistent(&hub);
+
+    assert_eq!(hub.num_connected(), 2);
+    assert!(hub.is_connected(peers[0]));
+    assert!(!hub.is_connected(peers[1]));
+    assert!(hub.is_connected(peers[2]));
+    assert!(hub.connection_info(peers[0]).is_some());
+    assert!(hub.connection_info(peers[1]).is_none());
+    assert!(hub.connection_info(peers[2]).is_some());
+}
+
+#[tokio::test]
+async fn node_stats_survive_disconnect() {
+    let reader = crate::test_node!("reader");
+    reader.enable_reading().await;
+    let reader_addr = start_listening(&reader).await;
+
+    let writer = crate::test_node!("writer");
+    writer.enable_writing().await;
+
+    let msg = Bytes::from(&b"keepalive"[..]);
+    let expected_per_msg = 2 + msg.len() as u64; // 2-byte length prefix + payload
+
+    // round 1: connect, send 3 messages, disconnect
+    writer.node().connect(reader_addr).await.unwrap();
+    for _ in 0..3 {
+        writer
+            .unicast(reader_addr, msg.clone())
+            .unwrap()
+            .await
+            .unwrap()
+            .unwrap();
+    }
+    wait_until(Duration::from_secs(1), || {
+        reader.node().stats().received().0 == 3
+    })
+    .await;
+
+    writer.node().disconnect(reader_addr).await;
+    // wait for *both* sides to settle - reader needs to notice the FIN before
+    // it would accept a reconnect cleanly
+    wait_until(Duration::from_secs(1), || {
+        writer.node().num_connected() == 0 && reader.node().num_connected() == 0
+    })
+    .await;
+
+    // per-connection stats die with the connection...
+    assert!(writer.node().connection_info(reader_addr).is_none());
+    // ...but node-level stats persist
+    assert_eq!(writer.node().stats().sent(), (3, 3 * expected_per_msg));
+
+    // round 2: reconnect and send 2 more
+    writer.node().connect(reader_addr).await.unwrap();
+    for _ in 0..2 {
+        writer
+            .unicast(reader_addr, msg.clone())
+            .unwrap()
+            .await
+            .unwrap()
+            .unwrap();
+    }
+
+    // node-level stats must reflect both rounds combined
+    wait_until(Duration::from_secs(1), || {
+        writer.node().stats().sent() == (5, 5 * expected_per_msg)
+    })
+    .await;
+    wait_until(Duration::from_secs(1), || {
+        reader.node().stats().received() == (5, 5 * expected_per_msg)
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn state_views_stay_consistent() {
+    let hub = Node::new(Default::default());
+    assert_consistent(&hub);
+
+    let mut peers = Vec::new();
+    for _ in 0..5 {
+        let p = Node::new(Default::default());
+        let addr = p.toggle_listener().await.unwrap().unwrap();
+        peers.push((p, addr));
+    }
+
+    // grow
+    for (_, addr) in &peers {
+        hub.connect(*addr).await.unwrap();
+        assert_consistent(&hub);
+    }
+    assert_eq!(hub.num_connected(), 5);
+
+    // shrink, in a different order than we grew
+    for (_, addr) in peers.iter().rev() {
+        hub.disconnect(*addr).await;
+        assert_consistent(&hub);
+    }
+    assert_eq!(hub.num_connected(), 0);
 }
 
 #[tokio::test]
@@ -309,6 +425,33 @@ async fn shutdown_closes_the_listener() {
         std::net::TcpListener::bind(addr).is_ok()
     })
     .await;
+}
+
+#[tokio::test]
+async fn shutdown_clears_state() {
+    let hub = Node::new(Default::default());
+
+    let mut peer_addrs = Vec::new();
+    for _ in 0..3 {
+        let peer = Node::new(Default::default());
+        let addr = peer.toggle_listener().await.unwrap().unwrap();
+        hub.connect(addr).await.unwrap();
+        peer_addrs.push(addr);
+    }
+    assert_eq!(hub.num_connected(), 3);
+
+    hub.shut_down().await;
+
+    // every view of state must agree that there's nothing left
+    assert_eq!(hub.num_connected(), 0);
+    assert_eq!(hub.num_connecting(), 0);
+    assert!(hub.connected_addrs().is_empty());
+    assert!(hub.connection_infos().is_empty());
+    for addr in &peer_addrs {
+        assert!(!hub.is_connected(*addr));
+        assert!(hub.connection_info(*addr).is_none());
+    }
+    assert!(hub.listening_addr().await.is_err());
 }
 
 #[tokio::test]

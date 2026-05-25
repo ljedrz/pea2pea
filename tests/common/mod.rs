@@ -215,3 +215,15 @@ pub async fn connect_and_wait(nodes: &[TestNode], topology: Topology) -> io::Res
     barrier.wait().await;
     Ok(())
 }
+
+pub fn assert_consistent(node: &Node) {
+    let connected = node.connected_addrs();
+    let infos = node.connection_infos();
+    assert_eq!(node.num_connected(), connected.len());
+    assert_eq!(node.num_connected(), infos.len());
+    for addr in &connected {
+        assert!(node.is_connected(*addr));
+        assert!(node.connection_info(*addr).is_some());
+        assert!(!node.is_connecting(*addr));
+    }
+}

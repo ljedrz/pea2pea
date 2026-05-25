@@ -357,6 +357,47 @@ async fn handshake_guards_connect() {
     .await;
 }
 
+#[tokio::test]
+async fn successful_handshake_releases_connecting_slot() {
+    #[derive(Clone)]
+    struct NoopHandshakeNode(Node);
+    impl Pea2Pea for NoopHandshakeNode {
+        fn node(&self) -> &Node {
+            &self.0
+        }
+    }
+    impl Handshake for NoopHandshakeNode {
+        async fn perform_handshake(&self, conn: Connection) -> io::Result<Connection> {
+            Ok(conn)
+        }
+    }
+
+    // max_connecting=1 makes slot-leak bugs immediately visible: if the slot
+    // isn't released after a successful handshake, the next connect would
+    // fail with QuotaExceeded.
+    let config = Config {
+        name: Some("hs_ok".into()),
+        max_connecting: 1,
+        max_connections: 100,
+        ..Default::default()
+    };
+    let node = NoopHandshakeNode(Node::new(config));
+    node.enable_handshake().await;
+
+    // a fresh target for every iteration, since allow_duplicate_connections is false
+    for _ in 0..3 {
+        let target = Node::new(Default::default());
+        let addr = target.toggle_listener().await.unwrap().unwrap();
+
+        node.0.connect(addr).await.unwrap();
+        // by the time connect() returns Ok, the connecting slot must be released
+        assert_eq!(node.0.num_connecting(), 0);
+    }
+
+    // all three connections are still up
+    assert_eq!(node.0.num_connected(), 3);
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn timeout_when_spammed_with_connections() {
     // a wrapper struct with a badly implemented Handshake protocol
