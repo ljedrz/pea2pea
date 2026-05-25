@@ -197,8 +197,8 @@ pub async fn start_listening<T: Pea2Pea>(node: &T) -> SocketAddr {
     node.node().toggle_listener().await.unwrap().unwrap()
 }
 
-pub async fn wait_for_connections<T: Pea2Pea>(node: &T, n: usize) {
-    wait_until(Duration::from_secs(1), || node.node().num_connected() == n).await;
+pub async fn wait_for_connections(node: &Node, n: usize) {
+    wait_until(Duration::from_secs(1), || node.num_connected() == n).await;
 }
 
 pub async fn connect_and_wait(nodes: &[TestNode], topology: Topology) -> io::Result<()> {

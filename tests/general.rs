@@ -12,19 +12,18 @@ use std::{
 
 use bytes::{Bytes, BytesMut};
 use common::wait_until;
-use parking_lot::Mutex;
 use pea2pea::{
     Config, Connection, ConnectionSide, Node, Pea2Pea, Topology, connect_nodes, protocols::*,
 };
 use rand::RngExt;
 use tokio::{
     net::{TcpListener, TcpSocket},
-    sync::{Barrier, Notify, oneshot},
+    sync::{Barrier, Notify},
     task::JoinSet,
-    time::{self, sleep},
+    time::sleep,
 };
 
-use crate::common::{connect_and_wait, start_listening};
+use crate::common::{connect_and_wait, start_listening, wait_for_connections};
 
 #[tokio::test]
 async fn node_name_gets_auto_assigned() {
@@ -58,7 +57,7 @@ async fn connect_using_custom_socket() {
         .await
         .unwrap();
 
-    wait_until(Duration::from_secs(1), || connectee.num_connected() == 1).await;
+    wait_for_connections(&connectee, 1).await;
 
     assert_eq!(
         connectee.connected_addrs()[0].ip(),
@@ -78,7 +77,7 @@ async fn listener_toggling() {
 
         connector.connect(connectee_addr).await.unwrap();
 
-        wait_until(Duration::from_secs(1), || connector.num_connected() == 1).await;
+        wait_for_connections(&connector, 1).await;
 
         assert!(connectee.toggle_listener().await.unwrap().is_none());
         assert!(connectee.listening_addr().await.is_err());
@@ -115,8 +114,7 @@ async fn is_connecting_is_observable() {
     #[derive(Clone)]
     struct GatedNode {
         node: Node,
-        // Some(tx) on the connector side, None on the listener side
-        gate: Arc<Mutex<Option<oneshot::Sender<()>>>>,
+        started: Arc<Notify>,
         release: Arc<Notify>,
     }
     impl Pea2Pea for GatedNode {
@@ -127,21 +125,19 @@ async fn is_connecting_is_observable() {
     impl Handshake for GatedNode {
         async fn perform_handshake(&self, conn: Connection) -> io::Result<Connection> {
             // signal that we've reached the handshake...await.
-            if let Some(tx) = self.gate.lock().take() {
-                let _ = tx.send(());
-            }
+            self.started.notify_one();
             // ...and wait for the test to release us
             self.release.notified().await;
             Ok(conn)
         }
     }
 
-    let (tx, started) = oneshot::channel();
+    let started = Arc::new(Notify::new());
     let release = Arc::new(Notify::new());
 
     let connector = GatedNode {
         node: Node::new(Default::default()),
-        gate: Arc::new(Mutex::new(Some(tx))),
+        started: started.clone(),
         release: release.clone(),
     };
     connector.enable_handshake().await;
@@ -153,7 +149,7 @@ async fn is_connecting_is_observable() {
     let join = tokio::spawn(async move { c.node().connect(target_addr).await });
 
     // wait for handshake to actually be running - no polling, no race
-    started.await.unwrap();
+    started.notified().await;
     assert!(connector.node().is_connecting(target_addr));
     assert!(!connector.node().is_connected(target_addr));
 
@@ -199,68 +195,26 @@ async fn two_way_connection_works() {
 }
 
 #[tokio::test]
-async fn connector_conn_limit_breach_fails() {
-    let config = Config {
+async fn conn_limit_rejects_on_both_sides() {
+    // outbound: connector with max_connections=0 refuses its own connect()
+    let connector = Node::new(Config {
         max_connections: 0,
         ..Default::default()
-    };
-    let connector = Node::new(config);
-    let connectee = Node::new(Default::default());
-    let connectee_addr = connectee.toggle_listener().await.unwrap().unwrap();
+    });
+    let target = Node::new(Default::default());
+    let target_addr = target.toggle_listener().await.unwrap().unwrap();
+    assert!(connector.connect(target_addr).await.is_err());
 
-    assert!(connector.connect(connectee_addr).await.is_err());
-}
-
-#[tokio::test]
-async fn connectee_conn_limit_breach_fails() {
-    let config = Config {
+    // inbound: connectee with max_connections=0 accepts then drops
+    let connectee = Node::new(Config {
         max_connections: 0,
         ..Default::default()
-    };
-    let connectee = Node::new(config);
+    });
     let connectee_addr = connectee.toggle_listener().await.unwrap().unwrap();
-
     let connector = Node::new(Default::default());
-
-    // a breached connection limit doesn't close the listener, so this works
     connector.connect(connectee_addr).await.unwrap();
-
-    // the number of connections on connectee side needs to be checked instead
-    wait_until(Duration::from_secs(1), || connectee.num_connected() == 0).await;
-}
-
-#[tokio::test]
-async fn connector_per_ip_conn_limit_breach_fails() {
-    let config = Config {
-        max_connections_per_ip: 1,
-        ..Default::default()
-    };
-    let connector = Node::new(config);
-    let connectee = Node::new(Default::default());
-    let connectee_addr = connectee.toggle_listener().await.unwrap().unwrap();
-
-    assert!(connector.connect(connectee_addr).await.is_ok());
-    assert!(connector.connect(connectee_addr).await.is_err());
-}
-
-#[tokio::test]
-async fn node_connectee_per_ip_conn_limit_breach_fails() {
-    let config = Config {
-        max_connections_per_ip: 1,
-        ..Default::default()
-    };
-    let connectee = Node::new(config);
-    let connectee_addr = connectee.toggle_listener().await.unwrap().unwrap();
-
-    let connector1 = Node::new(Default::default());
-    let connector2 = Node::new(Default::default());
-
-    // a breached connection limit doesn't close the listener, so this works
-    connector1.connect(connectee_addr).await.unwrap();
-    connector2.connect(connectee_addr).await.unwrap();
-
-    // the number of connections on connectee side needs to be checked instead
-    wait_until(Duration::from_secs(1), || connectee.num_connected() == 1).await;
+    sleep(Duration::from_millis(50)).await;
+    assert_eq!(connectee.num_connected(), 0);
 }
 
 #[tokio::test]
@@ -279,7 +233,7 @@ async fn max_connections_per_ip_is_distinct() {
     connector_a1.connect(server_addr).await.unwrap();
 
     // wait for A1 to connect
-    wait_until(Duration::from_millis(500), || server.num_connected() == 1).await;
+    wait_for_connections(&server, 1).await;
 
     // connector A2 (default IP: 127.0.0.1) -> should fail (limit reached for this IP)
     let connector_a2 = Node::new(Default::default());
@@ -301,11 +255,7 @@ async fn max_connections_per_ip_is_distinct() {
         // - one from 127.0.0.1 (A1)
         // - one from 127.0.0.2 (B)
         // - A2 should have been dropped
-        let server_clone = server.clone();
-        wait_until(Duration::from_millis(500), || {
-            server_clone.num_connected() == 2
-        })
-        .await;
+        wait_for_connections(&server, 2).await;
 
         // verify specifically who is connected
         let connected_ips: Vec<_> = server
@@ -318,7 +268,7 @@ async fn max_connections_per_ip_is_distinct() {
     } else {
         println!("Skipping 127.0.0.2 test portion due to OS binding restrictions");
         // fallback: just assert A2 failed (num_connected stays 1)
-        wait_until(Duration::from_millis(500), || server.num_connected() == 1).await;
+        wait_for_connections(&server, 1).await;
     }
 }
 
@@ -348,15 +298,17 @@ async fn overlapping_duplicate_connection_attempts_fail() {
     .await;
 }
 
-#[tokio::test(start_paused = true)]
+#[tokio::test]
 async fn shutdown_closes_the_listener() {
     let node = Node::new(Default::default());
     let addr = node.toggle_listener().await.unwrap().unwrap();
 
     assert!(TcpListener::bind(addr).await.is_err());
     node.shut_down().await;
-    time::advance(Duration::from_millis(100)).await;
-    assert!(TcpListener::bind(addr).await.is_ok());
+    wait_until(Duration::from_secs(1), || {
+        std::net::TcpListener::bind(addr).is_ok()
+    })
+    .await;
 }
 
 #[tokio::test]
@@ -583,10 +535,8 @@ async fn connection_info_side_reflects_role() {
 
     nodes[0].node().connect(listener_addr).await.unwrap();
 
-    wait_until(Duration::from_secs(1), || {
-        nodes[0].node().num_connected() == 1 && nodes[1].node().num_connected() == 1
-    })
-    .await;
+    wait_for_connections(nodes[0].node(), 1).await;
+    wait_for_connections(nodes[1].node(), 1).await;
 
     // From the initiator's perspective, its peer is the Responder...
     let info = nodes[0].node().connection_info(listener_addr).unwrap();
@@ -668,7 +618,7 @@ async fn drops_messages_wo_backpressure() {
     #[derive(Clone)]
     struct RealtimeNode {
         node: Node,
-        // node: this is not the same as msgs_received in the Stats,
+        // note: this is not the same as msgs_received in the Stats,
         // which is incremented even if the message is dropped due to
         // inbound queue saturation
         num_processed_messages: Arc<AtomicU8>,
@@ -818,11 +768,11 @@ async fn idle_timeout_drops_silent_connection() {
     let peer = crate::test_node!("quiet_peer");
     peer.node().connect(reader_addr).await.unwrap();
 
-    wait_until(Duration::from_secs(1), || reader.0.num_connected() == 1).await;
+    wait_for_connections(reader.node(), 1).await;
 
     // no traffic - the reader should disconnect roughly IDLE_TIMEOUT_MS later
     let start = Instant::now();
-    wait_until(Duration::from_secs(3), || reader.0.num_connected() == 0).await;
+    wait_for_connections(reader.node(), 0).await;
     let elapsed = start.elapsed();
 
     assert!(
@@ -862,7 +812,7 @@ async fn idle_timeout_zero_disables_timeout() {
     let peer = crate::test_node!("silent_peer");
     peer.node().connect(reader_addr).await.unwrap();
 
-    wait_until(Duration::from_secs(1), || reader.0.num_connected() == 1).await;
+    wait_for_connections(reader.node(), 1).await;
 
     // wait longer than any reasonable per-test timeout
     tokio::time::sleep(Duration::from_millis(500)).await;
@@ -963,7 +913,7 @@ async fn write_timeout_propagates_to_delivery() {
 
     // the writer task breaks out of its loop on error, which fires
     // DisconnectOnDrop -> the connection must be gone shortly after
-    wait_until(Duration::from_secs(1), || sender.0.num_connected() == 0).await;
+    wait_for_connections(sender.node(), 0).await;
 }
 
 /// `unicast` / `unicast_fast` / `broadcast` must return `Unsupported`

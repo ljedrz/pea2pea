@@ -22,7 +22,9 @@ use tokio::{
 use tokio_util::codec::Decoder;
 use tracing::*;
 
-use crate::common::{TestCodec, WritingExt, named_node, start_listening, wait_until};
+use crate::common::{
+    TestCodec, WritingExt, named_node, start_listening, wait_for_connections, wait_until,
+};
 
 #[tokio::test]
 async fn messaging_example() {
@@ -115,10 +117,7 @@ async fn messaging_example() {
 
     shouter.node().connect(picky_echo_addr).await.unwrap();
 
-    wait_until(Duration::from_secs(1), || {
-        picky_echo.node().num_connected() == 1
-    })
-    .await;
+    wait_for_connections(picky_echo.node(), 1).await;
 
     for message in &[TestMessage::Herp, TestMessage::Derp, TestMessage::Herp] {
         let msg = Bytes::copy_from_slice(&[*message as u8]);
@@ -151,20 +150,14 @@ async fn drop_connection_on_invalid_message() {
 
     writer.node().connect(reader_addr).await.unwrap();
 
-    wait_until(Duration::from_secs(1), || {
-        reader.node().num_connected() == 1
-    })
-    .await;
+    wait_for_connections(reader.node(), 1).await;
 
     // an invalid message: a zero-length payload
     let bad_message = Bytes::from(vec![]);
 
     writer.send_dm(reader_addr, bad_message).await.unwrap();
 
-    wait_until(Duration::from_secs(1), || {
-        reader.node().num_connected() == 0
-    })
-    .await;
+    wait_for_connections(reader.node(), 0).await;
 
     // make sure that a disconnected peer is properly cleaned up
     writer.node().disconnect(reader_addr).await;
@@ -182,19 +175,13 @@ async fn drop_connection_on_zero_read() {
 
     peer.node().connect(reader_addr).await.unwrap();
 
-    wait_until(Duration::from_secs(1), || {
-        reader.node().num_connected() == 1
-    })
-    .await;
+    wait_for_connections(reader.node(), 1).await;
 
     // the peer shuts down, i.e. disconnects
     peer.node().shut_down().await;
 
     // the reader should drop its connection too now
-    wait_until(Duration::from_secs(1), || {
-        reader.node().num_connected() == 0
-    })
-    .await;
+    wait_for_connections(reader.node(), 0).await;
 }
 
 #[tokio::test]
@@ -207,10 +194,7 @@ async fn no_reading_no_delivery() {
 
     writer.node().connect(reader_addr).await.unwrap();
 
-    wait_until(Duration::from_secs(1), || {
-        reader.node().num_connected() == 1
-    })
-    .await;
+    wait_for_connections(reader.node(), 1).await;
 
     // writer sends a message
     writer
@@ -235,10 +219,7 @@ async fn no_writing_no_delivery() {
 
     writer.node().connect(reader_addr).await.unwrap();
 
-    wait_until(Duration::from_secs(1), || {
-        reader.node().num_connected() == 1
-    })
-    .await;
+    wait_for_connections(reader.node(), 1).await;
 
     // writer tries to send a message
     assert!(
@@ -329,7 +310,7 @@ async fn handshake_guards_connect() {
         }
     }
 
-    crate::impl_messaging!(SimpleHandshakeNode);
+    impl_messaging!(SimpleHandshakeNode);
 
     let initiator = SimpleHandshakeNode::new();
     let responder = SimpleHandshakeNode::new();
@@ -339,7 +320,6 @@ async fn handshake_guards_connect() {
     for node in [&initiator, &responder] {
         node.enable_reading().await;
         node.enable_writing().await;
-        // node.enable_handshake().await;
         start_listening(node).await;
     }
 
@@ -510,10 +490,7 @@ async fn on_connect_message() {
 
     connector.node().connect(connectee_addr).await.unwrap();
 
-    wait_until(Duration::from_secs(1), || {
-        connectee.node().num_connected() == 1
-    })
-    .await;
+    wait_for_connections(connectee.node(), 1).await;
 
     wait_until(Duration::from_secs(1), || {
         connectee.node().stats().received().0 == 1
@@ -669,7 +646,7 @@ async fn on_disconnect_timeout_aborts_slow_hook() {
     let peer = crate::test_node!("peer");
     peer.node().connect(slow_addr).await.unwrap();
 
-    wait_until(Duration::from_secs(1), || slow.0.num_connected() == 1).await;
+    wait_for_connections(slow.node(), 1).await;
 
     let peer_addr = slow.0.connected_addrs()[0];
 
@@ -743,7 +720,8 @@ async fn on_disconnect_fires_on_both_sides() {
 
     let b_addr = start_listening(&b).await;
     a.node().connect(b_addr).await.unwrap();
-    wait_until(Duration::from_secs(1), || b.node().num_connected() == 1).await;
+
+    wait_for_connections(b.node(), 1).await;
 
     a.node().disconnect(b_addr).await;
 
