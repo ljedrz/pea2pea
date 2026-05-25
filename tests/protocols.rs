@@ -1,0 +1,531 @@
+mod common;
+
+use std::{
+    collections::{HashMap, HashSet},
+    io,
+    net::SocketAddr,
+    sync::Arc,
+    time::{Duration, Instant},
+};
+
+use bytes::{Buf, Bytes, BytesMut};
+use parking_lot::{Mutex, RwLock};
+use pea2pea::{Config, Connection, ConnectionSide, Node, Pea2Pea, protocols::*};
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    net::TcpStream,
+    time::sleep,
+};
+use tokio_util::codec::Decoder;
+use tracing::*;
+
+use crate::common::{WritingExt, named_node, wait_until};
+
+#[derive(PartialEq, Eq, Hash, Debug, Clone, Copy)]
+enum TestMessage {
+    Herp,
+    Derp,
+}
+
+impl From<u8> for TestMessage {
+    fn from(byte: u8) -> Self {
+        match byte {
+            0 => Self::Herp,
+            1 => Self::Derp,
+            _ => panic!("can't deserialize a TestMessage!"),
+        }
+    }
+}
+
+impl Decoder for common::TestCodec<TestMessage> {
+    type Item = TestMessage;
+    type Error = io::Error;
+
+    fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
+        Ok(self.0.decode(src)?.map(|mut bytes| bytes.get_u8().into()))
+    }
+}
+
+#[derive(Clone)]
+struct EchoNode {
+    node: Node,
+    echoed: Arc<Mutex<HashSet<TestMessage>>>,
+}
+
+impl Pea2Pea for EchoNode {
+    fn node(&self) -> &Node {
+        &self.node
+    }
+}
+
+impl Reading for EchoNode {
+    type Message = TestMessage;
+    type Codec = common::TestCodec<Self::Message>;
+
+    fn codec(&self, _addr: SocketAddr, _side: ConnectionSide) -> Self::Codec {
+        Default::default()
+    }
+
+    async fn process_message(&self, source: SocketAddr, message: Self::Message) {
+        info!(parent: self.node().span(), "got a {message:?} from {source}");
+
+        if self.echoed.lock().insert(message) {
+            info!(parent: self.node().span(), "it was new! echoing it");
+
+            self.send_dm(source, Bytes::copy_from_slice(&[message as u8]))
+                .await
+                .unwrap();
+        } else {
+            debug!(parent: self.node().span(), "I've already heard {message:?}! not echoing");
+        }
+    }
+}
+
+impl Writing for EchoNode {
+    type Message = Bytes;
+    type Codec = common::TestCodec<Self::Message>;
+
+    fn codec(&self, _addr: SocketAddr, _side: ConnectionSide) -> Self::Codec {
+        Default::default()
+    }
+}
+
+#[tokio::test]
+async fn messaging_example() {
+    let shouter = crate::test_node!("shout");
+    shouter.enable_reading().await;
+    shouter.enable_writing().await;
+    shouter.node().toggle_listener().await.unwrap().unwrap();
+
+    let picky_echo_config = Config {
+        name: Some("picky_echo".into()),
+        ..Default::default()
+    };
+    let picky_echo = EchoNode {
+        node: Node::new(picky_echo_config),
+        echoed: Default::default(),
+    };
+    picky_echo.enable_reading().await;
+    picky_echo.enable_writing().await;
+
+    let picky_echo_addr = picky_echo.node().toggle_listener().await.unwrap().unwrap();
+
+    shouter.node().connect(picky_echo_addr).await.unwrap();
+
+    wait_until(Duration::from_secs(1), || {
+        picky_echo.node().num_connected() == 1
+    })
+    .await;
+
+    for message in &[TestMessage::Herp, TestMessage::Derp, TestMessage::Herp] {
+        let msg = Bytes::copy_from_slice(&[*message as u8]);
+        shouter.send_dm(picky_echo_addr, msg).await.unwrap();
+    }
+
+    // let echo send one message on its own too, for good measure
+    let shouter_addr = picky_echo.node().connected_addrs()[0];
+
+    picky_echo
+        .send_dm(shouter_addr, [TestMessage::Herp as u8][..].into())
+        .await
+        .unwrap();
+
+    // check if the shouter heard the (non-duplicate) echoes and the last, non-reply one
+    wait_until(Duration::from_secs(1), || {
+        shouter.node().stats().received().0 == 3
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn drop_connection_on_invalid_message() {
+    let reader = crate::test_node!("reader");
+    reader.enable_reading().await;
+    let reader_addr = reader.node().toggle_listener().await.unwrap().unwrap();
+
+    let writer = crate::test_node!("writer");
+    writer.enable_writing().await;
+
+    writer.node().connect(reader_addr).await.unwrap();
+
+    wait_until(Duration::from_secs(1), || {
+        reader.node().num_connected() == 1
+    })
+    .await;
+
+    // an invalid message: a zero-length payload
+    let bad_message = Bytes::from(vec![]);
+
+    writer.send_dm(reader_addr, bad_message).await.unwrap();
+
+    wait_until(Duration::from_secs(1), || {
+        reader.node().num_connected() == 0
+    })
+    .await;
+
+    // make sure that a disconnected peer is properly cleaned up
+    writer.node().disconnect(reader_addr).await;
+    let result = writer.unicast_fast(reader_addr, (&b"are you still there?"[..]).into());
+    assert_eq!(result.unwrap_err().kind(), io::ErrorKind::NotConnected);
+}
+
+#[tokio::test]
+async fn drop_connection_on_zero_read() {
+    let reader = crate::test_node!("reader");
+    reader.enable_reading().await;
+    let reader_addr = reader.node().toggle_listener().await.unwrap().unwrap();
+
+    let peer = crate::test_node!("peer");
+
+    peer.node().connect(reader_addr).await.unwrap();
+
+    wait_until(Duration::from_secs(1), || {
+        reader.node().num_connected() == 1
+    })
+    .await;
+
+    // the peer shuts down, i.e. disconnects
+    peer.node().shut_down().await;
+
+    // the reader should drop its connection too now
+    wait_until(Duration::from_secs(1), || {
+        reader.node().num_connected() == 0
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn no_reading_no_delivery() {
+    let reader = crate::test_node!("defunct reader");
+    let reader_addr = reader.node().toggle_listener().await.unwrap().unwrap();
+
+    let writer = crate::test_node!("writer");
+    writer.enable_writing().await;
+
+    writer.node().connect(reader_addr).await.unwrap();
+
+    wait_until(Duration::from_secs(1), || {
+        reader.node().num_connected() == 1
+    })
+    .await;
+
+    // writer sends a message
+    writer
+        .send_dm(reader_addr, vec![0; 16].into())
+        .await
+        .unwrap();
+
+    // but the reader didn't enable reading, so it won't receive anything
+    wait_until(Duration::from_secs(1), || {
+        reader.node().stats().received() == (0, 0)
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn no_writing_no_delivery() {
+    let reader = crate::test_node!("reader");
+    reader.enable_reading().await;
+    let reader_addr = reader.node().toggle_listener().await.unwrap().unwrap();
+
+    let writer = crate::test_node!("defunct writer");
+
+    writer.node().connect(reader_addr).await.unwrap();
+
+    wait_until(Duration::from_secs(1), || {
+        reader.node().num_connected() == 1
+    })
+    .await;
+
+    // writer tries to send a message
+    assert!(
+        writer
+            .send_dm(reader_addr, vec![0; 16].into())
+            .await
+            .is_err()
+    );
+
+    // the writer didn't enable writing, so the reader won't receive anything
+    wait_until(Duration::from_secs(1), || {
+        reader.node().stats().received() == (0, 0)
+    })
+    .await;
+}
+
+#[derive(Clone)]
+struct SimpleHandshakeNode {
+    node: Node,
+    own_nonce: u64,
+    peer_nonces: Arc<RwLock<HashMap<u64, SocketAddr>>>,
+}
+
+impl SimpleHandshakeNode {
+    fn new() -> Self {
+        Self {
+            node: Node::new(Default::default()),
+            own_nonce: rand::random(),
+            peer_nonces: Default::default(),
+        }
+    }
+
+    fn is_nonce_unique(&self, nonce: u64) -> bool {
+        self.own_nonce != nonce && !self.peer_nonces.read().contains_key(&nonce)
+    }
+}
+
+impl Pea2Pea for SimpleHandshakeNode {
+    fn node(&self) -> &Node {
+        &self.node
+    }
+}
+
+impl Handshake for SimpleHandshakeNode {
+    async fn perform_handshake(&self, mut conn: Connection) -> io::Result<Connection> {
+        let node_conn_side = !conn.side();
+        let stream = self.borrow_stream(&mut conn);
+
+        let peer_nonce = match node_conn_side {
+            ConnectionSide::Initiator => {
+                // send own nonce
+                stream.write_u64(self.own_nonce).await.unwrap();
+
+                // read peer nonce
+                let peer_nonce = stream.read_u64().await.unwrap();
+
+                // check nonce uniqueness
+                if !self.is_nonce_unique(peer_nonce) {
+                    return Err(io::ErrorKind::AlreadyExists.into());
+                }
+
+                peer_nonce
+            }
+            ConnectionSide::Responder => {
+                // read peer nonce
+                let peer_nonce = stream.read_u64().await.unwrap();
+
+                // check nonce uniqueness
+                if !self.is_nonce_unique(peer_nonce) {
+                    return Err(io::ErrorKind::AlreadyExists.into());
+                }
+
+                // send own nonce
+                stream.write_u64(self.own_nonce).await.unwrap();
+
+                peer_nonce
+            }
+        };
+
+        // register the handshake nonce
+        self.peer_nonces.write().insert(peer_nonce, conn.addr());
+
+        Ok(conn)
+    }
+}
+
+crate::impl_messaging!(SimpleHandshakeNode);
+
+#[tokio::test]
+async fn handshake_example() {
+    let initiator = SimpleHandshakeNode::new();
+    let responder = SimpleHandshakeNode::new();
+
+    // Reading and Writing are not required for the handshake; they are enabled only so that their relationship
+    // with the handshake protocol can be tested too; they should kick in only after the handshake concludes
+    for node in &[&initiator, &responder] {
+        node.enable_reading().await;
+        node.enable_writing().await;
+        node.enable_handshake().await;
+        node.node().toggle_listener().await.unwrap().unwrap();
+    }
+
+    initiator
+        .node()
+        .connect(responder.node().listening_addr().await.unwrap())
+        .await
+        .unwrap();
+
+    wait_until(Duration::from_secs(1), || {
+        initiator.peer_nonces.read().keys().next() == Some(&responder.own_nonce)
+            && responder.peer_nonces.read().keys().next() == Some(&initiator.own_nonce)
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn no_handshake_no_messaging() {
+    let initiator = SimpleHandshakeNode::new();
+    let responder = SimpleHandshakeNode::new();
+
+    initiator.enable_writing().await;
+    responder.enable_reading().await;
+    let responder_addr = responder.node().toggle_listener().await.unwrap().unwrap();
+
+    // the initiator doesn't enable handshakes
+    responder.enable_handshake().await;
+
+    initiator.node().connect(responder_addr).await.unwrap();
+
+    let message = b"this won't get through, as there was no handshake"
+        .to_vec()
+        .into();
+
+    initiator.send_dm(responder_addr, message).await.unwrap();
+
+    assert_eq!(responder.node().stats().received(), (0, 0));
+}
+
+// a wrapper struct with a badly implemented Handshake protocol
+#[derive(Clone)]
+struct BadHandshakeNode(Node);
+
+impl Pea2Pea for BadHandshakeNode {
+    fn node(&self) -> &Node {
+        &self.0
+    }
+}
+
+// a badly implemented handshake protocol; 1B is expected by both the initiator and the responder (no distinction
+// is even made), but it is never provided by either of them
+impl Handshake for BadHandshakeNode {
+    const TIMEOUT_MS: u64 = 100;
+
+    async fn perform_handshake(&self, mut conn: Connection) -> io::Result<Connection> {
+        let _ = self
+            .borrow_stream(&mut conn)
+            .read_exact(&mut [0u8; 1])
+            .await;
+
+        unreachable!();
+    }
+}
+
+#[tokio::test]
+async fn hung_handshake_fails() {
+    let connector = BadHandshakeNode(Node::new(Default::default()));
+    let connectee = BadHandshakeNode(Node::new(Default::default()));
+
+    // note: the connector does NOT enable handshakes
+    connectee.enable_handshake().await;
+    let connectee_addr = connectee.node().toggle_listener().await.unwrap().unwrap();
+
+    // the connection attempt should register just fine for the connector, as it doesn't expect a handshake
+    assert!(connector.node().connect(connectee_addr).await.is_ok());
+
+    // the TCP connection itself has been established, and with no reading, the connector doesn't know
+    // that the connectee has already disconnected from it by now
+    assert!(connector.node().num_connected() == 1);
+    assert!(connector.node().num_connecting() == 0);
+
+    // the connectee should have rejected the connection attempt on its side
+    assert!(connectee.node().num_connected() == 0);
+    assert!(connectee.node().num_connecting() == 0);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn timeout_when_spammed_with_connections() {
+    const NUM_ATTEMPTS: u16 = 100;
+
+    let config = Config {
+        max_connections: NUM_ATTEMPTS,
+        ..Default::default()
+    };
+    let victim = BadHandshakeNode(Node::new(config));
+    victim.enable_handshake().await;
+    let victim_addr = victim.node().toggle_listener().await.unwrap().unwrap();
+
+    let mut sockets = Vec::with_capacity(NUM_ATTEMPTS as usize);
+
+    for _ in 0..NUM_ATTEMPTS {
+        if let Ok(socket) = TcpStream::connect(victim_addr).await {
+            sockets.push(socket);
+        }
+    }
+
+    wait_until(Duration::from_secs(3), || {
+        victim.node().num_connecting() == NUM_ATTEMPTS as usize
+    })
+    .await;
+
+    wait_until(Duration::from_secs(1), || {
+        victim.node().num_connecting() + victim.node().num_connected() == 0
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn on_connect_message() {
+    #[derive(Clone)]
+    struct HelloNode(Node);
+
+    impl Pea2Pea for HelloNode {
+        fn node(&self) -> &Node {
+            &self.0
+        }
+    }
+
+    impl_messaging!(HelloNode);
+
+    impl OnConnect for HelloNode {
+        async fn on_connect(&self, addr: SocketAddr) {
+            self.send_dm(addr, "hello!".into()).await.unwrap();
+        }
+    }
+
+    let connector = HelloNode(named_node("connector"));
+    connector.enable_writing().await;
+    connector.enable_on_connect().await;
+
+    let connectee = HelloNode(named_node("connectee"));
+    connectee.enable_reading().await;
+    let connectee_addr = connectee.node().toggle_listener().await.unwrap().unwrap();
+
+    connector.node().connect(connectee_addr).await.unwrap();
+
+    wait_until(Duration::from_secs(1), || {
+        connectee.node().num_connected() == 1
+    })
+    .await;
+
+    wait_until(Duration::from_secs(1), || {
+        connectee.node().stats().received().0 == 1
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn connect_doesnt_wait_for_on_connect_hook() {
+    #[derive(Clone)]
+    struct SlowNode(Node);
+
+    impl Pea2Pea for SlowNode {
+        fn node(&self) -> &Node {
+            &self.0
+        }
+    }
+
+    impl OnConnect for SlowNode {
+        async fn on_connect(&self, _addr: SocketAddr) {
+            // simulate a slow initialization step (e.g., DB lookup, auth)
+            sleep(Duration::from_millis(500)).await;
+        }
+    }
+
+    let initiator = SlowNode(Node::new(Default::default()));
+    initiator.enable_on_connect().await;
+
+    let target = crate::test_node!("target");
+    let target_addr = target.node().toggle_listener().await.unwrap().unwrap();
+
+    let start = Instant::now();
+
+    // this should not return until the 500ms sleep in on_connect finishes
+    initiator.node().connect(target_addr).await.unwrap();
+
+    let elapsed = start.elapsed();
+
+    assert!(
+        elapsed < Duration::from_millis(500),
+        "node.connect() returned too late!"
+    );
+    assert_eq!(initiator.node().num_connected(), 1);
+}

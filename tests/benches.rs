@@ -23,8 +23,6 @@ use crate::common::WritingExt;
 
 impl_noop_disconnect_and_handshake!(common::TestNode);
 
-impl_barrier_on_connect!(common::TestNode);
-
 const NUM_MESSAGES: usize = 100_000;
 const MSG_SIZE: usize = 32 * 1024;
 

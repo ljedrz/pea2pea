@@ -1,5 +1,4 @@
 use bytes::Bytes;
-use deadline::deadline;
 use heapster::Heapster;
 
 mod common;
@@ -10,7 +9,7 @@ use pea2pea::{
     protocols::{Handshake, OnDisconnect, Reading, Writing},
 };
 
-use crate::common::WritingExt;
+use crate::common::{WritingExt, wait_until};
 
 impl_noop_disconnect_and_handshake!(common::TestNode);
 
@@ -63,13 +62,10 @@ async fn check_node_cleanups() {
         // this connection direction allows the collection of `KnownPeers` to remain empty
         temp_node.node().connect(persistent_addr).await.unwrap();
 
-        let persistent_node_clone = persistent_node.clone();
-        let temp_node_clone = temp_node.clone();
-        deadline!(Duration::from_secs(1), move || persistent_node_clone
-            .node()
-            .num_connected()
-            == 1
-            && temp_node_clone.node().num_connected() == 1);
+        wait_until(Duration::from_secs(1), || {
+            persistent_node.node().num_connected() == 1 && temp_node.node().num_connected() == 1
+        })
+        .await;
         let temporary_addr = persistent_node.node().connected_addrs()[0];
 
         persistent_node
@@ -84,11 +80,10 @@ async fn check_node_cleanups() {
 
         temp_node.node().shut_down().await;
 
-        let persistent_node_clone = persistent_node.clone();
-        deadline!(Duration::from_secs(1), move || persistent_node_clone
-            .node()
-            .num_connected()
-            == 0);
+        wait_until(Duration::from_secs(1), || {
+            persistent_node.node().num_connected() == 0
+        })
+        .await;
 
         // drop the temporary node to fully relinquish its memory
         drop(temp_node);

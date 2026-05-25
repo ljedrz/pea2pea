@@ -5,16 +5,13 @@ use std::{
     marker::PhantomData,
     net::SocketAddr,
     sync::{Arc, OnceLock},
+    time::Duration,
 };
 
 use bytes::{Bytes, BytesMut};
-use pea2pea::{
-    Node, Pea2Pea,
-    protocols::{Reading, Writing},
-};
+use pea2pea::{Config, Node, Pea2Pea, Topology, connect_nodes, protocols::*};
 use tokio::sync::Barrier;
 use tokio_util::codec::{Decoder, Encoder, LengthDelimitedCodec};
-use tracing::*;
 
 #[derive(Clone)]
 pub struct TestNode {
@@ -113,9 +110,7 @@ macro_rules! impl_messaging {
                 Default::default()
             }
 
-            async fn process_message(&self, source: SocketAddr, _message: Self::Message) {
-                info!(parent: self.node().span(), "received a message from {source}");
-            }
+            async fn process_message(&self, _source: SocketAddr, _message: Self::Message) {}
         }
 
         impl Writing for $target {
@@ -149,17 +144,12 @@ macro_rules! impl_noop_disconnect_and_handshake {
     };
 }
 
-#[macro_export]
-macro_rules! impl_barrier_on_connect {
-    ($target: ty) => {
-        impl OnConnect for $target {
-            async fn on_connect(&self, _addr: SocketAddr) {
-                if let Some(barrier) = self.barrier.get() {
-                    barrier.wait().await;
-                }
-            }
+impl OnConnect for TestNode {
+    async fn on_connect(&self, _addr: SocketAddr) {
+        if let Some(barrier) = self.barrier.get() {
+            barrier.wait().await;
         }
-    };
+    }
 }
 
 pub fn display_bytes(bytes: f64) -> String {
@@ -176,4 +166,52 @@ pub fn display_bytes(bytes: f64) -> String {
     } else {
         format!("{bytes:.2} B")
     }
+}
+
+pub async fn wait_until<F>(within: Duration, mut cond: F)
+where
+    F: FnMut() -> bool,
+{
+    let res = tokio::time::timeout(within, async {
+        let mut interval = tokio::time::interval(Duration::from_millis(10));
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        loop {
+            interval.tick().await;
+            if cond() {
+                return;
+            }
+        }
+    })
+    .await;
+    assert!(res.is_ok(), "condition not satisfied within {within:?}");
+}
+
+pub fn named_node(name: &str) -> Node {
+    Node::new(Config {
+        name: Some(name.into()),
+        ..Default::default()
+    })
+}
+
+pub async fn start_listening<T: Pea2Pea>(node: &T) -> SocketAddr {
+    node.node().toggle_listener().await.unwrap().unwrap()
+}
+
+pub async fn wait_for_connections<T: Pea2Pea>(node: &T, n: usize) {
+    wait_until(Duration::from_secs(1), || node.node().num_connected() == n).await;
+}
+
+pub async fn connect_and_wait(nodes: &[TestNode], topology: Topology) -> io::Result<()> {
+    // each edge triggers OnConnect on both peers, +1 for our wait below
+    let expected_fires = topology.num_expected_connections(nodes.len()) + 1;
+    let barrier = Arc::new(Barrier::new(expected_fires));
+    for node in nodes {
+        node.barrier
+            .set(barrier.clone())
+            .expect("barrier already configured");
+        node.enable_on_connect().await;
+    }
+    connect_nodes(nodes, topology).await?;
+    barrier.wait().await;
+    Ok(())
 }

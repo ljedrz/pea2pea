@@ -1,7 +1,5 @@
-use deadline::deadline;
-use parking_lot::Mutex;
-
 mod common;
+
 use std::{
     collections::HashSet,
     net::SocketAddr,
@@ -9,10 +7,13 @@ use std::{
     time::Duration,
 };
 
+use parking_lot::Mutex;
 use pea2pea::{
     Pea2Pea,
     protocols::{OnDisconnect, Reading},
 };
+
+use crate::common::wait_until;
 
 static DISCONNECT_TRIGGERED: LazyLock<Arc<Mutex<HashSet<String>>>> =
     LazyLock::new(Default::default);
@@ -37,11 +38,10 @@ async fn connector_side_disconnect() {
 
     connector.node().connect(connectee_addr).await.unwrap();
 
-    let connectee_clone = connectee.clone();
-    deadline!(Duration::from_secs(1), move || connectee_clone
-        .node()
-        .num_connected()
-        == 1);
+    wait_until(Duration::from_secs(1), || {
+        connectee.node().num_connected() == 1
+    })
+    .await;
 
     let disconnects = DISCONNECT_TRIGGERED.lock().clone();
     assert!(
@@ -51,11 +51,12 @@ async fn connector_side_disconnect() {
 
     connector.node().disconnect(connectee_addr).await;
 
-    deadline!(Duration::from_secs(1), move || {
+    wait_until(Duration::from_secs(1), || {
         let disconnects = DISCONNECT_TRIGGERED.lock().clone();
         disconnects.contains(connector.node().name())
             && disconnects.contains(connectee.node().name())
-    });
+    })
+    .await;
 }
 
 #[tokio::test]
@@ -70,11 +71,10 @@ async fn connectee_side_disconnect() {
 
     connector.node().connect(connectee_addr).await.unwrap();
 
-    let connectee_clone = connectee.clone();
-    deadline!(Duration::from_secs(1), move || connectee_clone
-        .node()
-        .num_connected()
-        == 1);
+    wait_until(Duration::from_secs(1), || {
+        connectee.node().num_connected() == 1
+    })
+    .await;
 
     let disconnects = DISCONNECT_TRIGGERED.lock().clone();
     assert!(
@@ -85,9 +85,10 @@ async fn connectee_side_disconnect() {
     let connector_addr = connectee.node().connected_addrs()[0];
     connectee.node().disconnect(connector_addr).await;
 
-    deadline!(Duration::from_secs(1), move || {
+    wait_until(Duration::from_secs(1), || {
         let disconnects = DISCONNECT_TRIGGERED.lock().clone();
         disconnects.contains(connector.node().name())
             && disconnects.contains(connectee.node().name())
-    });
+    })
+    .await;
 }
