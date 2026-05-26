@@ -490,9 +490,21 @@ fn print_metrics(start: Instant, alive: usize, cur: &Snapshot, prev: &Snapshot) 
 // Test entry point
 // =========================================================================
 
-#[tokio::test(flavor = "multi_thread")]
+#[test]
 #[ignore = "long-running stress test"]
-async fn infinite_chaos() {
+fn infinite_chaos() {
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .global_queue_interval(3)
+        .event_interval(31)
+        // .disable_lifo_slot()
+        .build()
+        .unwrap();
+
+    rt.block_on(infinite_chaos_inner());
+}
+
+async fn infinite_chaos_inner() {
     // Determine and log the master seed. CHAOS_SEED overrides for reruns.
     let master_seed: u64 = std::env::var("CHAOS_SEED")
         .ok()
