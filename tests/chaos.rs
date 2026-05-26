@@ -102,6 +102,10 @@ struct Stats {
     on_disconnect_fired: AtomicUsize,
     err_connect: AtomicUsize,
     err_send: AtomicUsize,
+    in_flight_connects: AtomicUsize,
+    in_flight_disconnects: AtomicUsize,
+    in_flight_spawns: AtomicUsize,
+    in_flight_shutdowns: AtomicUsize,
 }
 
 #[derive(Default, Clone, Copy)]
@@ -119,6 +123,10 @@ struct Snapshot {
     on_disconnect_fired: usize,
     err_connect: usize,
     err_send: usize,
+    in_flight_connects: usize,
+    in_flight_disconnects: usize,
+    in_flight_spawns: usize,
+    in_flight_shutdowns: usize,
 }
 
 impl Snapshot {
@@ -137,6 +145,10 @@ impl Snapshot {
             on_disconnect_fired: s.on_disconnect_fired.load(Ordering::Relaxed),
             err_connect: s.err_connect.load(Ordering::Relaxed),
             err_send: s.err_send.load(Ordering::Relaxed),
+            in_flight_connects: s.in_flight_connects.load(Ordering::Acquire),
+            in_flight_disconnects: s.in_flight_disconnects.load(Ordering::Acquire),
+            in_flight_spawns: s.in_flight_spawns.load(Ordering::Acquire),
+            in_flight_shutdowns: s.in_flight_shutdowns.load(Ordering::Acquire),
         }
     }
 }
@@ -178,7 +190,8 @@ impl StressNode {
         self.enable_writing().await;
         self.enable_on_connect().await;
         self.enable_on_disconnect().await;
-        self.node.toggle_listener().await.map(|_| ())
+        self.node.toggle_listener().await?;
+        Ok(())
     }
 }
 
@@ -303,6 +316,7 @@ async fn act_spawn(pool: &Pool, stats: &Arc<Stats>, token: &CancellationToken) {
         return;
     }
 
+    stats.in_flight_spawns.fetch_add(1, Ordering::Release);
     let node = StressNode::new(stats.clone());
 
     tokio::select! {
@@ -324,11 +338,14 @@ async fn act_spawn(pool: &Pool, stats: &Arc<Stats>, token: &CancellationToken) {
             }
         }
     }
+    stats.in_flight_spawns.fetch_sub(1, Ordering::Release);
 }
 
 async fn act_shutdown(pool: &Pool, stats: &Arc<Stats>, rng: &mut SmallRng) {
     if let Some(node) = pop_random(pool, rng) {
+        stats.in_flight_shutdowns.fetch_add(1, Ordering::Release);
         node.node().shut_down().await;
+        stats.in_flight_shutdowns.fetch_sub(1, Ordering::Release);
         stats.nodes_shutdown.fetch_add(1, Ordering::Relaxed);
         // dropping `node` here releases the local Arc clone; if no worker is
         // mid-action on it, the InnerNode Arc count goes to zero shortly
@@ -352,6 +369,7 @@ async fn act_connect(
         return;
     }
 
+    stats.in_flight_connects.fetch_add(1, Ordering::Release);
     tokio::select! {
         biased;
         _ = token.cancelled() => {},
@@ -367,6 +385,7 @@ async fn act_connect(
             }
         }
     }
+    stats.in_flight_connects.fetch_sub(1, Ordering::Release);
 }
 
 async fn act_disconnect(pool: &Pool, stats: &Arc<Stats>, rng: &mut SmallRng) {
@@ -376,9 +395,11 @@ async fn act_disconnect(pool: &Pool, stats: &Arc<Stats>, rng: &mut SmallRng) {
         return;
     }
     let target = peers[rng.random_range(0..peers.len())];
+    stats.in_flight_disconnects.fetch_add(1, Ordering::Release);
     if a.node().disconnect(target).await {
         stats.disconnects.fetch_add(1, Ordering::Relaxed);
     }
+    stats.in_flight_disconnects.fetch_sub(1, Ordering::Release);
 }
 
 async fn act_broadcast(pool: &Pool, stats: &Arc<Stats>, rng: &mut SmallRng) {
@@ -460,7 +481,8 @@ fn print_metrics(start: Instant, alive: usize, cur: &Snapshot, prev: &Snapshot) 
          nodes spawned/shut={ns}/{nd} | \
          conn att/ok/err={ca}/{cs}/{ce} | disc={dc} | \
          bcast={bc} ucast att/ok={ua}/{us} send-err={se} | \
-         recv={rv} | on_c/on_d={oc}/{od}",
+         recv={rv} | on_c/on_d={oc}/{od} | \
+         ifc={ifc} | ifdc={ifdc} | ifsp={ifsp} | ifsd={ifsd}",
         max = MAX_NODES,
         ns = cur.nodes_spawned,
         nd = cur.nodes_shutdown,
@@ -475,6 +497,10 @@ fn print_metrics(start: Instant, alive: usize, cur: &Snapshot, prev: &Snapshot) 
         rv = cur.msgs_received,
         oc = cur.on_connect_fired,
         od = cur.on_disconnect_fired,
+        ifc = cur.in_flight_connects,
+        ifdc = cur.in_flight_disconnects,
+        ifsp = cur.in_flight_spawns,
+        ifsd = cur.in_flight_shutdowns,
     );
     println!(
         "           Δ/s: conn={:.1} disc={:.1} bcast={:.1} ucast={:.1} recv={:.1}",
