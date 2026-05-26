@@ -203,10 +203,7 @@ async fn no_reading_no_delivery() {
         .unwrap();
 
     // but the reader didn't enable reading, so it won't receive anything
-    wait_until(Duration::from_secs(1), || {
-        reader.node().stats().received() == (0, 0)
-    })
-    .await;
+    assert_eq!(reader.node().stats().received(), (0, 0));
 }
 
 #[tokio::test]
@@ -565,7 +562,8 @@ async fn connect_doesnt_wait_for_on_connect_hook() {
 
     let start = Instant::now();
 
-    // this should not return until the 500ms sleep in on_connect finishes
+    // this should return as soon as the connection is ready,
+    // and not wait for OnConnect logic to conclude
     initiator.node().connect(target_addr).await.unwrap();
 
     let elapsed = start.elapsed();
