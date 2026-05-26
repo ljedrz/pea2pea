@@ -14,6 +14,7 @@ use libp2p::{SwarmBuilder, swarm::SwarmEvent};
 use parking_lot::{Mutex, RwLock};
 use pea2pea::{
     Connection, ConnectionSide, Node, Pea2Pea,
+    connections::DisconnectOrigin,
     protocols::{Handshake, OnDisconnect, Reading, Writing},
 };
 use prost::Message;
@@ -467,7 +468,7 @@ impl Writing for Libp2pNode {
 }
 
 impl OnDisconnect for Libp2pNode {
-    async fn on_disconnect(&self, addr: SocketAddr) {
+    async fn on_disconnect(&self, addr: SocketAddr, _: DisconnectOrigin) {
         self.peer_states.write().remove(&addr);
     }
 }

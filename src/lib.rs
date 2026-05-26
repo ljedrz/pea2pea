@@ -12,7 +12,7 @@ pub mod connections;
 pub mod protocols;
 
 pub use config::Config;
-pub use connections::{Connection, ConnectionInfo, ConnectionSide};
+pub use connections::{Connection, ConnectionInfo, ConnectionSide, DisconnectOrigin};
 pub use node::Node;
 pub use stats::Stats;
 pub use topology::{Topology, connect_nodes};

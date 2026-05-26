@@ -13,6 +13,7 @@ use crate::{
 };
 use crate::{
     Pea2Pea,
+    connections::DisconnectOrigin,
     node::NodeTask,
     protocols::{DisconnectOnDrop, ProtocolHandler},
 };
@@ -101,8 +102,11 @@ where
                     let self_clone2 = self_clone.clone();
                     let handle = tokio::spawn(async move {
                         // disconnect automatically if the OnConnect impl panics
-                        let mut conn_cleanup =
-                            DisconnectOnDrop::new(self_clone2.node().clone(), addr);
+                        let mut conn_cleanup = DisconnectOnDrop::new(
+                            self_clone2.node().clone(),
+                            addr,
+                            DisconnectOrigin::OnConnectAbort,
+                        );
                         // perform the specified initial actions
                         self_clone2.on_connect(addr).await;
                         // if there was no panic, do not disconnect - this "defuses" the auto-cleanup

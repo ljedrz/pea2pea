@@ -28,7 +28,7 @@ use tracing::*;
 use crate::{Config, Node, protocols::Handshake};
 use crate::{
     Connection, ConnectionSide, Pea2Pea,
-    connections::create_connection_span,
+    connections::{DisconnectOrigin, create_connection_span},
     node::NodeTask,
     protocols::{
         DisconnectOnDrop, Protocol, ProtocolHandler, ReturnableConnection, log_setup_join,
@@ -384,7 +384,8 @@ impl<W: Writing> WritingInternal for W {
             let _sender_cleanup = sender_cleanup;
 
             // disconnect automatically regardless of how this task concludes
-            let _conn_cleanup = DisconnectOnDrop::new(node.clone(), addr);
+            let _conn_cleanup =
+                DisconnectOnDrop::new(node.clone(), addr, DisconnectOrigin::Writing);
 
             let mut batch: Vec<WrappedMessage<Self::Message>> = Vec::new();
             // recv_many blocks for the first message, then takes whatever else is

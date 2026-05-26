@@ -139,7 +139,12 @@ macro_rules! impl_noop_disconnect_and_handshake {
         }
 
         impl OnDisconnect for $target {
-            async fn on_disconnect(&self, _addr: SocketAddr) {}
+            async fn on_disconnect(
+                &self,
+                _addr: SocketAddr,
+                _origin: pea2pea::connections::DisconnectOrigin,
+            ) {
+            }
         }
     };
 }

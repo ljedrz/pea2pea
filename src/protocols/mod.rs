@@ -14,7 +14,7 @@ use std::{
 use tokio::sync::{mpsc, oneshot};
 
 use crate::{
-    connections::Connection,
+    connections::{Connection, DisconnectOrigin},
     node::Node,
     protocols::{on_connect::OnConnectBundle, on_disconnect::OnDisconnectBundle},
 };
@@ -37,7 +37,8 @@ pub(crate) struct Protocols {
     pub(crate) reading: OnceLock<ProtocolHandler<Connection, io::Result<Connection>>>,
     pub(crate) writing: OnceLock<writing::WritingHandler>,
     pub(crate) on_connect: OnceLock<ProtocolHandler<SocketAddr, OnConnectBundle>>,
-    pub(crate) on_disconnect: OnceLock<ProtocolHandler<SocketAddr, OnDisconnectBundle>>,
+    pub(crate) on_disconnect:
+        OnceLock<ProtocolHandler<(SocketAddr, DisconnectOrigin), OnDisconnectBundle>>,
 }
 
 /// An object sent to a protocol handler task; the task assumes control of a protocol-relevant item `T`,
@@ -65,13 +66,15 @@ impl<T, U> Protocol<T, U> for ProtocolHandler<T, U> {
 pub(crate) struct DisconnectOnDrop {
     pub(crate) node: Option<Node>,
     pub(crate) addr: SocketAddr,
+    pub(crate) origin: DisconnectOrigin,
 }
 
 impl DisconnectOnDrop {
-    pub(crate) fn new(node: Node, addr: SocketAddr) -> Self {
+    pub(crate) fn new(node: Node, addr: SocketAddr, origin: DisconnectOrigin) -> Self {
         Self {
             node: Some(node),
             addr,
+            origin,
         }
     }
 }
@@ -79,7 +82,7 @@ impl DisconnectOnDrop {
 impl Drop for DisconnectOnDrop {
     fn drop(&mut self) {
         if let Some(node) = self.node.take() {
-            let addr = self.addr;
+            let (addr, origin) = (self.addr, self.origin);
             let needs_recovery = node
                 .connections
                 .active
@@ -87,7 +90,7 @@ impl Drop for DisconnectOnDrop {
                 .get(&addr)
                 .is_some_and(|c| !c.disconnecting.load(Ordering::Acquire));
             if needs_recovery {
-                tokio::spawn(async move { node.disconnect(addr).await });
+                tokio::spawn(async move { node.disconnect_w_origin(addr, origin).await });
             }
         }
     }

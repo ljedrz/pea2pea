@@ -13,7 +13,9 @@ use std::{
 
 use bytes::{Buf, Bytes, BytesMut};
 use parking_lot::{Mutex, RwLock};
-use pea2pea::{Config, Connection, ConnectionSide, Node, Pea2Pea, protocols::*};
+use pea2pea::{
+    Config, Connection, ConnectionSide, Node, Pea2Pea, connections::DisconnectOrigin, protocols::*,
+};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpStream,
@@ -673,7 +675,7 @@ async fn on_disconnect_timeout_aborts_slow_hook() {
     }
     impl OnDisconnect for SlowDisconnectNode {
         const TIMEOUT_MS: u64 = 200;
-        async fn on_disconnect(&self, _: SocketAddr) {
+        async fn on_disconnect(&self, _: SocketAddr, _: DisconnectOrigin) {
             sleep(Duration::from_secs(10)).await;
         }
     }
@@ -727,7 +729,7 @@ async fn on_disconnect_fires_on_both_sides() {
     }
 
     impl OnDisconnect for TrackingNode {
-        async fn on_disconnect(&self, _: SocketAddr) {
+        async fn on_disconnect(&self, _: SocketAddr, _: DisconnectOrigin) {
             self.fired.store(true, Ordering::Release);
         }
     }

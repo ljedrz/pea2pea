@@ -26,7 +26,7 @@ use crate::protocols::{Handshake, OnDisconnect, Writing};
 use crate::{
     Config, Stats,
     connections::{
-        Connection, ConnectionGuard, ConnectionInfo, ConnectionSide, Connections,
+        Connection, ConnectionGuard, ConnectionInfo, ConnectionSide, Connections, DisconnectOrigin,
         create_connection_span,
     },
     protocols::{Protocol, Protocols},
@@ -492,6 +492,14 @@ impl Node {
     /// to send any final messages. Messages queued via [`Writing`] but not awaited to delivery
     /// confirmation may be dropped once this function returns.
     pub async fn disconnect(&self, addr: SocketAddr) -> bool {
+        self.disconnect_w_origin(addr, DisconnectOrigin::User).await
+    }
+
+    pub(crate) async fn disconnect_w_origin(
+        &self,
+        addr: SocketAddr,
+        origin: DisconnectOrigin,
+    ) -> bool {
         // claim the disconnect to avoid duplicate executions, or return early if already claimed
         if let Some(conn) = self.connections.active.read().get(&addr) {
             if conn.disconnecting.swap(true, AcqRel) {
@@ -504,13 +512,13 @@ impl Node {
         };
 
         let conn_span = create_connection_span(addr, self.span());
-        debug!(parent: &conn_span, "disconnecting...");
+        debug!(parent: &conn_span, "disconnecting (origin: {origin:?})...");
 
         // if the OnDisconnect protocol is enabled, trigger it
         if let Some(handler) = self.protocols.on_disconnect.get() {
             trace!(parent: &conn_span, "executing OnDisconnect logic...");
             let (sender, receiver) = oneshot::channel();
-            handler.trigger((addr, sender)).await;
+            handler.trigger(((addr, origin), sender)).await;
             if let Ok((handle, waiter)) = receiver.await {
                 // register the associated task with the connection, in case
                 // it gets terminated before its completion
@@ -677,7 +685,10 @@ impl Node {
             .into_iter()
             .map(|addr| {
                 let node = self.clone();
-                async move { node.disconnect(addr).await }
+                async move {
+                    node.disconnect_w_origin(addr, DisconnectOrigin::Shutdown)
+                        .await
+                }
             })
             .collect();
         while disconnects.next().await.is_some() {}

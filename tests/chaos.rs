@@ -48,6 +48,7 @@ use bytes::{Bytes, BytesMut};
 use parking_lot::Mutex;
 use pea2pea::{
     Config, Connection, ConnectionSide, Node, Pea2Pea,
+    connections::DisconnectOrigin,
     protocols::{Handshake, OnConnect, OnDisconnect, Reading, Writing},
 };
 use rand::{RngExt, SeedableRng, rngs::SmallRng};
@@ -269,7 +270,7 @@ impl OnConnect for StressNode {
 }
 
 impl OnDisconnect for StressNode {
-    async fn on_disconnect(&self, _addr: SocketAddr) {
+    async fn on_disconnect(&self, _addr: SocketAddr, _origin: DisconnectOrigin) {
         self.stats
             .on_disconnect_fired
             .fetch_add(1, Ordering::Relaxed);

@@ -13,7 +13,10 @@ use crate::{
     protocols::{OnConnect, Reading, Writing},
 };
 use crate::{
-    Pea2Pea, connections::create_connection_span, node::NodeTask, protocols::ProtocolHandler,
+    Pea2Pea,
+    connections::{DisconnectOrigin, create_connection_span},
+    node::NodeTask,
+    protocols::ProtocolHandler,
 };
 
 // The value returned to the node is a bit complex, so use an alias to break it down.
@@ -61,9 +64,10 @@ where
             );
 
             let (from_node_sender, mut from_node_receiver) =
-                mpsc::channel::<(SocketAddr, oneshot::Sender<OnDisconnectBundle>)>(
-                    self.node().config().max_connections as usize,
-                );
+                mpsc::channel::<(
+                    (SocketAddr, DisconnectOrigin),
+                    oneshot::Sender<OnDisconnectBundle>,
+                )>(self.node().config().max_connections as usize);
 
             // use a channel to know when the disconnect task is ready
             let (tx, rx) = oneshot::channel::<()>();
@@ -78,7 +82,7 @@ where
                     return;
                 }
 
-                while let Some((addr, notifier)) = from_node_receiver.recv().await {
+                while let Some(((addr, origin), notifier)) = from_node_receiver.recv().await {
                     let self_clone2 = self_clone.clone();
 
                     // create a channel for waiting on completion
@@ -88,7 +92,7 @@ where
                         // perform the specified extra actions
                         if timeout(
                             Duration::from_millis(Self::TIMEOUT_MS),
-                            self_clone2.on_disconnect(addr),
+                            self_clone2.on_disconnect(addr, origin),
                         )
                         .await
                         .is_err()
@@ -122,5 +126,9 @@ where
     /// Any extra actions to be executed during a disconnect; in order to still be able to
     /// communicate with the peer in the usual manner (i.e. via [`Writing`]), only its [`SocketAddr`]
     /// (as opposed to the related [`Connection`] object) is provided as an argument.
-    fn on_disconnect(&self, addr: SocketAddr) -> impl Future<Output = ()> + Send;
+    fn on_disconnect(
+        &self,
+        addr: SocketAddr,
+        origin: DisconnectOrigin,
+    ) -> impl Future<Output = ()> + Send;
 }

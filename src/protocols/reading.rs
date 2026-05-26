@@ -21,6 +21,7 @@ use tracing::*;
 use crate::{Config, protocols::Handshake};
 use crate::{
     Connection, ConnectionSide, Node, Pea2Pea, Stats,
+    connections::DisconnectOrigin,
     node::NodeTask,
     protocols::{DisconnectOnDrop, ProtocolHandler, ReturnableConnection, log_setup_join},
 };
@@ -208,7 +209,8 @@ impl<R: Reading> ReadingInternal for R {
             }
 
             // disconnect automatically regardless of how this task concludes
-            let _conn_cleanup = DisconnectOnDrop::new(node.clone(), addr);
+            let _conn_cleanup =
+                DisconnectOnDrop::new(node.clone(), addr, DisconnectOrigin::Reading);
 
             while let Some(msg) = inbound_message_receiver.recv().await {
                 self_clone.process_message(addr, msg).await;
@@ -235,7 +237,8 @@ impl<R: Reading> ReadingInternal for R {
             let _ = rx_conn_ready.await;
 
             // disconnect automatically regardless of how this task concludes
-            let _conn_cleanup = DisconnectOnDrop::new(node.clone(), addr);
+            let _conn_cleanup =
+                DisconnectOnDrop::new(node.clone(), addr, DisconnectOrigin::Reading);
 
             // dropped message log suppression helpers
             let mut dropped_count: usize = 0;

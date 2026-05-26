@@ -6,6 +6,7 @@ use std::{io, net::SocketAddr, time::Duration};
 
 use pea2pea::{
     Config, Connection, ConnectionSide, Node, Pea2Pea,
+    connections::DisconnectOrigin,
     protocols::{Handshake, OnDisconnect, Reading, Writing},
 };
 use tokio::time::sleep;
@@ -81,7 +82,7 @@ impl Writing for NakedNode {
 }
 
 impl OnDisconnect for NakedNode {
-    async fn on_disconnect(&self, _addr: SocketAddr) {
+    async fn on_disconnect(&self, _addr: SocketAddr, _origin: DisconnectOrigin) {
         if self.node().name() == "Drebin" {
             info!(parent: self.node().span(), "All right. Who else is almost dead?");
         } else {
