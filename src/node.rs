@@ -10,12 +10,13 @@ use std::{
     time::Duration,
 };
 
+use futures_util::stream::{FuturesUnordered, StreamExt};
 use parking_lot::Mutex;
 use tokio::{
     io::split,
     net::{TcpListener, TcpSocket, TcpStream},
     sync::{RwLock, Semaphore, oneshot},
-    task::{JoinHandle, JoinSet},
+    task::JoinHandle,
     time::{sleep, timeout},
 };
 use tracing::*;
@@ -665,14 +666,15 @@ impl Node {
         }
 
         // disconnect from all the peers
-        let mut disconnect_tasks = JoinSet::new();
-        for addr in self.connected_addrs() {
-            let node = self.clone();
-            disconnect_tasks.spawn(async move {
-                node.disconnect(addr).await;
-            });
-        }
-        while disconnect_tasks.join_next().await.is_some() {}
+        let mut disconnects: FuturesUnordered<_> = self
+            .connected_addrs()
+            .into_iter()
+            .map(|addr| {
+                let node = self.clone();
+                async move { node.disconnect(addr).await }
+            })
+            .collect();
+        while disconnects.next().await.is_some() {}
 
         // wait for any concurrent disconnects to finish their cleanup; a concurrent
         // disconnect (e.g. a user-initiated may have won the `disconnecting` swap
