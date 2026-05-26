@@ -3,6 +3,7 @@
 ### Changed
 
 - connection spans are no longer created when not needed while sending messages
+- disconnect operations are now slightly cheaper (fewer allocations involved)
 
 # 0.55.1
 

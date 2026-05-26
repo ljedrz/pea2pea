@@ -5,7 +5,11 @@
 //! A flowchart detailing how the protocols interact with a connection during its lifetime can be seen
 //! [here](https://github.com/ljedrz/pea2pea/tree/master/assets/connection_lifetime.png).
 
-use std::{io, net::SocketAddr, sync::OnceLock};
+use std::{
+    io,
+    net::SocketAddr,
+    sync::{OnceLock, atomic::Ordering},
+};
 
 use tokio::sync::{mpsc, oneshot};
 
@@ -76,8 +80,15 @@ impl Drop for DisconnectOnDrop {
     fn drop(&mut self) {
         if let Some(node) = self.node.take() {
             let addr = self.addr;
-            // this task is intentionally detached, as we can't await inside Drop
-            tokio::spawn(async move { node.disconnect(addr).await });
+            let needs_recovery = node
+                .connections
+                .active
+                .read()
+                .get(&addr)
+                .is_some_and(|c| !c.disconnecting.load(Ordering::Acquire));
+            if needs_recovery {
+                tokio::spawn(async move { node.disconnect(addr).await });
+            }
         }
     }
 }
