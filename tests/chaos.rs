@@ -74,10 +74,10 @@ const MAX_MSG_SIZE: usize = 8_192;
 // Action mix (cumulative thresholds out of 256). Skewed toward connect /
 // send churn but with deliberately heavy spawn/shutdown weight, since
 // shutdown is the most interesting code path.
-const W_SPAWN: u8 = 18; // ~7%
-const W_SHUTDOWN: u8 = 36; // ~7%
-const W_CONNECT: u8 = 130; // ~37%
-const W_DISCONNECT: u8 = 180; // ~20%
+const W_SPAWN: u8 = 12; // ~5%
+const W_SHUTDOWN: u8 = 20; // ~3%
+const W_CONNECT: u8 = 130; // ~43%
+const W_DISCONNECT: u8 = 195; // ~25%
 const W_BROADCAST: u8 = 210; // ~12%
 // remainder: unicast (~18%)
 
