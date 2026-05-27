@@ -138,13 +138,13 @@ runs of maximally hostile concurrent churn, designed to surface
 synchronization bugs, leaks, and lifecycle inconsistencies that simpler
 tests can't reach.
 
-A representative session: **24 worker tasks** driving fully randomized
+A representative session: **16 worker tasks** driving fully randomized
 operations against a pool of up to **32 concurrent nodes**, with action
-delays of 0–500µs, processing **~5 million paired connection lifecycles**
-over a single 2-hour run. Every operation - node spawning, shutdown,
-connection establishment, disconnection, broadcast, unicast - is selected
-at random, without any coordination. Workers actively race each other on
-every shared structure the library exposes.
+delays of **0–500µs**, processing **~35 million** paired connection lifecycles
+with **~46 million** messages delivered over a single 2-hour run. Every
+operation - node spawning, shutdown, connection establishment, disconnection,
+broadcast, unicast - is selected at random, without any coordination. Workers
+actively race each other on every shared structure the library exposes.
 
 Across the run the library:
 

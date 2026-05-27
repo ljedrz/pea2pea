@@ -22,12 +22,13 @@
 //! with 16+ cores, a 1-hour run produces ~600k-900k paired lifecycles.
 //!
 //! For multi-hour unattended runs (CHAOS_RUNTIME_SECS=43200 or similar),
-//! the following sysctls help avoid OS-level resource pressure even
-//! though the defaults don't strictly require them:
+//! the following help avoid OS-level resource pressure even though
+//! the defaults don't strictly require them:
 //!
 //!     sudo sysctl -w net.ipv4.ip_local_port_range="1024 65535"
-//!     sudo sysctl -w net.ipv4.tcp_fin_timeout=10
-//!     sudo sysctl -w net.ipv4.tcp_max_tw_buckets=200000
+//!     sudo sysctl -w net.ipv4.tcp_max_tw_buckets=2000000
+//!     sudo sysctl -w net.ipv4.tcp_tw_reuse=1
+//!     sudo cpupower frequency-set -g performance
 //!
 //! For resource-constrained CI runners, halve MAX_NODES and NUM_WORKERS;
 //! the action-mix coverage is preserved and the test still surfaces rare
@@ -35,10 +36,10 @@
 
 use std::{
     io,
-    net::SocketAddr,
+    net::{IpAddr, Ipv4Addr, SocketAddr},
     sync::{
         Arc,
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicU32, AtomicUsize, Ordering},
     },
     time::{Duration, Instant},
 };
@@ -50,7 +51,10 @@ use pea2pea::{
     protocols::{Handshake, OnConnect, OnDisconnect, Reading, Writing},
 };
 use rand::{RngExt, SeedableRng, rngs::SmallRng};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    net::TcpSocket,
+};
 use tokio_util::{codec::LengthDelimitedCodec, sync::CancellationToken};
 
 // =========================================================================
@@ -60,7 +64,7 @@ use tokio_util::{codec::LengthDelimitedCodec, sync::CancellationToken};
 /// Maximum number of nodes that may exist in the pool at any one time.
 const MAX_NODES: usize = 32;
 /// Number of worker tasks issuing random actions in parallel.
-const NUM_WORKERS: usize = 24;
+const NUM_WORKERS: usize = 16;
 /// How often the metrics printer wakes up.
 const METRICS_INTERVAL: Duration = Duration::from_secs(5);
 /// Per-action sleep range. Tight enough to keep the runtime busy, slack
@@ -69,17 +73,22 @@ const MIN_ACTION_DELAY_US: u64 = 0;
 const MAX_ACTION_DELAY_US: u64 = 500;
 /// Message size bounds.
 const MIN_MSG_SIZE: usize = 1;
-const MAX_MSG_SIZE: usize = 8_192;
+const MAX_MSG_SIZE: usize = 4096;
 
-// Action mix (cumulative thresholds out of 256). Skewed toward connect /
-// send churn but with deliberately heavy spawn/shutdown weight, since
-// shutdown is the most interesting code path.
-const W_SPAWN: u8 = 12; // ~5%
-const W_SHUTDOWN: u8 = 20; // ~3%
-const W_CONNECT: u8 = 130; // ~43%
-const W_DISCONNECT: u8 = 195; // ~25%
-const W_BROADCAST: u8 = 210; // ~12%
-// remainder: unicast (~18%)
+// Action mix (cumulative thresholds out of 10_000). These values were
+// compiled with tokio's survival in mind - too many spawns and shutdowns
+// bog down the executor and the OS.
+const W_SPAWN: u16 = 10; // 10 pts (0.10%)
+const W_SHUTDOWN: u16 = 12; // 2 pts  (0.02%)
+const W_CONNECT: u16 = 4000; // 3988 pts (~40%)
+const W_DISCONNECT: u16 = 7988; // 3988 pts (~40%)
+const W_BROADCAST: u16 = 9000; // 1012 pts (~10%)
+// remainder: unicast (~10%)
+
+// Modest spread is enough - 64 sources splits the hash contention 64-way.
+// 127.0.0.2 .. 127.0.0.65 (skip .0 and .1, commonly used).
+const SRC_IP_COUNT: u32 = 64;
+static SRC_IP_CURSOR: AtomicU32 = AtomicU32::new(0);
 
 static MSG_BYTES: &[u8] = &[0xAB; MAX_MSG_SIZE];
 
@@ -173,9 +182,10 @@ impl StressNode {
     fn new(stats: Arc<Stats>) -> Self {
         let config = Config {
             listener_addr: Some("127.0.0.1:0".parse().unwrap()),
-            max_connections: 64,
-            max_connections_per_ip: 64,
-            max_connecting: 32,
+            max_connections: MAX_NODES as u16,
+            max_connections_per_ip: MAX_NODES as u16,
+            max_connecting: MAX_NODES as u16 / 2,
+            connection_timeout_ms: 10,
             ..Default::default()
         };
         Self {
@@ -224,6 +234,8 @@ impl Reading for StressNode {
     type Message = BytesMut;
     type Codec = LengthDelimitedCodec;
 
+    const INITIAL_BUFFER_SIZE: usize = 4 * 1024;
+
     fn codec(&self, _addr: SocketAddr, _side: ConnectionSide) -> Self::Codec {
         LengthDelimitedCodec::builder()
             .max_frame_length(MAX_MSG_SIZE)
@@ -238,6 +250,8 @@ impl Reading for StressNode {
 impl Writing for StressNode {
     type Message = Bytes;
     type Codec = LengthDelimitedCodec;
+
+    const INITIAL_BUFFER_SIZE: usize = 4 * 1024;
 
     fn codec(&self, _addr: SocketAddr, _side: ConnectionSide) -> Self::Codec {
         LengthDelimitedCodec::builder()
@@ -358,6 +372,12 @@ async fn act_connect(
     rng: &mut SmallRng,
     token: &CancellationToken,
 ) {
+    fn next_source_addr() -> SocketAddr {
+        let n = SRC_IP_CURSOR.fetch_add(1, Ordering::Relaxed) % SRC_IP_COUNT;
+        let octet = (n + 2) as u8;
+        SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, octet)), 0)
+    }
+
     let Some((a, b)) = pick_two(pool, rng) else {
         return;
     };
@@ -369,11 +389,25 @@ async fn act_connect(
         return;
     }
 
+    let socket = match TcpSocket::new_v4() {
+        Ok(s) => s,
+        Err(_) => {
+            stats.err_connect.fetch_add(1, Ordering::Relaxed);
+            return;
+        }
+    };
+    // SO_REUSEADDR isn't necessary here since each source IP has its own
+    // ephemeral port pool; SO_REUSEPORT/IP_BIND_ADDRESS_NO_PORT also unneeded.
+    if socket.bind(next_source_addr()).is_err() {
+        stats.err_connect.fetch_add(1, Ordering::Relaxed);
+        return;
+    }
+
     stats.in_flight_connects.fetch_add(1, Ordering::Release);
     tokio::select! {
         biased;
         _ = token.cancelled() => {},
-        res = a.node().connect(target) => {
+        res = a.node().connect_using_socket(target, socket) => {
             stats.connects_attempted.fetch_add(1, Ordering::Relaxed);
             match res {
                 Ok(()) => {
@@ -440,7 +474,7 @@ async fn act_unicast(pool: &Pool, stats: &Arc<Stats>, rng: &mut SmallRng) {
 
 async fn worker(pool: Pool, stats: Arc<Stats>, token: CancellationToken, mut rng: SmallRng) {
     while !token.is_cancelled() {
-        let roll: u8 = rng.random();
+        let roll: u16 = rng.random_range(..10_000);
         if roll < W_SPAWN {
             act_spawn(&pool, &stats, &token).await;
         } else if roll < W_SHUTDOWN {
@@ -523,7 +557,6 @@ fn infinite_chaos() {
         .enable_all()
         .global_queue_interval(3)
         .event_interval(31)
-        // .disable_lifo_slot()
         .build()
         .unwrap();
 
@@ -625,4 +658,8 @@ async fn infinite_chaos_inner() {
         snap.connects_attempted,
         snap.connects_succeeded + snap.err_connect
     );
+    assert_eq!(snap.in_flight_connects, 0);
+    assert_eq!(snap.in_flight_disconnects, 0);
+    assert_eq!(snap.in_flight_spawns, 0);
+    assert_eq!(snap.in_flight_shutdowns, 0);
 }
