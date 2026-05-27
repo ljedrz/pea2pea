@@ -600,7 +600,7 @@ impl Node {
         let mut limits = self.connections.limits.lock();
 
         // reject duplicates regardless of side (although is very niche on responder side)
-        if !self.config.allow_duplicate_connections && self.connections.is_connected(addr) {
+        if self.connections.is_connected(addr) {
             return Err(io::Error::new(
                 ErrorKind::AlreadyExists,
                 format!("already connected to {addr}"),

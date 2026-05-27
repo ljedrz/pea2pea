@@ -102,8 +102,6 @@ pub struct Config {
     pub max_connecting: u16,
     /// The maximum time (in milliseconds) allowed to establish a raw (before the [`Handshake`] protocol) TCP connection.
     pub connection_timeout_ms: u16,
-    /// Determines whether duplicate connections to the same target address are allowed.
-    pub allow_duplicate_connections: bool,
 }
 
 impl Default for Config {
@@ -123,7 +121,6 @@ impl Default for Config {
             max_connections_per_ip: 100,
             max_connecting: 100,
             connection_timeout_ms: 1_000,
-            allow_duplicate_connections: false,
         }
     }
 }
