@@ -8,7 +8,9 @@ If you discover a security vulnerability within `pea2pea`'s core logic, please r
 
 Please use [GitHub's "Report a vulnerability" feature](https://github.com/ljedrz/pea2pea/security/advisories/new).
 
-I will review reports as my schedule allows. While I strive to maintain the library's stability, please do not expect immediate responses or enterprise-level SLAs.
+I will review reports as my schedule allows. While I strive to maintain the library's stability, please do not expect immediate responses.
+
+If your organization requires guaranteed response times, priority issue resolution, or enterprise SLAs, please contact me using the e-mail address in [Cargo.toml](Cargo.toml) to discuss commercial support.
 
 ## 🔍 Simplicity as Security
 
