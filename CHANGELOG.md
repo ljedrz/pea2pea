@@ -4,6 +4,7 @@
 
 - connection spans are no longer created when not needed while sending messages
 - disconnect operations are now slightly cheaper (fewer allocations involved)
+- node shutdown should be slightly leaner now
 
 ### Fixed
 
