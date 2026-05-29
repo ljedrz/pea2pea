@@ -255,7 +255,7 @@ impl Node {
         }
 
         // check connection limits and set up a connection guard
-        let guard = self.check_and_reserve(addr, ConnectionSide::Responder)?;
+        let guard = self.check_and_reserve(addr)?;
 
         // finalize the connection
         self.adapt_stream(stream, addr, ConnectionSide::Responder, guard)
@@ -465,7 +465,7 @@ impl Node {
         }
 
         // attempt to reserve a connection slot atomically
-        let guard = self.check_and_reserve(addr, ConnectionSide::Initiator)?;
+        let guard = self.check_and_reserve(addr)?;
 
         // attempt to physically connect to the specified address
         let stream = self.create_stream(addr, socket).await?;
@@ -585,18 +585,12 @@ impl Node {
     }
 
     /// Atomically checks connection limits and reserves a slot if available.
-    fn check_and_reserve(
-        &self,
-        addr: SocketAddr,
-        side: ConnectionSide,
-    ) -> io::Result<ConnectionGuard<'_>> {
+    fn check_and_reserve(&self, addr: SocketAddr) -> io::Result<ConnectionGuard<'_>> {
         // this lock is held for the duration of the check to prevent races
         let mut limits = self.connections.limits.lock();
 
-        if side == ConnectionSide::Initiator
-            && !self.config.allow_duplicate_connections
-            && self.connections.is_connected(addr)
-        {
+        // reject duplicates regardless of side (although is very niche on responder side)
+        if !self.config.allow_duplicate_connections && self.connections.is_connected(addr) {
             return Err(io::Error::new(
                 ErrorKind::AlreadyExists,
                 format!("already connected to {addr}"),

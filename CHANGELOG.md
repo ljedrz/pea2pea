@@ -9,6 +9,7 @@
 
 - avoid a rare possible shutdown hang when racing with a disconnect
 - `Node::toggle_listener` will no longer panic under any circumstances
+- reject duplicate addresses as the responder as well (very niche, but not impossible)
 
 # 0.55.1
 
