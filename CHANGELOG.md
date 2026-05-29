@@ -5,6 +5,10 @@
 - connection spans are no longer created when not needed while sending messages
 - disconnect operations are now slightly cheaper (fewer allocations involved)
 
+### Fixed
+
+- avoid a rare possible shutdown hang when racing with a disconnect
+
 # 0.55.1
 
 ### Fixed

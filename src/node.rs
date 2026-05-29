@@ -688,6 +688,7 @@ impl Node {
         loop {
             let notified = self.connections.drain_notify.notified();
             tokio::pin!(notified);
+            notified.as_mut().enable(); // register the waiter
             if self.connections.active.read().is_empty() {
                 break;
             }
