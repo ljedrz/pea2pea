@@ -8,6 +8,7 @@
 ### Fixed
 
 - avoid a rare possible shutdown hang when racing with a disconnect
+- `Node::toggle_listener` will no longer panic under any circumstances
 
 # 0.55.1
 

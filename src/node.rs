@@ -139,7 +139,9 @@ impl Node {
         let mut listening_addr = self.listening_addr.write().await;
 
         if let Some(old_listening_addr) = listening_addr.take() {
-            let listener_task = self.tasks.lock().remove(&NodeTask::Listener).unwrap(); // can't fail
+            let Some(listener_task) = self.tasks.lock().remove(&NodeTask::Listener) else {
+                return Err(io::Error::other("shutting down"));
+            };
             listener_task.abort();
             trace!(parent: self.span(), "aborted the listening task");
             debug!(parent: self.span(), "no longer listening on {old_listening_addr}");
