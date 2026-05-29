@@ -204,7 +204,7 @@ impl Node {
                         // handle connection requests asynchronously
                         let node = node.clone();
                         tokio::spawn(async move {
-                            // the permit is released when the connection is accepted
+                            // the permit is released when the connection is fully processed
                             let _permit = permit;
                             node.handle_connection_request(stream, addr).await.inspect_err(|e|
                                 match e.kind() {
