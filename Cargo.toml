@@ -24,6 +24,22 @@ exclude = [
 [features]
 test = []
 
+[[bench]]
+name = "connections"
+harness = false
+
+[[bench]]
+name = "throughput"
+harness = false
+
+[[bench]]
+name = "startup"
+harness = false
+
+[[bench]]
+name = "shutdown"
+harness = false
+
 [dependencies]
 bytes = "1.11.1"
 futures-util = { version = "0.3", features = ["sink"] }
@@ -33,6 +49,7 @@ tokio-util = { version = "0.7", features = ["codec"] }
 tracing = { version = "0.1", default-features = false }
 
 [dev-dependencies]
+divan = "0.1"
 heapster = { version = "0.8", features = ["fmt", "use_max"] }
 libp2p = { version = "0.56", default-features = false, features = ["macros", "noise", "ping", "tcp", "tokio", "yamux"] }
 native-tls = "0.2"
