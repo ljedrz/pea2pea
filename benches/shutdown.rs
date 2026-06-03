@@ -23,8 +23,8 @@ impl_noop_disconnect_and_handshake!(common::TestNode);
 /// Time to tear a fully-featured, listening node down.
 ///
 /// The node is built and brought up in `with_inputs` (untimed); only the
-/// `shut_down` call — aborting the listener and protocol tasks and releasing
-/// the socket — is measured. `sample_size` is 1 so divan only ever has a single
+/// `shut_down` call - aborting the listener and protocol tasks and releasing
+/// the socket - is measured. `sample_size` is 1 so divan only ever has a single
 /// started node (and thus a single listener fd) live at a time.
 #[divan::bench(sample_count = 200, sample_size = 1)]
 fn node_shutdown(bencher: Bencher) {

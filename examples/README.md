@@ -35,6 +35,7 @@ These examples involve complex state machines, high-load stress testing, or heav
 | Example | Description | Key Features |
 | :--- | :--- | :--- |
 | **[Bucket Brigade](bucket_brigade.rs)** | A 10k-node linear chain that passes a message from start to end. Measures per-hop latency, demonstrating the minimal overhead of the protocol stack. | Latency Testing, Topology, Forwarding |
+| **[C10k](c10k.rs)** | The classic *C10k problem*: a swarm of 10,000 persistent clients connect to a single node and hold their sockets open. Polls the live connection count until the node saturates (or times out at 60s). Stress-tests raw inbound connection capacity rather than any messaging protocol. | Connection Limits, Saturation, OS Tuning |
 | **[Connection Churn](churn_stress.rs)** | A "thundering herd" simulation where clients rapidly connect, exchange data, and disconnect. Demonstrates low overhead in connection lifecycle management. | Stress Testing, High Churn, Performance |
 | **[Dense Mesh](dense_mesh.rs)** | Spawns a high density of nodes (default 200) and measures exact RAM usage per node and per connection. Demonstrates the library's tunable memory footprint. | Memory Profiling, High Density, Metrics |
 | **[Dining Philosophers](dining_philosophers.rs)** | A complex concurrency problem mapped to P2P. Nodes must negotiate access to shared resources ("forks") using stateful request/response flows. | Ring Topology, Shared State, Deadlock Avoidance |
