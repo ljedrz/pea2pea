@@ -1,3 +1,9 @@
+# 0.56.0
+
+# Added
+
+- `Config::listener_backlog` with a default value of `128`
+
 # 0.55.2
 
 ### Changed

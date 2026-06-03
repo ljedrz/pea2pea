@@ -154,7 +154,13 @@ impl Node {
                 ErrorKind::AddrNotAvailable
             })?;
             trace!(parent: self.span(), "attempting to listen on {listener_addr}");
-            let listener = TcpListener::bind(listener_addr).await?;
+            let socket = match listener_addr {
+                SocketAddr::V4(_) => TcpSocket::new_v4()?,
+                SocketAddr::V6(_) => TcpSocket::new_v6()?,
+            };
+            socket.set_reuseaddr(true)?;
+            socket.bind(listener_addr)?;
+            let listener = socket.listen(self.config().listener_backlog)?; // capped by somaxconn
             let port = listener.local_addr()?.port(); // discover the port if it was unspecified
             let new_listening_addr = (listener_addr.ip(), port).into();
 

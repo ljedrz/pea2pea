@@ -26,6 +26,10 @@ pub struct Config {
     /// detect a self-connect attempt to one of the host's other local addresses. See the note
     /// on [`Node::connect`] for details.
     pub listener_addr: Option<SocketAddr>,
+    /// Defines the maximum number of pending connections that may be queued by the operating system
+    /// at any given time. When the queue is full, the operating-system will start rejecting new
+    /// connections.
+    pub listener_backlog: u32,
     /// The maximum number of active connections the node can maintain at any given time.
     ///
     /// note: For accuracy and performance, the pending connections are also included when checking
@@ -60,6 +64,7 @@ impl Default for Config {
             listener_addr: Some((IpAddr::V4(Ipv4Addr::UNSPECIFIED), 0).into()),
             #[cfg(feature = "test")]
             listener_addr: Some((IpAddr::V4(Ipv4Addr::LOCALHOST), 0).into()),
+            listener_backlog: 128,
             max_connections: 100,
             #[cfg(not(feature = "test"))]
             max_connections_per_ip: 1,
