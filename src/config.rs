@@ -26,14 +26,31 @@ pub struct Config {
     /// detect a self-connect attempt to one of the host's other local addresses. See the note
     /// on [`Node::connect`] for details.
     pub listener_addr: Option<SocketAddr>,
-    /// Defines the maximum number of pending connections that may be queued by the operating system
-    /// at any given time. When the queue is full, the operating-system will start rejecting new
-    /// connections.
+    /// The depth of the OS accept queue (the `backlog` argument to `listen(2)`): how many
+    /// fully-established inbound connections the kernel will hold awaiting `accept` before it
+    /// stops admitting new ones.
+    ///
+    /// note: This value is silently capped by the OS to `net.core.somaxconn` on Linux
+    /// (`kern.ipc.somaxconn` on macOS/BSD). The effective depth is `min(listener_backlog, somaxconn)`,
+    /// so raising it past the system limit does nothing until that limit is raised as well.
+    ///
+    /// note: When the queue is full the kernel does not, by default, actively refuse the connection -
+    /// it silently drops the handshake completion and the peer retransmits on the TCP timer, so the
+    /// symptom is a connection that appears to stall for seconds rather than one that fails fast.
+    /// (On Linux, `net.ipv4.tcp_abort_on_overflow=1` turns these into immediate resets instead.)
+    ///
+    /// note: For graceful backpressure under a burst, keep this at least on the order of
+    /// [`Config::max_connecting`]: inbound setup is throttled to `max_connecting` at a time, and the
+    /// backlog is what holds the surplus while that pipeline drains. A backlog much smaller than
+    /// `max_connecting` lets bursts overflow before setup catches up.
     pub listener_backlog: u32,
     /// The maximum number of active connections the node can maintain at any given time.
     ///
     /// note: For accuracy and performance, the pending connections are also included when checking
     /// this limit - it is assumed that they may all conclude successfully.
+    ///
+    /// note: As a `u16`, a single node tops out at 65,535 connections; scaling beyond that means
+    /// distributing load across multiple nodes/listeners.
     pub max_connections: u16,
     /// The maximum number of active connections the node can maintain with a single IP.
     ///
@@ -45,10 +62,20 @@ pub struct Config {
     /// connection (up to [`Config::max_connections`]). If you expose your node to the public IPv6
     /// internet, rely on the global connection limit for resource protection, or implement an
     /// application-level subnet filter in [`Handshake`].
-    pub max_connections_per_ip: u16,
-    /// The maximum number of simultaneous connection attempts (a.k.a. pending connections).
     ///
-    /// note: It should not be greater than `max_connections`, as it will clash with it.
+    /// note: Conversely, when many connections legitimately share one source IP - load tests, a NAT
+    /// gateway, a reverse proxy, or anything over loopback - raise this to match, or those peers are
+    /// rejected once the per-IP count is hit. Note the default outside the `test` feature is 1.
+    pub max_connections_per_ip: u16,
+    /// The maximum number of simultaneous connection attempts (a.k.a. pending connections), covering
+    /// both outbound connects in progress and inbound connections still being accepted and handshaked.
+    ///
+    /// note: It should not be greater than [`Config::max_connections`]: pending connections count
+    /// towards that limit, so a value above it can never actually be reached.
+    ///
+    /// note: On the inbound path this doubles as a backpressure bound - at most `max_connecting`
+    /// inbound connections are set up concurrently, and any surplus waits in the OS accept queue
+    /// (see [`Config::listener_backlog`], which should be sized accordingly).
     pub max_connecting: u16,
     /// The maximum time (in milliseconds) allowed to establish a raw (before the [`Handshake`] protocol) TCP connection.
     pub connection_timeout_ms: u16,
