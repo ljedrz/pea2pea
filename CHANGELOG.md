@@ -3,6 +3,7 @@
 # Added
 
 - `Config::listener_backlog` with a default value of `128`
+- `Config::reuse_listener_port`, defaulting to `false`
 
 # 0.55.2
 

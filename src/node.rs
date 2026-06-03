@@ -159,6 +159,10 @@ impl Node {
                 SocketAddr::V6(_) => TcpSocket::new_v6()?,
             };
             socket.set_reuseaddr(true)?;
+            #[cfg(all(unix, not(any(target_os = "solaris", target_os = "illumos"))))]
+            if self.config().reuse_listener_port {
+                socket.set_reuseport(true)?;
+            }
             socket.bind(listener_addr)?;
             let listener = socket.listen(self.config().listener_backlog)?; // capped by somaxconn
             let port = listener.local_addr()?.port(); // discover the port if it was unspecified

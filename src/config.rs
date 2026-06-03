@@ -44,6 +44,29 @@ pub struct Config {
     /// backlog is what holds the surplus while that pipeline drains. A backlog much smaller than
     /// `max_connecting` lets bursts overflow before setup catches up.
     pub listener_backlog: u32,
+    /// Sets `SO_REUSEPORT` on the listener socket, permitting several *live* listeners to bind the
+    /// node's address at the same time, with the kernel load-balancing inbound connections across
+    /// them. Defaults to `false`.
+    ///
+    /// note: This is more permissive than the `SO_REUSEADDR` the node always sets - that one only
+    /// allows *rebinding* a port left in `TIME_WAIT` by a closed socket, not two simultaneously
+    /// active listeners on one port.
+    ///
+    /// note: For a lone listener that never shares its port, this option does nothing; it earns its
+    /// keep only once a second socket joins the address. The two motivating cases are running
+    /// multiple nodes or processes on one port as kernel-balanced shards, and zero-downtime restarts,
+    /// where a successor binds the port and begins accepting before its predecessor is retired, so
+    /// the address is never momentarily unavailable.
+    ///
+    /// note: Even, hash-based balancing across the group is a Linux feature (3.9+); other platforms'
+    /// semantics differ, and where `SO_REUSEPORT` is unavailable [`Node::toggle_listener`] returns an
+    /// error when this is set. Enabling it also makes the port *joinable*: any socket with the same
+    /// effective UID can bind it and siphon off a share of inbound connections.
+    ///
+    /// note: When used to shard, the connection limits ([`Config::max_connections`],
+    /// [`Config::max_connecting`], and especially [`Config::max_connections_per_ip`]) apply *per
+    /// listener*, not across the group, since each node tracks its connections independently.
+    pub reuse_listener_port: bool,
     /// The maximum number of active connections the node can maintain at any given time.
     ///
     /// note: For accuracy and performance, the pending connections are also included when checking
@@ -92,6 +115,7 @@ impl Default for Config {
             #[cfg(feature = "test")]
             listener_addr: Some((IpAddr::V4(Ipv4Addr::LOCALHOST), 0).into()),
             listener_backlog: 128,
+            reuse_listener_port: false,
             max_connections: 100,
             #[cfg(not(feature = "test"))]
             max_connections_per_ip: 1,
