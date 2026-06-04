@@ -265,12 +265,13 @@ where
 
 /// This trait is used to restrict access to methods that would otherwise be public in [`Writing`].
 trait WritingInternal: Writing {
-    /// Writes the given message to the network stream and returns the number of written bytes.
-    async fn write_to_stream<W: AsyncWrite + Unpin + Send>(
+    /// Feeds a whole batch of messages into the stream's buffer, flushes once,
+    /// and returns the number of written messages and their cumulative size in bytes.
+    async fn write_batch<W: AsyncWrite + Unpin + Send>(
         &self,
-        message: Self::Message,
+        messages: &mut Vec<WrappedMessage>,
         writer: &mut FramedWrite<W, Self::Codec>,
-    ) -> Result<usize, <Self::Codec as Encoder<Self::Message>>::Error>;
+    ) -> io::Result<(usize, usize)>;
 
     /// Applies the [`Writing`] protocol to a single connection.
     async fn handle_new_connection(
@@ -282,18 +283,32 @@ trait WritingInternal: Writing {
 }
 
 impl<W: Writing> WritingInternal for W {
-    async fn write_to_stream<A: AsyncWrite + Unpin + Send>(
+    async fn write_batch<A: AsyncWrite + Unpin + Send>(
         &self,
-        message: Self::Message,
+        messages: &mut Vec<WrappedMessage>,
         writer: &mut FramedWrite<A, Self::Codec>,
-    ) -> Result<usize, <Self::Codec as Encoder<Self::Message>>::Error> {
-        writer.feed(message).await?;
-        // note: this relies on the buffer being empty before `feed`, which
-        // holds because the write loop processes one message at a time
-        let len = writer.write_buffer().len();
-        // guard against write starvation
-        match timeout(Duration::from_millis(W::TIMEOUT_MS), writer.flush()).await {
-            Ok(Ok(())) => Ok(len),
+    ) -> io::Result<(usize, usize)> {
+        // Both the `feed`s and the final `flush` can block on a full socket send
+        // buffer - `feed` flushes internally at the backpressure boundary - so
+        // the entire sequence is guarded.
+        let write = async move {
+            let msgs = messages.len();
+            let mut bytes = 0;
+
+            let mut prev = writer.write_buffer().len();
+            for wrapped in messages {
+                let msg = *wrapped.msg.take().unwrap().downcast().unwrap();
+                writer.feed(msg).await?;
+                let now = writer.write_buffer().len();
+                bytes += now.checked_sub(prev).unwrap_or(now);
+                prev = now;
+            }
+            writer.flush().await?;
+            Ok::<_, io::Error>((msgs, bytes))
+        };
+
+        match timeout(Duration::from_millis(Self::TIMEOUT_MS), write).await {
+            Ok(Ok(lens)) => Ok(lens),
             Ok(Err(e)) => Err(e),
             Err(_) => Err(io::Error::new(io::ErrorKind::TimedOut, "write timed out")),
         }
@@ -355,22 +370,29 @@ impl<W: Writing> WritingInternal for W {
             // disconnect automatically regardless of how this task concludes
             let _conn_cleanup = DisconnectOnDrop::new(node.clone(), addr);
 
-            while let Some(wrapped_msg) = outbound_message_receiver.recv().await {
-                let msg = wrapped_msg.msg.downcast().unwrap();
-
-                match self_clone.write_to_stream(*msg, &mut framed).await {
-                    Ok(len) => {
-                        if let Some(tx) = wrapped_msg.delivery_notification {
+            let mut batch: Vec<WrappedMessage> = Vec::new();
+            // recv_many blocks for the first message, then takes whatever else is
+            // already queued (capped by the queue depth) - so we coalesce without
+            // ever waiting to fill a batch. Returns 0 only once the channel closes.
+            while outbound_message_receiver
+                .recv_many(&mut batch, Self::MESSAGE_QUEUE_DEPTH)
+                .await
+                > 0
+            {
+                match self_clone.write_batch(&mut batch, &mut framed).await {
+                    Ok((msgs, bytes)) => {
+                        for tx in batch.drain(..).filter_map(|w| w.delivery_notification) {
                             let _ = tx.send(Ok(()));
                         }
-                        conn_stats.register_sent_message(len);
-                        node.stats().register_sent_message(len);
-                        trace!(parent: &conn_span, "wrote {len}B");
+                        conn_stats.register_sent_messages(msgs, bytes);
+                        node.stats().register_sent_messages(msgs, bytes);
+                        trace!(parent: &conn_span, "wrote {bytes}B ({msgs} messages)");
                     }
                     Err(e) => {
-                        error!(parent: &conn_span, "couldn't write: {e}");
-                        if let Some(tx) = wrapped_msg.delivery_notification {
-                            let _ = tx.send(Err(e));
+                        error!(parent: &conn_span, "couldn't write a batch of {} message(s): {e}", batch.len());
+                        // the connection is going down; fail every queued delivery
+                        for tx in batch.drain(..).filter_map(|w| w.delivery_notification) {
+                            let _ = tx.send(Err(io::Error::new(e.kind(), e.to_string())));
                         }
                         break;
                     }
@@ -390,7 +412,7 @@ impl<W: Writing> WritingInternal for W {
 
 /// Used to queue messages for delivery and return its confirmation.
 pub(crate) struct WrappedMessage {
-    msg: Box<dyn Any + Send>,
+    msg: Option<Box<dyn Any + Send>>,
     delivery_notification: Option<oneshot::Sender<io::Result<()>>>,
 }
 
@@ -407,7 +429,7 @@ impl WrappedMessage {
         };
 
         let wrapped_msg = Self {
-            msg,
+            msg: Some(msg),
             delivery_notification: tx,
         };
 

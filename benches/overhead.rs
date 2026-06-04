@@ -114,7 +114,7 @@ impl Reading for Receiver {
         // fetch_add is the single crossing point per boundary, so exactly one
         // message per sample trips the signal even under concurrent dispatch
         let count = self.counter.fetch_add(1, Ordering::Relaxed) + 1;
-        if count == MESSAGES {
+        if count % MESSAGES == 0 {
             self.done.notify_one();
         }
     }

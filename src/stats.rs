@@ -33,14 +33,14 @@ impl Default for Stats {
 }
 
 impl Stats {
-    /// Registers a sent message of the provided `size` in bytes.
+    /// Registers a batch of sent messages of the provided `bytes` of size.
     ///
     /// note: It's triggered automatically for the node and every connection
     /// when using the [`Writing`] protocol; it is public in case the user
     /// also wants to collect stats during [`Handshake::perform_handshake`].
-    pub fn register_sent_message(&self, size: usize) {
-        self.msgs_sent.fetch_add(1, Relaxed);
-        self.bytes_sent.fetch_add(size as u64, Relaxed);
+    pub fn register_sent_messages(&self, msgs: usize, bytes: usize) {
+        self.msgs_sent.fetch_add(msgs as u64, Relaxed);
+        self.bytes_sent.fetch_add(bytes as u64, Relaxed);
     }
 
     /// Registers a received message of the provided `size` in bytes.
