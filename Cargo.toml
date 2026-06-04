@@ -25,7 +25,15 @@ exclude = [
 test = []
 
 [[bench]]
+name = "bucket_brigade"
+harness = false
+
+[[bench]]
 name = "connections"
+harness = false
+
+[[bench]]
+name = "packet_cannon"
 harness = false
 
 [[bench]]
