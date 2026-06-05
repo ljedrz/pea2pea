@@ -13,28 +13,31 @@
 //! are deterministic given the seed, but the interleaving between workers
 //! depends on the tokio scheduler and is not.
 //!
+//! Timeout behavior is selected by `CHAOS_FAST_TIMEOUTS`. Unset (the default)
+//! uses realistic connection timeouts, which lets the test reach the saturated,
+//! contended regime where concurrency bugs surface; the library degrades
+//! gracefully and still cleans up fully there, at the cost of non-deterministic
+//! timing. Set, it switches to short timeouts that avoid lock contention and
+//! executor starvation, which makes much lower action delays sustainable and the
+//! throughput figures more reliably reproducible.
+//!
 //! ## Tuning
 //!
-//! The defaults below are calibrated for sustained throughput on typical
-//! developer hardware (~200-250 paired connection lifecycles per second
-//! under default Linux network configuration, with TIME_WAIT pool
-//! utilization staying well below kernel ceilings). On a Ryzen-class CPU
-//! with 16+ cores, a 1-hour run produces ~600k-900k paired lifecycles.
-//!
-//! For multi-hour unattended runs (CHAOS_RUNTIME_SECS=43200 or similar),
-//! the following help avoid OS-level resource pressure even though
-//! the defaults don't strictly require them:
+//! For multi-hour unattended runs, the following help avoid OS-level resource
+//! pressure, even though the defaults don't strictly require them:
 //!
 //!     sudo sysctl -w net.ipv4.ip_local_port_range="1024 65535"
 //!     sudo sysctl -w net.ipv4.tcp_max_tw_buckets=2000000
 //!     sudo sysctl -w net.ipv4.tcp_tw_reuse=1
 //!     sudo cpupower frequency-set -g performance
 //!
-//! For resource-constrained CI runners, halve MAX_NODES and NUM_WORKERS;
+//! For resource-constrained CI runners, reduce MAX_NODES and NUM_WORKERS;
 //! the action-mix coverage is preserved and the test still surfaces rare
 //! races, just at proportionally lower throughput.
 
 use std::{
+    // alloc::System,
+    env,
     io,
     net::{IpAddr, Ipv4Addr, SocketAddr},
     sync::{
@@ -45,6 +48,7 @@ use std::{
 };
 
 use bytes::{Bytes, BytesMut};
+// use heapster::Heapster;
 use parking_lot::Mutex;
 use pea2pea::{
     Config, Connection, ConnectionSide, Node, Pea2Pea,
@@ -72,7 +76,7 @@ const METRICS_INTERVAL: Duration = Duration::from_secs(5);
 /// Per-action sleep range. Tight enough to keep the runtime busy, slack
 /// enough to let other workers interleave between actions.
 const MIN_ACTION_DELAY_US: u64 = 0;
-const MAX_ACTION_DELAY_US: u64 = 250;
+const MAX_ACTION_DELAY_US: u64 = 500;
 /// Message size bounds.
 const MIN_MSG_SIZE: usize = 1;
 const MAX_MSG_SIZE: usize = 4096;
@@ -117,7 +121,6 @@ impl<'a> Drop for InFlightGuard<'a> {
 struct Stats {
     nodes_spawned: AtomicUsize,
     nodes_shutdown: AtomicUsize,
-    connects_attempted: AtomicUsize,
     connects_succeeded: AtomicUsize,
     disconnects: AtomicUsize,
     broadcasts: AtomicUsize,
@@ -138,7 +141,6 @@ struct Stats {
 struct Snapshot {
     nodes_spawned: usize,
     nodes_shutdown: usize,
-    connects_attempted: usize,
     connects_succeeded: usize,
     disconnects: usize,
     broadcasts: usize,
@@ -160,7 +162,6 @@ impl Snapshot {
         Self {
             nodes_spawned: s.nodes_spawned.load(Ordering::Relaxed),
             nodes_shutdown: s.nodes_shutdown.load(Ordering::Relaxed),
-            connects_attempted: s.connects_attempted.load(Ordering::Relaxed),
             connects_succeeded: s.connects_succeeded.load(Ordering::Relaxed),
             disconnects: s.disconnects.load(Ordering::Relaxed),
             broadcasts: s.broadcasts.load(Ordering::Relaxed),
@@ -386,6 +387,7 @@ async fn act_connect(
     stats: &Arc<Stats>,
     rng: &mut SmallRng,
     token: &CancellationToken,
+    fast_timeouts: bool,
 ) {
     fn next_source_addr() -> SocketAddr {
         let n = SRC_IP_CURSOR.fetch_add(1, Ordering::Relaxed) % SRC_IP_COUNT;
@@ -422,18 +424,17 @@ async fn act_connect(
     tokio::select! {
         biased;
         _ = token.cancelled() => {},
-        // this timeout is crucial in addition to the TCP and Handshake limits, as
-        // the conditions of this test are simply deranged, and may even cause
-        // the library's locks to contend and/or the executor to starve
-        res = timeout(Duration::from_secs(1), a.node().connect_using_socket(target, socket)) => {
-            stats.connects_attempted.fetch_add(1, Ordering::Relaxed);
-            match res {
-                Ok(Ok(())) => {
-                    stats.connects_succeeded.fetch_add(1, Ordering::Relaxed);
-                }
-                _ => {
-                    stats.err_connect.fetch_add(1, Ordering::Relaxed);
-                }
+        success = async move {
+            if fast_timeouts {
+                timeout(Duration::from_secs(1), a.node().connect_using_socket(target, socket)).await.is_ok_and(|r| r.is_ok())
+            } else {
+                a.node().connect_using_socket(target, socket).await.is_ok()
+            }
+        } => {
+            if success {
+                stats.connects_succeeded.fetch_add(1, Ordering::Relaxed);
+            } else {
+                stats.err_connect.fetch_add(1, Ordering::Relaxed);
             }
         }
     }
@@ -488,7 +489,13 @@ async fn act_unicast(pool: &Pool, stats: &Arc<Stats>, rng: &mut SmallRng) {
 // Worker
 // =========================================================================
 
-async fn worker(pool: Pool, stats: Arc<Stats>, token: CancellationToken, mut rng: SmallRng) {
+async fn worker(
+    pool: Pool,
+    stats: Arc<Stats>,
+    token: CancellationToken,
+    mut rng: SmallRng,
+    fast_timeouts: bool,
+) {
     while !token.is_cancelled() {
         let roll: u16 = rng.random_range(..10_000);
         if roll < W_SPAWN {
@@ -496,7 +503,7 @@ async fn worker(pool: Pool, stats: Arc<Stats>, token: CancellationToken, mut rng
         } else if roll < W_SHUTDOWN {
             act_shutdown(&pool, &stats, &mut rng).await;
         } else if roll < W_CONNECT {
-            act_connect(&pool, &stats, &mut rng, &token).await;
+            act_connect(&pool, &stats, &mut rng, &token, fast_timeouts).await;
         } else if roll < W_DISCONNECT {
             act_disconnect(&pool, &stats, &mut rng).await;
         } else if roll < W_BROADCAST {
@@ -536,7 +543,7 @@ fn print_metrics(start: Instant, alive: usize, cur: &Snapshot, prev: &Snapshot) 
         max = MAX_NODES,
         ns = cur.nodes_spawned,
         nd = cur.nodes_shutdown,
-        ca = cur.connects_attempted,
+        ca = cur.connects_succeeded + cur.err_connect,
         cs = cur.connects_succeeded,
         ce = cur.err_connect,
         dc = cur.disconnects,
@@ -566,6 +573,9 @@ fn print_metrics(start: Instant, alive: usize, cur: &Snapshot, prev: &Snapshot) 
 // Test entry point
 // =========================================================================
 
+// #[global_allocator]
+// static GLOBAL: Heapster<System> = Heapster::new(System);
+
 #[test]
 #[ignore = "long-running stress test"]
 fn infinite_chaos() {
@@ -581,14 +591,18 @@ fn infinite_chaos() {
 
 async fn infinite_chaos_inner() {
     // Determine and log the master seed. CHAOS_SEED overrides for reruns.
-    let master_seed: u64 = std::env::var("CHAOS_SEED")
+    let master_seed: u64 = env::var("CHAOS_SEED")
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or_else(rand::random);
-    let runtime: Duration = std::env::var("CHAOS_RUNTIME_SECS")
+    let runtime: Duration = env::var("CHAOS_RUNTIME_SECS")
         .ok()
         .and_then(|s| s.parse().ok().map(Duration::from_secs))
         .unwrap_or(Duration::MAX);
+    let fast_timeouts = env::var("CHAOS_FAST_TIMEOUTS")
+        .map(|v| matches!(v.trim(), "1" | "true" | "yes"))
+        .unwrap_or(false);
+
     println!(
         "pea2pea stress test - {NUM_WORKERS} workers, up to {MAX_NODES} nodes\n\
          seed: {master_seed}\n"
@@ -617,6 +631,7 @@ async fn infinite_chaos_inner() {
             stats.clone(),
             token.clone(),
             worker_rng,
+            fast_timeouts,
         )));
     }
 
@@ -665,15 +680,16 @@ async fn infinite_chaos_inner() {
     }
     while joins.join_next().await.is_some() {}
 
-    // Check some invariants.
+    // Print final metrics.
     let snap = Snapshot::capture(&stats);
     print_metrics(start, 0, &snap, &snap);
+
+    // Show heap stats.
+    // println!("\nheap stats:\n{}", GLOBAL.stats());
+
+    // Check some invariants.
     assert_eq!(snap.nodes_spawned, snap.nodes_shutdown);
     assert_eq!(snap.on_connect_fired, snap.on_disconnect_fired);
-    assert_eq!(
-        snap.connects_attempted,
-        snap.connects_succeeded + snap.err_connect
-    );
     assert_eq!(snap.in_flight_connects, 0);
     assert_eq!(snap.in_flight_disconnects, 0);
     assert_eq!(snap.in_flight_spawns, 0);
