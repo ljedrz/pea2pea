@@ -106,6 +106,11 @@ where
 
                 loop {
                     tokio::select! {
+                        biased;
+                        // task set cleanups
+                        res = setup_tasks.join_next(), if !setup_tasks.is_empty() => {
+                            log_setup_join(self_clone.node().span(), "Reading", res);
+                        }
                         // handle new connections from `Node::adapt_stream`
                         maybe_conn = conn_receiver.recv() => {
                             match maybe_conn {
@@ -117,10 +122,6 @@ where
                                 }
                                 None => break, // channel closed
                             }
-                        }
-                        // task set cleanups
-                        res = setup_tasks.join_next(), if !setup_tasks.is_empty() => {
-                            log_setup_join(self_clone.node().span(), "Reading", res);
                         }
                     }
                 }

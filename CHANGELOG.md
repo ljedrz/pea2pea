@@ -13,6 +13,10 @@
 - greatly improved write speed via batching
 - removed per-unicast boxing for an additional perf boost and a reduction in allocations
 
+# Fixed
+
+- the protocol loops for `Handshake`, `Reading`, and `Writing` are now biased towards cleanups, which matters under extreme churn
+
 # 0.55.2
 
 ### Changed
