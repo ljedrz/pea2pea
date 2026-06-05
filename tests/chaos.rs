@@ -97,6 +97,21 @@ static MSG_BYTES: &[u8] = &[0xAB; MAX_MSG_SIZE];
 // Stats
 // =========================================================================
 
+struct InFlightGuard<'a>(&'a AtomicUsize);
+
+impl<'a> InFlightGuard<'a> {
+    fn new(metric: &'a AtomicUsize) -> Self {
+        metric.fetch_add(1, Ordering::Release);
+        Self(metric)
+    }
+}
+
+impl<'a> Drop for InFlightGuard<'a> {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::Release);
+    }
+}
+
 #[derive(Default)]
 struct Stats {
     nodes_spawned: AtomicUsize,
@@ -331,7 +346,7 @@ async fn act_spawn(pool: &Pool, stats: &Arc<Stats>, token: &CancellationToken) {
         return;
     }
 
-    stats.in_flight_spawns.fetch_add(1, Ordering::Release);
+    let _guard = InFlightGuard::new(&stats.in_flight_spawns);
     let node = StressNode::new(stats.clone());
 
     tokio::select! {
@@ -353,14 +368,12 @@ async fn act_spawn(pool: &Pool, stats: &Arc<Stats>, token: &CancellationToken) {
             }
         }
     }
-    stats.in_flight_spawns.fetch_sub(1, Ordering::Release);
 }
 
 async fn act_shutdown(pool: &Pool, stats: &Arc<Stats>, rng: &mut SmallRng) {
     if let Some(node) = pop_random(pool, rng) {
-        stats.in_flight_shutdowns.fetch_add(1, Ordering::Release);
+        let _guard = InFlightGuard::new(&stats.in_flight_shutdowns);
         node.node().shut_down().await;
-        stats.in_flight_shutdowns.fetch_sub(1, Ordering::Release);
         stats.nodes_shutdown.fetch_add(1, Ordering::Relaxed);
         // dropping `node` here releases the local Arc clone; if no worker is
         // mid-action on it, the InnerNode Arc count goes to zero shortly
@@ -404,7 +417,7 @@ async fn act_connect(
         return;
     }
 
-    stats.in_flight_connects.fetch_add(1, Ordering::Release);
+    let _guard = InFlightGuard::new(&stats.in_flight_connects);
     tokio::select! {
         biased;
         _ = token.cancelled() => {},
@@ -420,7 +433,6 @@ async fn act_connect(
             }
         }
     }
-    stats.in_flight_connects.fetch_sub(1, Ordering::Release);
 }
 
 async fn act_disconnect(pool: &Pool, stats: &Arc<Stats>, rng: &mut SmallRng) {
@@ -430,11 +442,10 @@ async fn act_disconnect(pool: &Pool, stats: &Arc<Stats>, rng: &mut SmallRng) {
         return;
     }
     let target = peers[rng.random_range(0..peers.len())];
-    stats.in_flight_disconnects.fetch_add(1, Ordering::Release);
+    let _guard = InFlightGuard::new(&stats.in_flight_disconnects);
     if a.node().disconnect(target).await {
         stats.disconnects.fetch_add(1, Ordering::Relaxed);
     }
-    stats.in_flight_disconnects.fetch_sub(1, Ordering::Release);
 }
 
 async fn act_broadcast(pool: &Pool, stats: &Arc<Stats>, rng: &mut SmallRng) {
