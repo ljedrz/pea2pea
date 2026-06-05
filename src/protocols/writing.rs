@@ -35,7 +35,7 @@ use crate::{
     },
 };
 
-type WritingSenders = Arc<RwLock<HashMap<SocketAddr, (u64, mpsc::Sender<WrappedMessage>)>>>;
+type WritingSenders = Arc<RwLock<HashMap<SocketAddr, (u64, Arc<dyn Any + Send + Sync>)>>>;
 
 /// Can be used to specify and enable writing, i.e. sending outbound messages. If the [`Handshake`]
 /// protocol is enabled too, it goes into force only after the handshake has been concluded.
@@ -167,10 +167,13 @@ where
         // access the protocol handler
         if let Some(handler) = self.node().protocols.writing.get() {
             // find the message sender for the given address
-            if let Some(sender) = handler.senders.read().get(&addr).cloned() {
-                let (msg, delivery) = WrappedMessage::new(Box::new(message), true);
+            if let Some(erased) = handler.senders.read().get(&addr).map(|(_, s)| s.clone()) {
+                let sender = erased
+                    .downcast_ref::<mpsc::Sender<WrappedMessage<Self::Message>>>()
+                    .unwrap(); // same Self => same M => TypeId always matches
+
+                let (msg, delivery) = WrappedMessage::new(message, true);
                 sender
-                    .1
                     .try_send(msg)
                     .map_err(|e| {
                         let conn_span = create_connection_span(addr, self.node().span());
@@ -204,9 +207,13 @@ where
         // access the protocol handler
         if let Some(handler) = self.node().protocols.writing.get() {
             // find the message sender for the given address
-            if let Some(sender) = handler.senders.read().get(&addr).cloned() {
-                let (msg, _) = WrappedMessage::new(Box::new(message), false);
-                sender.1.try_send(msg).map_err(|e| {
+            if let Some(erased) = handler.senders.read().get(&addr).map(|(_, s)| s.clone()) {
+                let sender = erased
+                    .downcast_ref::<mpsc::Sender<WrappedMessage<Self::Message>>>()
+                    .unwrap(); // same Self => same M => TypeId always matches
+
+                let (msg, _) = WrappedMessage::new(message, false);
+                sender.try_send(msg).map_err(|e| {
                     let conn_span = create_connection_span(addr, self.node().span());
                     error!(parent: conn_span, "can't send a message: {e}");
                     match e {
@@ -248,9 +255,14 @@ where
         // access the protocol handler
         if let Some(handler) = self.node().protocols.writing.get() {
             let senders = handler.senders.read().clone();
-            for (addr, message_sender) in senders {
-                let (msg, _) = WrappedMessage::new(Box::new(message.clone()), false);
-                let _ = message_sender.1.try_send(msg).map_err(|e| {
+            for (addr, erased) in senders {
+                let sender = erased
+                    .1
+                    .downcast_ref::<mpsc::Sender<WrappedMessage<Self::Message>>>()
+                    .unwrap(); // same Self => same M => TypeId always matches
+
+                let (msg, _) = WrappedMessage::new(message.clone(), false);
+                let _ = sender.try_send(msg).map_err(|e| {
                     let conn_span = create_connection_span(addr, self.node().span());
                     error!(parent: conn_span, "can't send a message: {e}");
                 });
@@ -269,7 +281,7 @@ trait WritingInternal: Writing {
     /// and returns the number of written messages and their cumulative size in bytes.
     async fn write_batch<W: AsyncWrite + Unpin + Send>(
         &self,
-        messages: &mut Vec<WrappedMessage>,
+        messages: &mut Vec<WrappedMessage<Self::Message>>,
         writer: &mut FramedWrite<W, Self::Codec>,
     ) -> io::Result<(usize, usize)>;
 
@@ -285,7 +297,7 @@ trait WritingInternal: Writing {
 impl<W: Writing> WritingInternal for W {
     async fn write_batch<A: AsyncWrite + Unpin + Send>(
         &self,
-        messages: &mut Vec<WrappedMessage>,
+        messages: &mut Vec<WrappedMessage<Self::Message>>,
         writer: &mut FramedWrite<A, Self::Codec>,
     ) -> io::Result<(usize, usize)> {
         // Both the `feed`s and the final `flush` can block on a full socket send
@@ -297,7 +309,7 @@ impl<W: Writing> WritingInternal for W {
 
             let mut prev = writer.write_buffer().len();
             for wrapped in messages {
-                let msg = *wrapped.msg.take().unwrap().downcast().unwrap();
+                let msg = wrapped.msg.take().unwrap(); // guaranteed to be present here
                 writer.feed(msg).await?;
                 let now = writer.write_buffer().len();
                 bytes += now.checked_sub(prev).unwrap_or(now);
@@ -308,7 +320,7 @@ impl<W: Writing> WritingInternal for W {
         };
 
         match timeout(Duration::from_millis(Self::TIMEOUT_MS), write).await {
-            Ok(Ok(lens)) => Ok(lens),
+            Ok(Ok(stats)) => Ok(stats),
             Ok(Err(e)) => Err(e),
             Err(_) => Err(io::Error::new(io::ErrorKind::TimedOut, "write timed out")),
         }
@@ -338,9 +350,13 @@ impl<W: Writing> WritingInternal for W {
             mpsc::channel(Self::MESSAGE_QUEUE_DEPTH);
 
         // register the connection's message sender with the Writing protocol handler
-        conn_senders
-            .write()
-            .insert(addr, (sender_id, outbound_message_sender));
+        conn_senders.write().insert(
+            addr,
+            (
+                sender_id,
+                Arc::new(outbound_message_sender) as Arc<dyn Any + Send + Sync>,
+            ),
+        );
 
         // this will automatically drop the sender upon a disconnect
         let sender_cleanup = SenderCleanup {
@@ -370,7 +386,7 @@ impl<W: Writing> WritingInternal for W {
             // disconnect automatically regardless of how this task concludes
             let _conn_cleanup = DisconnectOnDrop::new(node.clone(), addr);
 
-            let mut batch: Vec<WrappedMessage> = Vec::new();
+            let mut batch: Vec<WrappedMessage<Self::Message>> = Vec::new();
             // recv_many blocks for the first message, then takes whatever else is
             // already queued (capped by the queue depth) - so we coalesce without
             // ever waiting to fill a batch. Returns 0 only once the channel closes.
@@ -411,16 +427,13 @@ impl<W: Writing> WritingInternal for W {
 }
 
 /// Used to queue messages for delivery and return its confirmation.
-pub(crate) struct WrappedMessage {
-    msg: Option<Box<dyn Any + Send>>,
+pub(crate) struct WrappedMessage<T> {
+    msg: Option<T>,
     delivery_notification: Option<oneshot::Sender<io::Result<()>>>,
 }
 
-impl WrappedMessage {
-    fn new(
-        msg: Box<dyn Any + Send>,
-        confirmation: bool,
-    ) -> (Self, Option<oneshot::Receiver<io::Result<()>>>) {
+impl<T> WrappedMessage<T> {
+    fn new(msg: T, confirmation: bool) -> (Self, Option<oneshot::Receiver<io::Result<()>>>) {
         let (tx, rx) = if confirmation {
             let (tx, rx) = oneshot::channel();
             (Some(tx), Some(rx))

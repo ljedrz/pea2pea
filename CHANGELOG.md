@@ -8,6 +8,7 @@
 # Changed
 
 - greatly improved write speed via batching
+- removed per-unicast boxing for an additional perf boost
 
 # 0.55.2
 
