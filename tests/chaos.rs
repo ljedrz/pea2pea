@@ -55,6 +55,7 @@ use rand::{RngExt, SeedableRng, rngs::SmallRng};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpSocket,
+    time::timeout,
 };
 use tokio_util::{codec::LengthDelimitedCodec, sync::CancellationToken};
 
@@ -71,7 +72,7 @@ const METRICS_INTERVAL: Duration = Duration::from_secs(5);
 /// Per-action sleep range. Tight enough to keep the runtime busy, slack
 /// enough to let other workers interleave between actions.
 const MIN_ACTION_DELAY_US: u64 = 0;
-const MAX_ACTION_DELAY_US: u64 = 500;
+const MAX_ACTION_DELAY_US: u64 = 250;
 /// Message size bounds.
 const MIN_MSG_SIZE: usize = 1;
 const MAX_MSG_SIZE: usize = 4096;
@@ -421,13 +422,16 @@ async fn act_connect(
     tokio::select! {
         biased;
         _ = token.cancelled() => {},
-        res = a.node().connect_using_socket(target, socket) => {
+        // this timeout is crucial in addition to the TCP and Handshake limits, as
+        // the conditions of this test are simply deranged, and may even cause
+        // the library's locks to contend and/or the executor to starve
+        res = timeout(Duration::from_secs(1), a.node().connect_using_socket(target, socket)) => {
             stats.connects_attempted.fetch_add(1, Ordering::Relaxed);
             match res {
-                Ok(()) => {
+                Ok(Ok(())) => {
                     stats.connects_succeeded.fetch_add(1, Ordering::Relaxed);
                 }
-                Err(_) => {
+                _ => {
                     stats.err_connect.fetch_add(1, Ordering::Relaxed);
                 }
             }
