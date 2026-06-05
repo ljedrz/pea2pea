@@ -68,15 +68,17 @@ async fn check_node_cleanups() {
         .await;
         let temporary_addr = persistent_node.node().connected_addrs()[0];
 
-        persistent_node
-            .send_dm(temporary_addr, Bytes::from(&b"herp"[..]))
-            .await
-            .unwrap();
+        for _ in 0..10 {
+            persistent_node
+                .send_dm(temporary_addr, Bytes::from(&b"herp"[..]))
+                .await
+                .unwrap();
 
-        temp_node
-            .send_dm(persistent_addr, Bytes::from(&b"derp"[..]))
-            .await
-            .unwrap();
+            temp_node
+                .send_dm(persistent_addr, Bytes::from(&b"derp"[..]))
+                .await
+                .unwrap();
+        }
 
         temp_node.node().shut_down().await;
 
@@ -124,6 +126,8 @@ async fn check_node_cleanups() {
     println!("full node size: {single_node_size}kB");
     println!("leaked memory:  {heap_growth}B");
     println!();
+
+    println!("{}", GLOBAL.stats());
 
     // regardless of the number of connections the node handles, its memory use shouldn't grow at all
     assert_eq!(heap_growth, 0);
