@@ -7,8 +7,11 @@
 
 # Changed
 
+- **breaking**: `Stats::register_sent_message` is renamed to `register_sent_messages` and has an extra param for the number of messages; migration is trivial (set it to 1)
+- **breaking**: `Config::allow_duplicate_connections` is removed; it was a niche, testing-oriented feature, but it complicated reasoning about invariants
+- **breaking**: `OnDisconnect::on_disconnect` has an extra param, `DisconnectOrigin`; migration is trivial (the new param may be ignored)
 - greatly improved write speed via batching
-- removed per-unicast boxing for an additional perf boost
+- removed per-unicast boxing for an additional perf boost and a reduction in allocations
 
 # 0.55.2
 
