@@ -1,21 +1,24 @@
 # 0.56.0
 
-# Added
+### Added
 
 - `Config::listener_backlog` with a default value of `128`
 - `Config::reuse_listener_port`, defaulting to `false`
 
-# Changed
+### Changed
 
 - **breaking**: `Stats::register_sent_message` is renamed to `register_sent_messages` and has an extra param for the number of messages; migration is trivial (set it to 1)
-- **breaking**: `Config::allow_duplicate_connections` is removed; it was a niche, testing-oriented feature, but it complicated reasoning about invariants
 - **breaking**: `OnDisconnect::on_disconnect` has an extra param, `DisconnectOrigin`; migration is trivial (the new param may be ignored)
 - greatly improved write speed via batching
 - removed per-unicast boxing for an additional perf boost and a reduction in allocations
 
-# Fixed
+### Fixed
 
 - the protocol loops for `Handshake`, `Reading`, and `Writing` are now biased towards cleanups, which matters under extreme churn
+
+### Removed
+
+- **breaking**: `Config::allow_duplicate_connections`; it was a niche, testing-oriented feature, but it complicated reasoning about invariants
 
 # 0.55.2
 
