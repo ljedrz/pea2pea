@@ -1,14 +1,18 @@
 //! Packets-per-second (PPS) throughput.
 //!
-//! Two send paths:
-//! 1. **naive** - one `unicast_fast` per byte. The bottleneck is the per-call
-//!    send path, so this is dominated by call overhead.
-//! 2. **batch** - one `unicast_fast` expands to `N` bytes via the codec, so the
-//!    same payload is delivered in `PACKETS / N` calls. Sweeping `N` shows the
-//!    per-call overhead being amortised away.
+//! Each timed sample sends a fixed number of packets end-to-end and waits for
+//! the receiver to count every one; an `ItemsCount` counter turns the per-sample
+//! time back into PPS, so divan reports throughput directly. Two send paths:
 //!
-//! Both confirm receipt before stopping the clock, so both measure *delivered*
-//! throughput; the naive-vs-batch gap isolates send-call overhead specifically.
+//! * **naive** - one `unicast_fast` call per byte.
+//! * **batch** - one `unicast_fast` call expands to `N` bytes via the codec, so
+//!   the same payload goes out in `1/N` as many calls. The arg sweeps `N`.
+//!
+//! The receiver decodes byte-by-byte in both cases, so the receive-side work is
+//! identical; the only difference is how many send calls produce it.
+//!
+//! Read the median rather than the mean; under load the batch rows can grow a
+//! right tail from scheduler jitter while the medians stay put.
 
 use std::{
     io,
@@ -194,7 +198,6 @@ fn naive(bencher: Bencher) {
 }
 
 /// Same delivered payload, but coalesced into `PACKETS / batch_size` writes.
-/// The `args` sweep shows per-call overhead being amortised as the batch grows.
 #[divan::bench(sample_count = 100, sample_size = 1, args = [10, 100, 1000])]
 fn batch(bencher: Bencher, batch_size: usize) {
     assert_eq!(

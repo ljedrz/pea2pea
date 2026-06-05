@@ -1,7 +1,7 @@
 //! Library overhead vs. a raw `tokio` + `Framed` baseline.
 //!
-//! The question: how much does pea2pea cost on top of hand-wiring the same
-//! codec onto a tokio socket? The whole comparison only means anything if the
+//! The question: how much does `pea2pea` cost on top of hand-wiring the same
+//! codec onto a `tokio` socket? The whole comparison only means anything if the
 //! baseline does the *same work*, so the design is built around that:
 //!
 //! * **Identical framing.** pea2pea's codecs are just `tokio_util` Decoder/
@@ -16,11 +16,11 @@
 //!   wait for all of them to land before the clock stops, then report
 //!   messages/sec via an `ItemsCount` counter.
 //!
-//! So the measured delta is purely pea2pea's orchestration layer - connection
+//! So the measured delta is purely `pea2pea`'s orchestration layer - connection
 //! management, addressing, and its reader/writer-task + channel model - over an
-//! otherwise identical framing path. (The handshake runs once at connection
-//! setup, which is hoisted out of the timed region, so it costs nothing in the
-//! steady-state measurement beyond the socket option it sets.)
+//! otherwise identical framing path. The raw side does no recipient routing and
+//! runs a single connection, so the small-message ratios are a worst case, and
+//! a capability-matched baseline would close some of the gap.
 //!
 //! COMPLETION SIGNAL: each receiver fires a `Notify` the moment it has counted a
 //! full sample's worth of frames, and the timed closure awaits that, rather than
@@ -35,8 +35,8 @@
 //! write sink, whereas pea2pea splits read and write across tasks with a channel
 //! between - that architectural cost is part of the overhead, by design.
 //!
-//! READING IT: the **ratio** pea2pea/raw at a given size is the headline, not
-//! the absolute µs - and it travels across hardware far better, since machine
+//! READING IT: the **ratio** `pea2pea`/`tokio` at a given size is the headline,
+//! not the absolute µs - and it travels across hardware far better, since machine
 //! noise moves both siblings together. Sweeping message size shows the per-
 //! message cost (a fixed tax) amortising: largest relative overhead for tiny
 //! high-frequency frames, shrinking as frames grow and I/O dominates.

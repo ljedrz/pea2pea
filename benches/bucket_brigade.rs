@@ -6,11 +6,6 @@
 //! Reading the output: divan's time column is the **end-to-end** traversal. The
 //! `ItemsCount` counter is set to the hop count, so the throughput column reads
 //! as hops/second - i.e. per-hop latency is its inverse (1 Mhop/s == 1 µs/hop).
-//!
-//! NOTE ON ULIMIT: every node holds a listener plus its chain connections, so a
-//! 10k chain needs tens of thousands of file descriptors. Raise `ulimit -n`
-//! (e.g. `ulimit -n 65535`) before running the large sizes, or trim the top of
-//! the `args` array for a no-tuning run.
 
 use std::{net::SocketAddr, sync::Arc, time::Duration};
 
@@ -85,7 +80,7 @@ impl Reading for Brigadier {
 /// there is never more than one bucket in flight, which is what keeps successive
 /// samples from bleeding into each other (so no per-round cooldown is needed
 /// inside the clock).
-#[divan::bench(sample_count = 50, sample_size = 1, args = [10, 100, 1000, 10_000])]
+#[divan::bench(sample_count = 50, sample_size = 1, args = [10, 100, 1000])]
 fn nodes(bencher: Bencher, len: usize) {
     assert!(len >= 2, "a chain needs at least one hop");
 
