@@ -2,6 +2,7 @@
 
 [![Crates.io](https://img.shields.io/crates/v/pea2pea.svg)](https://crates.io/crates/pea2pea)
 [![Documentation](https://docs.rs/pea2pea/badge.svg)](https://docs.rs/pea2pea)
+[![dependency status](https://deps.rs/repo/github/ljedrz/pea2pea/status.svg)](https://deps.rs/repo/github/ljedrz/pea2pea)
 
 **A clean, modular, and lightweight peer-to-peer networking library for Rust.**
 
@@ -16,7 +17,6 @@
 - [🌀 Chaos Testing](#-chaos-testing)
 - [🏁 Benchmarking](#-benchmarking)
 - [📚 Examples](#-examples)
-- [📦 Installation](#-installation)
 - [🚧 Project Status](#-project-status)
 - [🤝 Contributing](#-contributing)
 - [📜 License](#-license)
@@ -26,12 +26,12 @@
 ### ⚡ Why pea2pea?
 
 * **Battle-Tested in Production:** This library has been vendored and deployed in high-throughput, real-world decentralized networks, successfully managing complex topologies and heavy traffic.
-* **Simplicity First:** No complex configuration objects or rigid frameworks. You can audit the library yourself in a single afternoon.
-* **Minimal Dependency Tree:** `pea2pea` relies strictly on `tokio` and standard crates, resulting in lightning-fast compile times and tiny binaries.
-* **Uncompromising Performance:** Designed as a zero-weight abstraction layer, the library imposes negligible overhead, allowing your application to saturate the underlying network hardware or loopback interface limits.
+* **Simplicity First:** No complex configuration objects or rigid frameworks. You can traverse and understand the codebase in a single afternoon.
+* **Minimal Dependency Tree:** `pea2pea` only has **6** native dependencies, which restricts supply chain attack surface, and grants lightning-fast compile times.
+* **Uncompromising Performance:** Designed as a minimal abstraction layer, the library imposes negligible overhead, allowing your application to saturate the underlying network hardware or loopback interface limits.
 * **Tiny Footprint:** The core node structure occupies just **~16kB of RAM**; per-connection memory usage starts at **~14kB** and scales directly with your configured buffer sizes.
-* **Meticulously Tested:** A comprehensive collection of tests and examples ensures correctness; there is no `unsafe` code involved.
-* **Complete Control:** You dictate the application logic, and control **every** byte sent and received. Use slightly altered nodes to fuzz-test and stress-test your production nodes.
+* **Meticulously Tested:** A comprehensive collection of tests and examples ensures correctness, not to mention a host of punishing stress tests targeting heisenbugs; there is no `unsafe` code involved.
+* **Complete Control:** You dictate the application logic, and control **every** byte sent and received. Use slightly altered nodes to quickly set up chaos/fuzz/stress tests for your production nodes.
 
 ---
 
@@ -110,9 +110,9 @@ async fn main() -> io::Result<()> {
 *(For a visual representation, see the **[Connection Lifecycle Graph](https://github.com/ljedrz/pea2pea/blob/master/assets/connection_lifetime.png)**)*
 
 Simply implement the traits you need:
-* **Handshake:** Secure your connections (tls, noise, etc.), configure the stream, or exchange metadata.
+* **Handshake:** Secure your connections (TLS, noise, etc.), configure the stream, or exchange metadata.
 * **Reading & Writing:** Define framing (codecs), message processing, and backpressure handling.
-* **OnConnect / OnDisconnect:** Trigger logic when a connection is fully established or severed (cleanup, recovery).
+* **OnConnect & OnDisconnect:** Trigger logic when a connection is fully established or severed (cleanup, recovery).
 
 For full details, refer to the **[protocols documentation](https://docs.rs/pea2pea/latest/pea2pea/protocols/index.html)**.
 
@@ -127,14 +127,16 @@ For full details, refer to the **[protocols documentation](https://docs.rs/pea2p
 * **Malicious Payloads / Fuzzing:** The strict separation of the `Reading` protocol means that malformed packets or garbage data are rejected at the codec level, instantly dropping the offender before application logic is touched.
 * **Resource Limits:** Hard caps on connection counts prevent bad actors from monopolizing your node's resources.
 
+For the security policy, see [SECURITY.md](SECURITY.md).
+
 > **Challenge:** We invite you to try and break a `pea2pea`-powered node. Point your favorite stress-testing tool (like `hping3` or a custom fuzzer) at it; the node will hold its ground.
 
 ---
 
 ### 🌀 Chaos Testing
 
-`pea2pea` has been subjected to extensive adversarial stress testing: long
-runs of maximally hostile concurrent churn, designed to surface
+`pea2pea` is routinely subjected to extensive adversarial stress testing:
+long runs of maximally hostile concurrent churn, designed to surface
 synchronization bugs, leaks, and lifecycle inconsistencies that simpler
 tests can't reach.
 
@@ -181,20 +183,8 @@ Be sure to also check out the stress tests included in the [examples](examples).
 Check out the [examples](examples) directory, which is organized by complexity and use case:
 
 * **🎮 Fun & Visual (Tutorials):** Gamified scenarios like the **[Telephone Game](examples/telephone_game.rs)** or **[Hot Potato](examples/hot_potato_game.rs)** that demonstrate core concepts like topology, message passing, and basic state synchronization.
-* **🛠️ Practical & Patterns:** Standard infrastructure patterns, including **[TLS](examples/tls.rs)**, **[Noise Handshakes](examples/noise_handshake.rs)**, **[Rate Limiting](examples/rate_limiting.rs)**, and **[RPC](examples/simple_rpc.rs)**.
-* **🧠 Advanced & Stress Tests:** High-load scenarios like **[Connection Churn](examples/churn_stress.rs)** or **[Dense Mesh](examples/dense_mesh.rs)** that demonstrate the library's performance and **[libp2p interop](examples/libp2p.rs)**.
-
----
-
-### 📦 Installation
-
-Add this to your `Cargo.toml`:
-
-```toml
-[dependencies]
-pea2pea = "x.x.x" # replace with the latest version
-tokio = { version = "1", features = ["rt"] } # pick any other features you need
-```
+* **🛠️ Practical & Patterns:** Standard infrastructure patterns, including **[TLS](examples/tls.rs)**, **[Noise Handshakes](examples/noise_handshake.rs)**, and **[Rate Limiting](examples/rate_limiting.rs)**.
+* **🧠 Advanced & Stress Tests:** High-load scenarios like **[C10k](examples/c10k.rs)** or **[Dense Mesh](examples/dense_mesh.rs)** that demonstrate the library's performance.
 
 ---
 
@@ -204,8 +194,8 @@ tokio = { version = "1", features = ["rt"] } # pick any other features you need
 
 Despite the `0.x` versioning, `pea2pea` is considered **production-ready**. The core architecture is finished and proven.
 
-* **API Stability:** The public API is stable. We do not anticipate breaking changes unless there's a **very** good reason to do so.
-* **Scope:** The library is effectively in "maintenance mode" regarding features. Future development is strictly limited to **hardening internals** to ensure maximum reliability. We are not adding new features to the core.
+* **API Stability:** The public API is stable. We do not anticipate breaking changes unless there's a **very** good reason to do so, and migration is trivial.
+* **Scope:** The library is effectively in "maintenance mode" regarding features. Future development is strictly limited to **hardening internals** to ensure maximum reliability. We are not actively adding new features to the core.
 
 ---
 
