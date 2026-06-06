@@ -186,7 +186,7 @@ Check out the [examples](examples) directory, which is organized by complexity a
 
 * **🎮 Fun & Visual (Tutorials):** Gamified scenarios like the **[Telephone Game](examples/telephone_game.rs)** or **[Hot Potato](examples/hot_potato_game.rs)** that demonstrate core concepts like topology, message passing, and basic state synchronization.
 * **🛠️ Practical & Patterns:** Standard infrastructure patterns, including **[TLS](examples/tls.rs)**, **[Noise Handshakes](examples/noise_handshake.rs)**, and **[Rate Limiting](examples/rate_limiting.rs)**.
-* **🧠 Advanced & Stress Tests:** High-load scenarios like **[C10k](examples/c10k.rs)** or **[Dense Mesh](examples/dense_mesh.rs)** that demonstrate the library's performance.
+* **🧠 Stress Tests:** High-load scenarios like **[C10k](examples/c10k.rs)** or **[Dense Mesh](examples/dense_mesh.rs)** that demonstrate the library's performance.
 
 ---
 

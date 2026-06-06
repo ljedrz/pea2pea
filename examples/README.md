@@ -30,7 +30,7 @@ These examples demonstrate standard infrastructure patterns, security integratio
 | **[Simple RPC](simple_rpc.rs)** | Implements a request/response pattern over raw TCP using correlation IDs to map replies to callers. | Request/Response, Correlation IDs, Manual Protocol |
 | **[TLS](tls.rs)** | Wraps the underlying TCP stream in a TLS layer using `native-tls`, enabling secure, standard encrypted communication. | Encryption, Stream Wrapping, Native-TLS |
 
-## 🧠 Advanced & Stress Tests
+## 🧠 Stress Tests
 
 These examples involve high-load stress testing. They demonstrate the upper limits of what the library can handle.
 
@@ -40,7 +40,3 @@ These examples involve high-load stress testing. They demonstrate the upper limi
 | **[C100k](c100k.rs)** | Breaks the per-node `u16` connection ceiling by sharding: several independent nodes share one port via `SO_REUSEPORT`, with the kernel balancing 100,000 connections across them, all sized from one set of consts. Clients fan out over multiple loopback source IPs to clear the ephemeral-port ceiling too. | Listener Sharding, SO_REUSEPORT, OS Tuning |
 | **[Connection Churn](churn_stress.rs)** | A "thundering herd" simulation where clients rapidly connect, exchange data, and disconnect. Demonstrates low overhead in connection lifecycle management. | Stress Testing, High Churn, Performance |
 | **[Dense Mesh](dense_mesh.rs)** | Spawns a high density of nodes (default 200) and measures exact RAM usage per node and per connection. Demonstrates the library's tunable memory footprint. | Memory Profiling, High Density, Metrics |
-
-## 🧩 Common Utilities
-
-* **[common/](common/)**: Shared utilities for the examples, including a simple length-delimited codec (`TestCodec`) and logger setup.
