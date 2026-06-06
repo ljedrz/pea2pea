@@ -1,3 +1,4 @@
+benches
 examples
 tests
 Cargo.toml
