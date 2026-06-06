@@ -357,6 +357,114 @@ async fn handshake_guards_connect() {
 }
 
 #[tokio::test]
+async fn failed_handshake_blocks_reading_and_writing() {
+    #[derive(Clone)]
+    struct GatekeeperNode {
+        node: Node,
+        // set only if Reading ever delivers a message
+        read_fired: Arc<AtomicBool>,
+    }
+
+    impl Pea2Pea for GatekeeperNode {
+        fn node(&self) -> &Node {
+            &self.node
+        }
+    }
+
+    // the handshake always rejects the connection
+    impl Handshake for GatekeeperNode {
+        async fn perform_handshake(&self, _conn: Connection) -> io::Result<Connection> {
+            Err(io::Error::other("denied"))
+        }
+    }
+
+    // Reading + Writing are both enabled, but must stay dormant until the
+    // handshake concludes successfully — which it never does here.
+    impl Reading for GatekeeperNode {
+        type Message = BytesMut;
+        type Codec = TestCodec<BytesMut>;
+
+        fn codec(&self, _: SocketAddr, _: ConnectionSide) -> Self::Codec {
+            Default::default()
+        }
+
+        async fn process_message(&self, _: SocketAddr, _: Self::Message) {
+            // reaching this means Reading engaged on a connection that never
+            // completed its handshake — the invariant is already broken
+            self.read_fired.store(true, Ordering::Release);
+        }
+    }
+
+    impl Writing for GatekeeperNode {
+        type Message = Bytes;
+        type Codec = TestCodec<Bytes>;
+
+        fn codec(&self, _: SocketAddr, _: ConnectionSide) -> Self::Codec {
+            Default::default()
+        }
+    }
+
+    let gatekeeper = GatekeeperNode {
+        node: Node::new(Config {
+            name: Some("gatekeeper".into()),
+            ..Default::default()
+        }),
+        read_fired: Default::default(),
+    };
+    gatekeeper.enable_handshake().await;
+    gatekeeper.enable_reading().await;
+    gatekeeper.enable_writing().await;
+    let addr = start_listening(&gatekeeper).await;
+
+    // a raw client completes the TCP connect, then pushes a perfectly valid
+    // frame (TestCodec = 2-byte BE length prefix + payload). The frame being
+    // *valid* is deliberate: it rules out "the codec just rejected garbage" as
+    // the reason nothing was processed. Writes are best-effort — if the
+    // gatekeeper resets us first, that only reinforces the point.
+    let mut client = TcpStream::connect(addr).await.unwrap();
+    let _ = client
+        .write_all(&[0x00, 0x05, b'h', b'e', b'l', b'l', b'o'])
+        .await;
+    let _ = client.flush().await;
+
+    // the handshake rejected it: the connection must never reach "connected",
+    // and the connecting slot must be released
+    wait_until(Duration::from_secs(1), || {
+        gatekeeper.node().num_connected() == 0 && gatekeeper.node().num_connecting() == 0
+    })
+    .await;
+
+    // Reading never ran: no message delivered, and node-level receive stats
+    // stayed empty despite a valid frame sitting in the socket.
+    assert!(
+        !gatekeeper.read_fired.load(Ordering::Acquire),
+        "Reading delivered a message on a connection that failed its handshake"
+    );
+    assert_eq!(
+        gatekeeper.node().stats().received(),
+        (0, 0),
+        "Reading engaged"
+    );
+
+    // Writing never ran: nothing was ever sent, and there's no peer to send to.
+    assert_eq!(gatekeeper.node().stats().sent(), (0, 0), "Writing engaged");
+    assert!(gatekeeper.node().connected_addrs().is_empty());
+
+    // ...and from the peer's side, the socket was actually closed rather than
+    // left half-open. read() returning (rather than blocking) is the real check
+    // here; the timeout guards against a "rejected but never hung up" regression.
+    let mut buf = [0u8; 16];
+    let n = tokio::time::timeout(Duration::from_secs(1), client.read(&mut buf))
+        .await
+        .expect("client read timed out — the socket should have been closed")
+        .unwrap_or(0); // a read error (reset) is also "connection gone"
+    assert_eq!(
+        n, 0,
+        "got bytes back from a connection that never handshook"
+    );
+}
+
+#[tokio::test]
 async fn successful_handshake_releases_connecting_slot() {
     #[derive(Clone)]
     struct NoopHandshakeNode(Node);
