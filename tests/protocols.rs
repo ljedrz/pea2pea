@@ -771,3 +771,76 @@ async fn on_disconnect_fires_on_both_sides() {
     })
     .await;
 }
+
+#[tokio::test]
+async fn disconnect_origin_reflects_source() {
+    #[derive(Clone)]
+    struct OriginNode {
+        node: Node,
+        // the DisconnectOrigin observed by *this* node's hook, if it fired
+        seen: Arc<Mutex<Option<DisconnectOrigin>>>,
+    }
+
+    impl OriginNode {
+        fn new(name: &str) -> Self {
+            Self {
+                node: Node::new(Config {
+                    name: Some(name.into()),
+                    ..Default::default()
+                }),
+                seen: Default::default(),
+            }
+        }
+    }
+
+    impl Pea2Pea for OriginNode {
+        fn node(&self) -> &Node {
+            &self.node
+        }
+    }
+
+    impl OnDisconnect for OriginNode {
+        async fn on_disconnect(&self, _: SocketAddr, origin: DisconnectOrigin) {
+            *self.seen.lock() = Some(origin);
+        }
+    }
+
+    // The passive side needs Reading so it notices the peer's FIN and tears down
+    // via the read path. It's deliberately the *only* I/O protocol on that side:
+    // with no Writing task, nothing races the read loop for ownership of the
+    // disconnect, so the observed origin is unambiguous.
+    impl Reading for OriginNode {
+        type Message = BytesMut;
+        type Codec = TestCodec<BytesMut>;
+        fn codec(&self, _: SocketAddr, _: ConnectionSide) -> Self::Codec {
+            Default::default()
+        }
+        async fn process_message(&self, _: SocketAddr, _: Self::Message) {}
+    }
+
+    let initiator = OriginNode::new("disconnector"); // the "us" side
+    let responder = OriginNode::new("disconnectee"); // the "them" side
+
+    // initiator enables neither Reading nor Writing: it's the one calling
+    // disconnect(), so its own teardown can only be attributed to User.
+    responder.enable_reading().await;
+    initiator.enable_on_disconnect().await;
+    responder.enable_on_disconnect().await;
+
+    let responder_addr = start_listening(&responder).await;
+    initiator.node().connect(responder_addr).await.unwrap();
+    wait_for_connections(responder.node(), 1).await;
+
+    // tear it down from the initiator
+    assert!(initiator.node().disconnect(responder_addr).await);
+
+    wait_until(Duration::from_secs(1), || {
+        initiator.seen.lock().is_some() && responder.seen.lock().is_some()
+    })
+    .await;
+
+    // "us": the side that called disconnect() sees User
+    assert_eq!(*initiator.seen.lock(), Some(DisconnectOrigin::User));
+    // "them": the side that only saw the FIN through its read loop sees Reading
+    assert_eq!(*responder.seen.lock(), Some(DisconnectOrigin::Reading));
+}
