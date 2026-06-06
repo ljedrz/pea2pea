@@ -18,12 +18,13 @@ We welcome contributions that harden the existing core without expanding the API
 2.  **Performance Improvements:** Optimizations that reduce memory footprint or CPU usage.
 3.  **Documentation:** Clarifications, typo fixes, or additional examples.
 4.  **Tests:** New cases for any untested features, improvements to structure.
+5.  **Features impossible to implement by the user:** Select enhancements that **cannot** be introduced outside the library.
 
 ## ❌ What We Do Not Accept
 
 To keep the library lightweight and maintainable, we generally **reject**:
 
-1.  **New Features:** If it can be implemented *on top* of `pea2pea`, it belongs in your application, not here.
+1.  **"Userland" Features:** If it can be implemented *on top* of `pea2pea`, it belongs in your application, not here.
 2.  **Helper Functions:** Quality-of-life abstractions often lead to bloat. We prefer explicit, low-level control.
 3.  **Specific Protocols:** Implementations of specific RPC or Gossip algorithms.
 4.  **New Dependencies:** We strive to keep the dependency tree minimal.

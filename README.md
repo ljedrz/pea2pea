@@ -27,7 +27,7 @@
 
 * **Battle-Tested in Production:** This library has been vendored and deployed in high-throughput, real-world decentralized networks, successfully managing complex topologies and heavy traffic.
 * **Simplicity First:** No complex configuration objects or rigid frameworks. You can traverse and understand the codebase in a single afternoon.
-* **Minimal Dependency Tree:** `pea2pea` only has **6** native dependencies, which restricts supply chain attack surface, and grants lightning-fast compile times.
+* **Minimal Dependency Tree:** `pea2pea` only has **6** of the most scrutinized, native dependencies, which restricts supply chain attack surface, and grants lightning-fast compile times.
 * **Uncompromising Performance:** Designed as a minimal abstraction layer, the library imposes negligible overhead, allowing your application to saturate the underlying network hardware or loopback interface limits.
 * **Tiny Footprint:** The core node structure occupies just **~16kB of RAM**; per-connection memory usage starts at **~14kB** and scales directly with your configured buffer sizes.
 * **Meticulously Tested:** A comprehensive collection of tests and examples ensures correctness, not to mention a host of punishing stress tests targeting heisenbugs; there is no `unsafe` code involved.
@@ -120,12 +120,14 @@ For full details, refer to the **[protocols documentation](https://docs.rs/pea2p
 
 ### 🔒 Security
 
-`pea2pea` is built to survive the hostile internet. Its architecture naturally mitigates common denial-of-service vectors without requiring complex configuration:
+`pea2pea` embraces security through simplicity. It mitigates common denial-of-service vectors by default:
 
 * **Slowloris / Connection Exhaustion:** The configurable timeouts ensure that "creeper" connections that fail to handshake or send data are aggressively pruned, freeing up slots for legitimate peers.
 * **SYN Floods / Rapid Churn:** The library's internal state machine handles high-frequency connect/disconnect events (churn) without leaking file descriptors or memory.
 * **Malicious Payloads / Fuzzing:** The strict separation of the `Reading` protocol means that malformed packets or garbage data are rejected at the codec level, instantly dropping the offender before application logic is touched.
 * **Resource Limits:** Hard caps on connection counts prevent bad actors from monopolizing your node's resources.
+
+You could call the design philosophy "healthily paranoid." `pea2pea` treats the outside world - and even custom protocol layers - with systematic skepticism. Rather than assuming perfect execution, it wraps user-defined hooks and network events in rigid guardrails, isolating failures so that a single misbehaving peer or implementation oversight won't bring down the node.
 
 For the security policy, see [SECURITY.md](SECURITY.md).
 

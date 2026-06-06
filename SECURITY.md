@@ -12,14 +12,6 @@ I will review reports as my schedule allows. While I strive to maintain the libr
 
 If your organization requires guaranteed response times, priority issue resolution, or enterprise SLAs, please contact me using the e-mail address in [Cargo.toml](Cargo.toml) to discuss commercial support.
 
-## 🔍 Simplicity as Security
-
-`pea2pea` is architected to be completely understandable.
-
-* **Auditable by Design:** The codebase is minimal and linear. A single developer can audit the entire library in a single afternoon.
-* **No Black Boxes:** There are no complex hidden state machines or "magic" behaviors. We encourage you to read the source code to understand exactly what you are deploying.
-* **Debuggable:** Because the abstraction layer is thin, bugs are rarely buried deep in the stack. If something breaks, the cause is usually visible immediately in the local scope.
-
 ## 🎯 Scope: What is a "Security Issue"?
 
 Because `pea2pea` is a micro-kernel, it handles low-level plumbing while you handle the logic. Please check if the issue falls within the library's scope before reporting.
