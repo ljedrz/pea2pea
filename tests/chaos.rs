@@ -59,7 +59,7 @@ use rand::{RngExt, SeedableRng, rngs::SmallRng};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpSocket,
-    time::timeout,
+    time::{sleep, timeout},
 };
 use tokio_util::{codec::LengthDelimitedCodec, sync::CancellationToken};
 
@@ -518,7 +518,7 @@ async fn worker(
 
         let sleep_us = rng.random_range(MIN_ACTION_DELAY_US..=MAX_ACTION_DELAY_US);
         tokio::select! {
-            _ = tokio::time::sleep(Duration::from_micros(sleep_us)) => {}
+            _ = sleep(Duration::from_micros(sleep_us)) => {}
             _ = token.cancelled() => break,
         }
     }
@@ -644,7 +644,7 @@ async fn infinite_chaos_inner() {
         let mut prev = Snapshot::default();
         loop {
             tokio::select! {
-                _ = tokio::time::sleep(METRICS_INTERVAL) => {
+                _ = sleep(METRICS_INTERVAL) => {
                     let snap = Snapshot::capture(&m_stats);
                     let alive = m_pool.lock().len();
                     print_metrics(start, alive, &snap, &prev);
@@ -655,9 +655,14 @@ async fn infinite_chaos_inner() {
         }
     });
 
-    // Wait for the deadline to expire.
-    tokio::time::sleep(runtime).await;
+    // Wait for the deadline to expire or for Ctrl-C.
+    tokio::select! {
+        _ = sleep(runtime) => {}
+        _ = tokio::signal::ctrl_c() => {}
+    }
     token.cancel();
+
+    println!("\nShutting down...\n");
 
     // Shut down the workers.
     let mut joins = tokio::task::JoinSet::new();
@@ -694,4 +699,6 @@ async fn infinite_chaos_inner() {
     assert_eq!(snap.in_flight_disconnects, 0);
     assert_eq!(snap.in_flight_spawns, 0);
     assert_eq!(snap.in_flight_shutdowns, 0);
+
+    println!("\nAll the invariants held");
 }
