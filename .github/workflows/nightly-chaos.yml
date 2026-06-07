@@ -1,0 +1,32 @@
+name: nightly-chaos
+on:
+  schedule:
+    - cron: '17 3 * * *' # ~03:17 UTC daily; off-peak = fewer scheduling delays
+  workflow_dispatch:
+    inputs:
+      seed:
+        description: 'CHAOS_SEED to reproduce a past run (leave blank for random)'
+        required: false
+      runtime_secs:
+        description: 'CHAOS_RUNTIME_SECS'
+        default: '1800'
+
+jobs:
+  chaos:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45     # hard backstop above the runtime, in case it hangs
+    strategy:
+      fail-fast: false      # one shard failing shouldn't cancel the others
+      matrix:
+        shard: [1, 2, 3, 4] # 4 independent random runs in parallel, free
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Widen ephemeral port range
+        run: sudo sysctl -w net.ipv4.ip_local_port_range="1024 65535"
+      - name: Run chaos
+        env:
+          CHAOS_RUNTIME_SECS: ${{ inputs.runtime_secs || '1800' }}
+          CHAOS_SEED: ${{ inputs.seed }}   # empty on schedule → fresh random each night
+        run: cargo test --release chaos -- --ignored --nocapture
