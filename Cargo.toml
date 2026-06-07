@@ -76,3 +76,8 @@ tokio-native-tls = "0.3"
 tracing-subscriber = { version = "0.3.20", default-features = false, features = ["ansi", "env-filter", "fmt", "parking_lot", "registry", "smallvec"] }
 unsigned-varint = { version = "0.8", features = ["codec", "futures"] }
 pea2pea = { path = ".", features = ["test"] } # a workaround to use the `test` feature in tests by default
+
+[profile.chaos]
+inherits = "release"
+debug-assertions = true
+overflow-checks = true

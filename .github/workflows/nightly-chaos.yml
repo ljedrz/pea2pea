@@ -29,4 +29,4 @@ jobs:
         env:
           CHAOS_RUNTIME_SECS: ${{ inputs.runtime_secs || '1800' }}
           CHAOS_SEED: ${{ inputs.seed }}   # empty on schedule → fresh random each night
-        run: cargo test --release chaos -- --ignored --nocapture
+        run: cargo test --profile chaos chaos -- --ignored --nocapture
