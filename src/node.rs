@@ -205,6 +205,7 @@ impl Node {
                     Err(_) => {
                         // semaphore is never closed in practice; bail defensively
                         error!(parent: node.span(), "inbound permit semaphore closed unexpectedly");
+                        debug_assert!(false, "acquiring an owned listening semaphore failed");
                         return;
                     }
                 };
@@ -526,6 +527,10 @@ impl Node {
                     conn.tasks.push(handle);
                 } else {
                     // can't really happen, since disconnects are exclusive and atomic
+                    debug_assert!(
+                        false,
+                        "disconnect of {addr} claimed, yet the connection vanished before OnDisconnect registration"
+                    );
                     handle.abort();
                 }
                 // wait for the OnDisconnect protocol to perform its specified actions
@@ -550,6 +555,13 @@ impl Node {
             // drop the connection from the active set under the limits lock, so any
             // concurrent `check_and_reserve` has a consistent view of connection counts
             let mut limits = self.connections.limits.lock();
+
+            debug_assert!(
+                limits.ip_counts.get(&addr.ip()).copied().unwrap_or(0) >= 1,
+                "ip_count for {} underflowing: decrement with no live reservation",
+                addr.ip()
+            );
+
             let _ = self.connections.remove(addr);
 
             // decrement the per-IP connection count
