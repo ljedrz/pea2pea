@@ -20,7 +20,7 @@ jobs:
       matrix:
         shard: [1, 2, 3, 4] # 4 independent random runs in parallel, free
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Widen ephemeral port range
