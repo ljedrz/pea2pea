@@ -1,24 +1,16 @@
-use std::{io, net::SocketAddr};
-
 use divan::Bencher;
 use pea2pea::{
     Node, Pea2Pea,
-    protocols::{Handshake, OnDisconnect, Reading, Writing},
+    protocols::{Handshake, OnConnect, OnDisconnect, Reading, Writing},
 };
 use tokio::runtime::Runtime;
 
-#[path = "../../pea2pea/tests/common/mod.rs"]
 mod common;
-use common::TestNode;
+use common::FullNoopNode;
 
 fn main() {
     divan::main();
 }
-
-// `common` already gives `TestNode` its `Reading`/`Writing` (and `OnConnect`)
-// impls; add the no-op `Handshake`/`OnDisconnect` ones so every protocol can be
-// enabled below.
-impl_noop_disconnect_and_handshake!(common::TestNode);
 
 /// Time to bring a fully-featured node up: construct it, enable every protocol,
 /// and start its listener.
@@ -33,16 +25,17 @@ fn node_startup(bencher: Bencher) {
 
     bencher.bench_local(|| {
         rt.block_on(async {
-            let node = TestNode {
-                node: Node::new(Default::default()),
-                barrier: Default::default(),
-            };
+            let node = FullNoopNode(Node::new(Default::default()));
 
-            node.enable_handshake().await;
-            node.enable_reading().await;
-            node.enable_writing().await;
-            node.enable_on_disconnect().await;
-            node.node().toggle_listener().await.unwrap().unwrap();
+            let (.., listener) = tokio::join!(
+                node.enable_handshake(),
+                node.enable_reading(),
+                node.enable_writing(),
+                node.enable_on_connect(),
+                node.enable_on_disconnect(),
+                node.node().toggle_listener(),
+            );
+            let _ = listener.unwrap().unwrap();
 
             // tear the node down off the timed path so its listener fd doesn't
             // linger, without charging shutdown to the measurement
