@@ -10,7 +10,7 @@ Please use [GitHub's "Report a vulnerability" feature](https://github.com/ljedrz
 
 I will review reports as my schedule allows. While I strive to maintain the library's stability, please do not expect immediate responses.
 
-If your organization requires guaranteed response times, priority issue resolution, or enterprise SLAs, please contact me using the e-mail address in [Cargo.toml](Cargo.toml) to discuss commercial support.
+If your organization requires guaranteed response times, priority issue resolution, or enterprise SLAs, please contact me using the e-mail address in [Cargo.toml](pea2pea/Cargo.toml) to discuss commercial support.
 
 ## 🎯 Scope: What is a "Security Issue"?
 

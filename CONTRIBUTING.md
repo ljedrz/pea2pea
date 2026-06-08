@@ -35,14 +35,14 @@ To keep the library lightweight and maintainable, we generally **reject**:
 2.  **Run Tests:** Ensure all tests pass locally.
 
     ```bash
-    cargo test
+    cargo test -p pea2pea
     ```
 
 3.  **Format Code:** Ensure your code is formatted correctly, and that `clippy` is happy.
 
     ```bash
     cargo fmt --all -- --check
-    cargo clippy --all-targets -- -D warnings
+    cargo clippy --workspace --all-targets -- -D warnings
     ```
 
 Thank you for helping us keep `pea2pea` robust and reliable!
