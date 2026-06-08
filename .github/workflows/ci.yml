@@ -39,3 +39,6 @@ jobs:
 
       - name: cargo test
         run: cargo test -p pea2pea
+
+      - name: cargo bench
+        run: cargo bench -p benches
