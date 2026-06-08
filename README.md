@@ -163,7 +163,7 @@ Across the run the library:
   allocations.
 
 The chaos test is included in the repository as
-[`tests/chaos.rs`](tests/chaos.rs) and is fully reproducible; set
+[`tests/chaos.rs`](pea2pea/tests/chaos.rs) and is fully reproducible; set
 `CHAOS_RUNTIME_SECS` for a fixed deadline or run until interrupted.
 
 ---
@@ -184,9 +184,9 @@ Be sure to also check out the stress tests included in the [examples](examples).
 
 Check out the [examples](examples) directory, which is organized by complexity and use case:
 
-* **🎮 Fun & Visual (Tutorials):** Gamified scenarios like the **[Telephone Game](examples/telephone_game.rs)** or **[Hot Potato](examples/hot_potato_game.rs)** that demonstrate core concepts like topology, message passing, and basic state synchronization.
-* **🛠️ Practical & Patterns:** Standard infrastructure patterns, including **[TLS](examples/tls.rs)**, **[Noise Handshakes](examples/noise_handshake.rs)**, and **[Rate Limiting](examples/rate_limiting.rs)**.
-* **🧠 Stress Tests:** High-load scenarios like **[C10k](examples/c10k.rs)** or **[Dense Mesh](examples/dense_mesh.rs)** that demonstrate the library's performance.
+* **🎮 Fun & Visual (Tutorials):** Gamified scenarios like the **[Telephone Game](examples/examples/telephone_game.rs)** or **[Hot Potato](examples/examples/hot_potato_game.rs)** that demonstrate core concepts like topology, message passing, and basic state synchronization.
+* **🛠️ Practical & Patterns:** Standard infrastructure patterns, including **[TLS](examples/examples/tls.rs)**, **[Noise Handshakes](examples/examples/noise_handshake.rs)**, and **[Rate Limiting](examples/examples/rate_limiting.rs)**.
+* **🧠 Stress Tests:** High-load scenarios like **[C10k](examples/examples/c10k.rs)** or **[Dense Mesh](examples/examples/dense_mesh.rs)** that demonstrate the library's performance.
 
 ---
 
