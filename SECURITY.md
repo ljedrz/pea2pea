@@ -1,6 +1,6 @@
 # Security Policy
 
-## 🛡️ Reporting a Vulnerability
+## ☎️ Reporting a Vulnerability
 
 **This is a hobby project maintained in my free time.**
 
@@ -18,8 +18,8 @@ Because `pea2pea` is a micro-kernel, it handles low-level plumbing while you han
 
 ### ✅ In Scope (Library Responsibility)
 * **Resource Leaks:** Failure to clean up file descriptors, memory, or tasks after a disconnect.
-* **Limit Bypassing:** Mechanics that allow an attacker to exceed configured `max_connections` or `max_connections_per_ip`.
-* **Panic/Crash Vectors:** Malformed TCP packets that cause the internal node loop to panic (DoS).
+* **Limit Bypassing:** Mechanics that allow an attacker to exceed the configurable limits.
+* **Crash Vectors:** Anything that can cause the internal node to panic.
 
 ### ❌ Out of Scope (User Responsibility)
 * **Protocol Logic:** Bugs in your own implementations of the protocols.

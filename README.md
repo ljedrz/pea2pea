@@ -173,7 +173,7 @@ The chaos test is included in the repository as
 `pea2pea` is designed to be as fast as the machine it runs on. To verify the throughput on your specific hardware, run the included benchmarks:
 
 ```rust
-cargo bench
+cargo bench -p benches
 ```
 
 Be sure to also check out the stress tests included in the [examples](examples).
