@@ -1,3 +1,10 @@
+# 0.56.1
+
+### Changed
+
+- reorganized the workspace
+- co-located connection finalization in a single critical section
+
 # 0.56.0
 
 ### Added

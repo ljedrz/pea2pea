@@ -52,12 +52,17 @@ impl Connections {
         }
     }
 
-    pub(crate) fn add(&self, conn: Connection) -> io::Result<()> {
+    pub(crate) fn add(&self, conn: Connection, mut guard: ConnectionGuard<'_>) -> io::Result<()> {
+        // lock discipline is `limits` -> `active` everywhere; the guard's Drop (which locks
+        // `limits` to clear `connecting`) runs after the `active` guard is released at scope end
         let mut active = self.active.write();
         if self.shutting_down.load(Ordering::Acquire) {
             return Err(io::Error::other("shutting down"));
         }
         active.insert(conn.addr(), conn);
+        // do NOT drop the guard or otherwise touch `limits` while `active` is held - that inverts
+        // the order and deadlocks against check_and_reserve
+        guard.completed = true;
         Ok(())
     }
 

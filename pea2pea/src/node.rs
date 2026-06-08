@@ -332,7 +332,7 @@ impl Node {
         stream: TcpStream,
         peer_addr: SocketAddr,
         own_side: ConnectionSide,
-        mut guard: ConnectionGuard<'_>,
+        guard: ConnectionGuard<'_>,
     ) -> io::Result<()> {
         let conn_span = create_connection_span(peer_addr, self.span());
         debug!(parent: &conn_span, "establishing connection as the {own_side:?}");
@@ -355,9 +355,7 @@ impl Node {
         let conn_ready_tx = connection.readiness_notifier.take();
 
         // connecting -> connected
-        self.connections.add(connection)?;
-        guard.completed = true;
-        drop(guard);
+        self.connections.add(connection, guard)?;
 
         // send the aforementioned notification so that reading from the socket can commence
         if let Some(tx) = conn_ready_tx {
