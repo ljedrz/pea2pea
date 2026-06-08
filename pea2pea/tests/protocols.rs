@@ -379,7 +379,7 @@ async fn failed_handshake_blocks_reading_and_writing() {
     }
 
     // Reading + Writing are both enabled, but must stay dormant until the
-    // handshake concludes successfully — which it never does here.
+    // handshake concludes successfully - which it never does here.
     impl Reading for GatekeeperNode {
         type Message = BytesMut;
         type Codec = TestCodec<BytesMut>;
@@ -390,7 +390,7 @@ async fn failed_handshake_blocks_reading_and_writing() {
 
         async fn process_message(&self, _: SocketAddr, _: Self::Message) {
             // reaching this means Reading engaged on a connection that never
-            // completed its handshake — the invariant is already broken
+            // completed its handshake - the invariant is already broken
             self.read_fired.store(true, Ordering::Release);
         }
     }
@@ -419,7 +419,7 @@ async fn failed_handshake_blocks_reading_and_writing() {
     // a raw client completes the TCP connect, then pushes a perfectly valid
     // frame (TestCodec = 2-byte BE length prefix + payload). The frame being
     // *valid* is deliberate: it rules out "the codec just rejected garbage" as
-    // the reason nothing was processed. Writes are best-effort — if the
+    // the reason nothing was processed. Writes are best-effort - if the
     // gatekeeper resets us first, that only reinforces the point.
     let mut client = TcpStream::connect(addr).await.unwrap();
     let _ = client
@@ -456,7 +456,7 @@ async fn failed_handshake_blocks_reading_and_writing() {
     let mut buf = [0u8; 16];
     let n = tokio::time::timeout(Duration::from_secs(1), client.read(&mut buf))
         .await
-        .expect("client read timed out — the socket should have been closed")
+        .expect("client read timed out - the socket should have been closed")
         .unwrap_or(0); // a read error (reset) is also "connection gone"
     assert_eq!(
         n, 0,

@@ -65,7 +65,6 @@ where
                         res = setup_tasks.join_next(), if !setup_tasks.is_empty() => {
                             log_setup_join(self_clone.node().span(), "Handshake", res);
                         }
-                        // only pull new connections if we are strictly under the max_connecting limit
                         maybe_conn = conn_receiver.recv() => {
                             match maybe_conn {
                                 Some(returnable_conn) => {

@@ -386,7 +386,7 @@ fn warn_about_dropped_messages(
 ) {
     warn!(
         parent: span,
-        "dropped {dropped_count} messages due to\
+        "dropped {dropped_count} messages due to \
         inbound queue saturation (BACKPRESSURE = false)",
     );
 
