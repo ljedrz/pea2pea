@@ -1,0 +1,39 @@
+[package]
+name = "pea2pea"
+version = "0.56.0"
+authors = ["ljedrz <ljedrz@gmail.com>"]
+edition = "2024"
+description = "A lightweight, performant microkernel for TCP peer-to-peer (P2P) networking. Handles connection pooling and framing, leaving the logic to you."
+license = "CC0-1.0 OR MIT"
+repository = "https://github.com/ljedrz/pea2pea"
+homepage = "https://github.com/ljedrz/pea2pea"
+documentation = "https://docs.rs/pea2pea"
+readme = "README.md"
+categories = ["network-programming", "asynchronous"]
+keywords = ["p2p", "networking", "tcp", "tokio", "distributed"]
+rust-version = "1.85"
+exclude = [
+    ".github",
+    ".gitignore",
+    ".tokeignore",
+    "assets",
+    "benches",
+    "tests"
+]
+
+[features]
+test = []
+
+[dependencies]
+bytes = { workspace = true }
+futures-util = { workspace = true }
+parking_lot = { workspace = true }
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+heapster = { version = "0.8", features = ["fmt", "use_max"] }
+rand = { version = "0.10", default-features = false, features = ["thread_rng"] }
+tokio = { version = "1.24", features = ["rt-multi-thread", "signal" ] }
+pea2pea = { path = ".", features = ["test"] } # a workaround to use the `test` feature in tests by default

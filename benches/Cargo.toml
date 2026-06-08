@@ -1,0 +1,46 @@
+[package]
+name = "benches"
+version = "0.0.0"
+publish = false
+edition = "2024"
+license = "CC0-1.0 OR MIT"
+
+[[bench]]
+name = "bucket_brigade"
+harness = false
+
+[[bench]]
+name = "connections"
+harness = false
+
+[[bench]]
+name = "overhead"
+harness = false
+
+[[bench]]
+name = "packet_cannon"
+harness = false
+
+[[bench]]
+name = "throughput"
+harness = false
+
+[[bench]]
+name = "startup"
+harness = false
+
+[[bench]]
+name = "shutdown"
+harness = false
+
+[dev-dependencies]
+bytes = { workspace = true }
+futures-util = { workspace = true }
+parking_lot = { workspace = true }
+tokio-util = { workspace = true }
+tracing = { workspace = true }
+
+divan = "0.1"
+rand = { version = "0.10", default-features = false, features = ["thread_rng"] }
+pea2pea = { path = "../pea2pea", features = ["test"] }
+tokio = { version = "1.24", features = ["rt-multi-thread" ] }

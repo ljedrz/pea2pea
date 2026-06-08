@@ -70,7 +70,7 @@ use tokio::{
 };
 use tokio_util::codec::{FramedRead, FramedWrite};
 
-#[path = "../tests/common/mod.rs"]
+#[path = "../../pea2pea/tests/common/mod.rs"]
 mod common;
 use common::{TestCodec, named_node};
 
@@ -114,7 +114,7 @@ impl Reading for Receiver {
         // fetch_add is the single crossing point per boundary, so exactly one
         // message per sample trips the signal even under concurrent dispatch
         let count = self.counter.fetch_add(1, Ordering::Relaxed) + 1;
-        if count % MESSAGES == 0 {
+        if count.is_multiple_of(MESSAGES) {
             self.done.notify_one();
         }
     }
@@ -184,7 +184,7 @@ fn raw(bencher: Bencher, size: usize) {
                     break;
                 }
                 let count = c.fetch_add(1, Ordering::Relaxed) + 1;
-                if count % MESSAGES == 0 {
+                if count.is_multiple_of(MESSAGES) {
                     d.notify_one();
                 }
             }

@@ -81,10 +81,10 @@ impl Decoder for TestCodec<BytesMut> {
     fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
         let ret = self.0.decode(src)?;
 
-        if let Some(ref msg) = ret {
-            if msg.is_empty() {
-                return Err(io::ErrorKind::InvalidData.into());
-            }
+        if let Some(ref msg) = ret
+            && msg.is_empty()
+        {
+            return Err(io::ErrorKind::InvalidData.into());
         }
 
         Ok(ret)

@@ -1,0 +1,28 @@
+[package]
+name = "examples"
+version = "0.0.0"
+publish = false
+edition = "2024"
+license = "CC0-1.0 OR MIT"
+
+[dev-dependencies]
+bytes = { workspace = true }
+futures-util = { workspace = true }
+parking_lot = { workspace = true }
+tokio-util = { workspace = true }
+tracing = { workspace = true }
+
+heapster = { version = "0.8", features = ["fmt", "use_max"] }
+libp2p = { version = "0.56", default-features = false, features = ["macros", "noise", "ping", "tcp", "tokio", "yamux"] }
+native-tls = "0.2"
+pea2pea = { path = "../pea2pea" }
+postcard = { version = "1.1.3", default-features = false, features = ["use-std"] }
+prost = "0.14"
+rand = { version = "0.10", default-features = false, features = ["thread_rng"] }
+serde = { version = "1.0.100", default-features = false, features = ["derive"] }
+snow = "0.10"
+test-cert-gen = "0.9"
+tokio = { version = "1.24", features = ["rt-multi-thread" ] }
+tokio-native-tls = "0.3"
+tracing-subscriber = { version = "0.3.20", default-features = false, features = ["ansi", "env-filter", "fmt", "parking_lot", "registry", "smallvec"] }
+unsigned-varint = { version = "0.8", features = ["codec", "futures"] }

@@ -7,7 +7,7 @@ use pea2pea::{
 };
 use tokio::runtime::Runtime;
 
-#[path = "../tests/common/mod.rs"]
+#[path = "../../pea2pea/tests/common/mod.rs"]
 mod common;
 use common::TestNode;
 

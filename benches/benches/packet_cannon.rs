@@ -33,7 +33,7 @@ use pea2pea::{
 use tokio::{runtime::Runtime, time::sleep};
 use tokio_util::codec::{Decoder, Encoder};
 
-#[path = "../tests/common/mod.rs"]
+#[path = "../../pea2pea/tests/common/mod.rs"]
 mod common;
 use common::named_node;
 

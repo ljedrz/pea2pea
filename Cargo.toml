@@ -1,81 +1,14 @@
-[package]
-name = "pea2pea"
-version = "0.56.0"
-authors = ["ljedrz <ljedrz@gmail.com>"]
-edition = "2024"
-description = "A lightweight, performant microkernel for TCP peer-to-peer (P2P) networking. Handles connection pooling and framing, leaving the logic to you."
-license = "CC0-1.0 OR MIT"
-repository = "https://github.com/ljedrz/pea2pea"
-homepage = "https://github.com/ljedrz/pea2pea"
-documentation = "https://docs.rs/pea2pea"
-readme = "README.md"
-categories = ["network-programming", "asynchronous"]
-keywords = ["p2p", "networking", "tcp", "tokio", "distributed"]
-rust-version = "1.85"
-exclude = [
-    ".github",
-    ".gitignore",
-    ".tokeignore",
-    "assets",
-    "examples",
-    "tests"
-]
+[workspace]
+resolver = "3"
+members = [ "pea2pea", "examples", "benches" ]
 
-[features]
-test = []
-
-[[bench]]
-name = "bucket_brigade"
-harness = false
-
-[[bench]]
-name = "connections"
-harness = false
-
-[[bench]]
-name = "overhead"
-harness = false
-
-[[bench]]
-name = "packet_cannon"
-harness = false
-
-[[bench]]
-name = "throughput"
-harness = false
-
-[[bench]]
-name = "startup"
-harness = false
-
-[[bench]]
-name = "shutdown"
-harness = false
-
-[dependencies]
+[workspace.dependencies]
 bytes = "1.11.1"
-futures-util = { version = "0.3", features = ["sink"] }
 parking_lot = "0.12"
+futures-util = { version = "0.3", features = ["sink"] }
 tokio = { version = "1.24", features = ["io-util", "macros", "net", "parking_lot", "rt", "sync", "time"] }
 tokio-util = { version = "0.7", features = ["codec"] }
 tracing = { version = "0.1", default-features = false }
-
-[dev-dependencies]
-divan = "0.1"
-heapster = { version = "0.8", features = ["fmt", "use_max"] }
-libp2p = { version = "0.56", default-features = false, features = ["macros", "noise", "ping", "tcp", "tokio", "yamux"] }
-native-tls = "0.2"
-postcard = { version = "1.1.3", default-features = false, features = ["use-std"] }
-prost = "0.14"
-rand = { version = "0.10", default-features = false, features = ["thread_rng"] }
-serde = { version = "1.0.100", default-features = false, features = ["derive"] }
-snow = "0.10"
-test-cert-gen = "0.9"
-tokio = { version = "1.24", features = ["rt-multi-thread", "signal" ] }
-tokio-native-tls = "0.3"
-tracing-subscriber = { version = "0.3.20", default-features = false, features = ["ansi", "env-filter", "fmt", "parking_lot", "registry", "smallvec"] }
-unsigned-varint = { version = "0.8", features = ["codec", "futures"] }
-pea2pea = { path = ".", features = ["test"] } # a workaround to use the `test` feature in tests by default
 
 [profile.chaos]
 inherits = "release"

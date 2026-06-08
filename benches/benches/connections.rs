@@ -2,7 +2,7 @@ use divan::Bencher;
 use pea2pea::{Pea2Pea, protocols::Reading};
 use tokio::runtime::Runtime;
 
-#[path = "../tests/common/mod.rs"]
+#[path = "../../pea2pea/tests/common/mod.rs"]
 mod common;
 
 fn main() {
