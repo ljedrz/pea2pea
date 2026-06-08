@@ -55,7 +55,7 @@ use pea2pea::{
     connections::DisconnectOrigin,
     protocols::{Handshake, OnConnect, OnDisconnect, Reading, Writing},
 };
-use rand::{RngExt, SeedableRng, rngs::SmallRng};
+use rand::{RngExt, SeedableRng, prelude::IndexedRandom, rngs::SmallRng};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpSocket,
@@ -213,12 +213,15 @@ impl StressNode {
     }
 
     async fn install(&self) -> io::Result<()> {
-        self.enable_handshake().await;
-        self.enable_reading().await;
-        self.enable_writing().await;
-        self.enable_on_connect().await;
-        self.enable_on_disconnect().await;
-        self.node.toggle_listener().await?;
+        let (.., listener) = tokio::join!(
+            self.enable_handshake(),
+            self.enable_reading(),
+            self.enable_writing(),
+            self.enable_on_connect(),
+            self.enable_on_disconnect(),
+            self.node().toggle_listener(),
+        );
+        let _ = listener?;
         Ok(())
     }
 }
@@ -301,27 +304,16 @@ impl OnDisconnect for StressNode {
 type Pool = Arc<Mutex<Vec<StressNode>>>;
 
 fn pick_one(pool: &Pool, rng: &mut SmallRng) -> Option<StressNode> {
-    let p = pool.lock();
-    if p.is_empty() {
-        return None;
-    }
-    Some(p[rng.random_range(0..p.len())].clone())
+    pool.lock().choose(rng).cloned()
 }
 
 fn pick_two(pool: &Pool, rng: &mut SmallRng) -> Option<(StressNode, StressNode)> {
     let p = pool.lock();
     if p.len() < 2 {
         return None;
-    } else if p.len() == 2 {
-        let i = rng.random_range(0..2);
-        return Some((p[i].clone(), p[1 - i].clone()));
     }
-    let i = rng.random_range(0..p.len());
-    let mut j = rng.random_range(0..(p.len() - 1));
-    if j >= i {
-        j += 1;
-    }
-    Some((p[i].clone(), p[j].clone()))
+    let sampled = p.sample_array::<_, 2>(rng)?;
+    Some((sampled[0].clone(), sampled[1].clone()))
 }
 
 fn pop_random(pool: &Pool, rng: &mut SmallRng) -> Option<StressNode> {
