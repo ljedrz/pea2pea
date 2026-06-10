@@ -1,6 +1,6 @@
 [package]
 name = "pea2pea"
-version = "0.56.0"
+version = "0.56.1"
 authors = ["ljedrz <ljedrz@gmail.com>"]
 edition = "2024"
 description = "A lightweight, performant microkernel for TCP peer-to-peer (P2P) networking. Handles connection pooling and framing, leaving the logic to you."
@@ -8,7 +8,7 @@ license = "CC0-1.0 OR MIT"
 repository = "https://github.com/ljedrz/pea2pea"
 homepage = "https://github.com/ljedrz/pea2pea"
 documentation = "https://docs.rs/pea2pea"
-readme = "README.md"
+readme = "../README.md"
 categories = ["network-programming", "asynchronous"]
 keywords = ["p2p", "networking", "tcp", "tokio", "distributed"]
 rust-version = "1.85"
