@@ -152,6 +152,10 @@ where
     /// messages from this peer will be blocked. For any non-trivial work that doesn't need to be
     /// executed sequentially, use [`tokio::spawn`] to move processing to a background task to keep
     /// the connection loop responsive.
+    ///
+    /// note: If the connection is torn down, the task driving this method is aborted, so an
+    /// in-flight call may be cancelled at any `.await` point. Work that must run to completion
+    /// once begun should be moved to a [`tokio::spawn`]ed task rather than executed inline.
     fn process_message(
         &self,
         source: SocketAddr,

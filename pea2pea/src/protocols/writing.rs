@@ -160,7 +160,7 @@ where
     /// - [`io::ErrorKind::NotConnected`] if the node is not connected to the provided address
     /// - [`io::ErrorKind::QuotaExceeded`] if the outbound message queue for this address is full
     /// - [`io::ErrorKind::Unsupported`] if [`Writing::enable_writing`] hadn't been called yet, or
-    ///   if a duplicative owner of the underlying node has a different `Writing` impl (API misuse).
+    ///   if a duplicative owner of the underlying node has a different `Writing` impl (API misuse)
     fn unicast(
         &self,
         addr: SocketAddr,

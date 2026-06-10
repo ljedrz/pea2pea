@@ -709,7 +709,8 @@ impl Node {
         })
     }
 
-    /// Gracefully shuts the node down.
+    /// Gracefully shuts the node down. This is permanent - the node cannot be restarted,
+    /// you need to create a new one.
     pub async fn shut_down(&self) {
         // immediately mark the node as shutting down
         self.shutting_down.store(true, Release);
