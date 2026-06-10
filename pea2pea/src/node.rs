@@ -164,11 +164,21 @@ impl Node {
                 SocketAddr::V4(_) => TcpSocket::new_v4()?,
                 SocketAddr::V6(_) => TcpSocket::new_v6()?,
             };
+
             socket.set_reuseaddr(true)?;
+
             #[cfg(all(unix, not(any(target_os = "solaris", target_os = "illumos"))))]
             if self.config().reuse_listener_port {
                 socket.set_reuseport(true)?;
             }
+            #[cfg(not(all(unix, not(any(target_os = "solaris", target_os = "illumos")))))]
+            if self.config().reuse_listener_port {
+                return Err(io::Error::new(
+                    ErrorKind::Unsupported,
+                    "Config::reuse_listener_port is set, but SO_REUSEPORT is not supported on this platform",
+                ));
+            }
+
             socket.bind(listener_addr)?;
             let listener = socket.listen(self.config().listener_backlog)?; // capped by somaxconn
             let port = listener.local_addr()?.port(); // discover the port if it was unspecified

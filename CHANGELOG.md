@@ -8,6 +8,7 @@
 ### Fixed
 
 - remove any possibility of `Writing` panics (it was doable with gross API misuse)
+- `Node::toggle_listener` will now throw an error on systems w/o `SO_REUSEPORT` if the node has `Config::reuse_listening_port` set
 
 # 0.56.0
 
