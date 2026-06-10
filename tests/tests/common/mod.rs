@@ -24,15 +24,6 @@ impl Pea2Pea for TestNode {
     }
 }
 
-/// A helper trait to shorten the calls to `Writing::unicast` in tests.
-pub trait WritingExt: Writing {
-    async fn send_dm(&self, addr: SocketAddr, msg: <Self as Writing>::Message) -> io::Result<()> {
-        self.unicast(addr, msg)?.await.unwrap()
-    }
-}
-
-impl<T: Writing> WritingExt for T {}
-
 #[macro_export]
 macro_rules! test_node {
     ($name: expr) => {{
@@ -153,22 +144,6 @@ impl OnConnect for TestNode {
         if let Some(barrier) = self.barrier.get() {
             barrier.wait().await;
         }
-    }
-}
-
-pub fn display_bytes(bytes: f64) -> String {
-    const GB: f64 = 1_000_000_000.0;
-    const MB: f64 = 1_000_000.0;
-    const KB: f64 = 1_000.0;
-
-    if bytes >= GB {
-        format!("{:.2} GB", bytes / GB)
-    } else if bytes >= MB {
-        format!("{:.2} MB", bytes / MB)
-    } else if bytes >= KB {
-        format!("{:.2} kB", bytes / KB)
-    } else {
-        format!("{bytes:.2} B")
     }
 }
 
