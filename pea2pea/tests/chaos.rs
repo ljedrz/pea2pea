@@ -697,6 +697,22 @@ async fn infinite_chaos_inner() {
     }
     while joins.join_next().await.is_some() {}
 
+    // Allow a bit of time for the detached OnConnect work to conclude.
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        let snap = Snapshot::capture(&stats);
+        if snap.on_connect_fired == snap.on_disconnect_fired {
+            break;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "OnConnect/OnDisconnect hook counters never converged: {} vs {}",
+            snap.on_connect_fired,
+            snap.on_disconnect_fired
+        );
+        sleep(Duration::from_millis(50)).await;
+    }
+
     // Print final metrics.
     let snap = Snapshot::capture(&stats);
     print_metrics(start, 0, &snap, &snap);
