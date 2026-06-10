@@ -117,10 +117,14 @@ where
                 }
             });
             let _ = rx.await;
-            self.node()
-                .tasks
-                .lock()
-                .insert(NodeTask::OnConnect, on_connect_task);
+            if self
+                .node()
+                .register_task(NodeTask::OnConnect, on_connect_task)
+                .is_err()
+            {
+                trace!("the node shut down before the OnConnect protocol could be enabled");
+                return;
+            }
 
             // register the OnConnect handler with the Node
             let hdl = ProtocolHandler(from_node_sender);

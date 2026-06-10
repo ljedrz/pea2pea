@@ -128,10 +128,14 @@ where
                 }
             });
             let _ = rx_writing.await;
-            self.node()
-                .tasks
-                .lock()
-                .insert(NodeTask::Writing, writing_task);
+            if self
+                .node()
+                .register_task(NodeTask::Writing, writing_task)
+                .is_err()
+            {
+                trace!("the node shut down before the Writing protocol could be enabled");
+                return;
+            }
 
             // register the WritingHandler with the Node
             let hdl = WritingHandler {

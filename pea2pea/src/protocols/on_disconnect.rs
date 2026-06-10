@@ -74,7 +74,7 @@ where
 
             // spawn a background task dedicated to handling disconnect events
             let self_clone = self.clone();
-            let disconnect_task = tokio::spawn(async move {
+            let on_disconnect_task = tokio::spawn(async move {
                 trace!(parent: self_clone.node().span(), "spawned the OnDisconnect handler task");
                 if tx.send(()).is_err() {
                     error!(parent: self_clone.node().span(), "OnDisconnect handler creation interrupted! shutting down the node");
@@ -109,10 +109,14 @@ where
                 }
             });
             let _ = rx.await;
-            self.node()
-                .tasks
-                .lock()
-                .insert(NodeTask::OnDisconnect, disconnect_task);
+            if self
+                .node()
+                .register_task(NodeTask::OnDisconnect, on_disconnect_task)
+                .is_err()
+            {
+                trace!("the node shut down before the OnDisconnect protocol could be enabled");
+                return;
+            }
 
             // register the OnDisconnect handler with the Node
             let hdl = ProtocolHandler(from_node_sender);

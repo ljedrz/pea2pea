@@ -80,10 +80,14 @@ where
                 }
             });
             let _ = rx.await;
-            self.node()
-                .tasks
-                .lock()
-                .insert(NodeTask::Handshake, handshake_task);
+            if self
+                .node()
+                .register_task(NodeTask::Handshake, handshake_task)
+                .is_err()
+            {
+                trace!("the node shut down before the Handshake protocol could be enabled");
+                return;
+            }
 
             // register the Handshake handler with the Node
             let hdl = ProtocolHandler(conn_sender);

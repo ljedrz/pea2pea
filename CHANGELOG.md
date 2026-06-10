@@ -10,6 +10,7 @@
 - remove any possibility of `Writing` panics (it was doable with gross API misuse)
 - `Node::toggle_listener` will now throw an error on systems w/o `SO_REUSEPORT` if the node has `Config::reuse_listening_port` set
 - the accounting of read stats will now be more accurate with custom `Decoder::decode_eof` impls (rare)
+- a leak that could happen when enabling a protocol or toggling the listener coincides with node shutdown (edge case)
 
 # 0.56.0
 

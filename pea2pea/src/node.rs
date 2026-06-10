@@ -185,7 +185,7 @@ impl Node {
             let new_listening_addr = (listener_addr.ip(), port).into();
 
             // start listening
-            self.start_listening(listener).await;
+            self.start_listening(listener).await?;
             debug!(parent: self.span(), "listening on {new_listening_addr}");
 
             // update the node's listening address
@@ -196,7 +196,7 @@ impl Node {
     }
 
     /// Spawn a task responsible for listening for inbound connections.
-    async fn start_listening(&self, listener: TcpListener) {
+    async fn start_listening(&self, listener: TcpListener) -> io::Result<()> {
         // use a channel to know when the listening task is ready
         let (tx, rx) = oneshot::channel();
 
@@ -265,9 +265,10 @@ impl Node {
                 }
             }
         });
-
-        self.tasks.lock().insert(NodeTask::Listener, listening_task);
         let _ = rx.await;
+        self.register_task(NodeTask::Listener, listening_task)?;
+
+        Ok(())
     }
 
     /// Processes a single inbound connection request. Only used in [`Node::start_listening`].
@@ -764,6 +765,19 @@ impl Node {
 
         // erase the listening address in case toggle_listener is called afterwards
         *self.listening_addr.write().await = None;
+    }
+
+    /// Registers a long-running node task, unless the node is shutting down, in which case the
+    /// task is aborted and an error is returned. The flag check under the `tasks` lock pairs with
+    /// the Release store + `mem::take` in `shut_down`.
+    pub(crate) fn register_task(&self, kind: NodeTask, handle: JoinHandle<()>) -> io::Result<()> {
+        let mut tasks = self.tasks.lock();
+        if self.shutting_down.load(Acquire) {
+            handle.abort();
+            return Err(io::Error::other("shutting down"));
+        }
+        tasks.insert(kind, handle);
+        Ok(())
     }
 }
 

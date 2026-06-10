@@ -127,10 +127,14 @@ where
                 }
             });
             let _ = rx_reading.await;
-            self.node()
-                .tasks
-                .lock()
-                .insert(NodeTask::Reading, reading_task);
+            if self
+                .node()
+                .register_task(NodeTask::Reading, reading_task)
+                .is_err()
+            {
+                trace!("the node shut down before the Reading protocol could be enabled");
+                return;
+            }
 
             // register the Reading handler with the Node
             let hdl = ProtocolHandler(conn_sender);
