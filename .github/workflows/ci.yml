@@ -38,7 +38,7 @@ jobs:
         run: cargo check --workspace --all-targets
 
       - name: cargo test
-        run: cargo test -p pea2pea
+        run: cargo test -p tests
 
       - name: cargo bench
         run: cargo bench -p benches

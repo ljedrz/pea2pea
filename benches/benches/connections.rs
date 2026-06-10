@@ -1,9 +1,7 @@
 use divan::Bencher;
-use pea2pea::{Pea2Pea, protocols::Reading};
+use pea2pea::Pea2Pea;
+use test_utils::FullNoopNode;
 use tokio::runtime::Runtime;
-
-#[path = "../../pea2pea/tests/common/mod.rs"]
-mod common;
 
 fn main() {
     divan::main();
@@ -18,12 +16,6 @@ fn runtime() -> Runtime {
 
 /// A bare connect + disconnect cycle, measured from the initiator's side.
 ///
-/// The responder only enables `Reading` so that it tears down its half of the
-/// connection once the initiator drops it; that keeps its open file descriptors
-/// bounded for the duration of the run. No handshake or other protocol is
-/// involved, so this is the cost of pea2pea's own connection setup/teardown on
-/// top of a loopback TCP connect, nothing more.
-///
 /// The sample size is capped deliberately: a tight connect/disconnect loop
 /// against a *fixed* responder address piles up `TIME_WAIT` entries on the
 /// initiator's ephemeral ports, and once those are exhausted `connect` starts
@@ -36,11 +28,10 @@ fn connect_disconnect(bencher: Bencher) {
     // Untimed setup: one long-lived responder + initiator pair, reused across
     // every sample.
     let (initiator, responder, responder_addr) = rt.block_on(async {
-        let responder = test_node!("responder");
-        responder.enable_reading().await;
+        let responder = FullNoopNode::default();
         let responder_addr = responder.node().toggle_listener().await.unwrap().unwrap();
 
-        let initiator = test_node!("initiator");
+        let initiator = FullNoopNode::default();
 
         (initiator, responder, responder_addr)
     });

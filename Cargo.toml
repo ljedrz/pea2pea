@@ -1,11 +1,14 @@
 [workspace]
 resolver = "3"
-members = [ "pea2pea", "examples", "benches" ]
+members = [ "pea2pea", "examples", "benches", "tests", "test-utils" ]
 
 [workspace.dependencies]
 bytes = "1.11.1"
+heapster = { version = "0.8", features = ["fmt", "use_max"] }
 parking_lot = "0.12"
 futures-util = { version = "0.3", features = ["sink"] }
+rand = { version = "0.10", default-features = false, features = ["thread_rng"] }
+test-utils = { path = "test-utils" }
 tokio = { version = "1.24", features = ["io-util", "macros", "net", "parking_lot", "rt", "sync", "time"] }
 tokio-util = { version = "0.7", features = ["codec"] }
 tracing = { version = "0.1", default-features = false }

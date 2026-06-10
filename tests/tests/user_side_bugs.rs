@@ -1,11 +1,10 @@
-mod common;
-
 use std::{io, net::SocketAddr, str::FromStr, sync::Arc, time::Duration};
 
 use bytes::BytesMut;
 use pea2pea::{
     Config, Connection, ConnectionSide, Node, Pea2Pea, connections::DisconnectOrigin, protocols::*,
 };
+use test_utils::{start_listening, wait_for_connections};
 use tokio::{
     io::AsyncWriteExt,
     net::{TcpListener, TcpStream},
@@ -13,8 +12,6 @@ use tokio::{
     time::timeout,
 };
 use tokio_util::codec::{BytesCodec, Decoder, Encoder};
-
-use crate::common::{start_listening, wait_for_connections};
 
 macro_rules! define_fail_node {
     () => {

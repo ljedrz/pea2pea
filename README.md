@@ -163,7 +163,7 @@ Across the run the library:
   allocations.
 
 The chaos test is included in the repository as
-[`tests/chaos.rs`](pea2pea/tests/chaos.rs) and is fully reproducible; set
+[`tests/chaos.rs`](tests/tests/chaos.rs) and is fully reproducible; set
 `CHAOS_RUNTIME_SECS` for a fixed deadline or run until interrupted.
 
 ---

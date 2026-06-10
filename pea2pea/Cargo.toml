@@ -31,9 +31,3 @@ parking_lot = { workspace = true }
 tokio = { workspace = true }
 tokio-util = { workspace = true }
 tracing = { workspace = true }
-
-[dev-dependencies]
-heapster = { version = "0.8", features = ["fmt", "use_max"] }
-rand = { version = "0.10", default-features = false, features = ["thread_rng"] }
-tokio = { version = "1.24", features = ["rt-multi-thread", "signal" ] }
-pea2pea = { path = ".", features = ["test"] } # a workaround to use the `test` feature in tests by default

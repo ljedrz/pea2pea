@@ -1,5 +1,3 @@
-mod common;
-
 use std::{
     io,
     net::{Ipv4Addr, SocketAddr},
@@ -11,11 +9,11 @@ use std::{
 };
 
 use bytes::{Bytes, BytesMut};
-use common::wait_until;
 use pea2pea::{
     Config, Connection, ConnectionSide, Node, Pea2Pea, Topology, connect_nodes, protocols::*,
 };
 use rand::RngExt;
+use test_utils::{assert_consistent, start_listening, wait_for_connections, wait_until};
 use tokio::{
     net::{TcpListener, TcpSocket},
     sync::{Barrier, Notify},
@@ -23,7 +21,8 @@ use tokio::{
     time::sleep,
 };
 
-use crate::common::{assert_consistent, connect_and_wait, start_listening, wait_for_connections};
+mod common;
+use crate::common::connect_and_wait;
 
 #[tokio::test]
 async fn node_name_gets_auto_assigned() {

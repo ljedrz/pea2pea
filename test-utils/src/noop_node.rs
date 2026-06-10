@@ -1,13 +1,25 @@
+//! This module contains the FullNoopNode, which implements all the Pea2Pea protocols,
+//! none of which do anything in particular. It is useful for tests or benchmarks where
+//! the protocol logic is unimportant - only their plumbing. It technically uses a real
+//! codec, it just discards all the messages it receives; it can be used to send messages,
+//! too.
+
 use std::{io, net::SocketAddr};
 
 use pea2pea::{
-    ConnectionSide, DisconnectOrigin, Node, Pea2Pea,
+    Config, ConnectionSide, DisconnectOrigin, Node, Pea2Pea,
     protocols::{Handshake, OnConnect, OnDisconnect, Reading, Writing},
 };
 use tokio_util::codec::BytesCodec;
 
 #[derive(Clone)]
 pub struct FullNoopNode(pub Node);
+
+impl Default for FullNoopNode {
+    fn default() -> Self {
+        Self(Node::new(Config::default()))
+    }
+}
 
 impl Pea2Pea for FullNoopNode {
     fn node(&self) -> &Node {

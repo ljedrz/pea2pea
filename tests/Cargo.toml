@@ -1,0 +1,19 @@
+[package]
+name = "tests"
+version = "0.0.0"
+publish = false
+edition = "2024"
+license = "CC0-1.0 OR MIT"
+
+[dev-dependencies]
+bytes = { workspace = true }
+futures-util = { workspace = true }
+heapster = { workspace = true }
+parking_lot = { workspace = true }
+rand = { workspace = true }
+test-utils = { workspace = true }
+tokio-util = { workspace = true }
+tracing = { workspace = true }
+
+pea2pea = { path = "../pea2pea", features = ["test"] }
+tokio = { version = "1.24", features = ["rt-multi-thread", "signal" ] }

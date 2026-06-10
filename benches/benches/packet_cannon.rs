@@ -27,15 +27,11 @@ use std::{
 use bytes::{Buf, BufMut, BytesMut};
 use divan::{Bencher, counter::ItemsCount};
 use pea2pea::{
-    ConnectionSide, Node, Pea2Pea,
+    Config, ConnectionSide, Node, Pea2Pea,
     protocols::{Reading, Writing},
 };
 use tokio::{runtime::Runtime, time::sleep};
 use tokio_util::codec::{Decoder, Encoder};
-
-#[path = "../../pea2pea/tests/common/mod.rs"]
-mod common;
-use common::named_node;
 
 fn main() {
     divan::main();
@@ -174,10 +170,10 @@ impl Writing for BatchSender {
 #[divan::bench(sample_count = 100, sample_size = 1)]
 fn naive(bencher: Bencher) {
     let rt = runtime();
-    let (receiver, counter, addr) = rt.block_on(spawn_receiver("recv_naive"));
+    let (receiver, counter, addr) = rt.block_on(spawn_receiver());
 
     let sender = NaiveSender {
-        node: named_node("send_naive"),
+        node: Node::new(Config::default()),
     };
     rt.block_on(connect(&sender, addr));
 
@@ -207,10 +203,10 @@ fn batch(bencher: Bencher, batch_size: usize) {
     );
 
     let rt = runtime();
-    let (receiver, counter, addr) = rt.block_on(spawn_receiver("recv_batch"));
+    let (receiver, counter, addr) = rt.block_on(spawn_receiver());
 
     let sender = BatchSender {
-        node: named_node("send_batch"),
+        node: Node::new(Config::default()),
     };
     rt.block_on(connect(&sender, addr));
 
@@ -234,10 +230,10 @@ fn batch(bencher: Bencher, batch_size: usize) {
 
 /// Brings up a counting receiver and returns it alongside its shared counter and
 /// listening address. Kept off the timed path.
-async fn spawn_receiver(name: &str) -> (Receiver, Arc<AtomicUsize>, SocketAddr) {
+async fn spawn_receiver() -> (Receiver, Arc<AtomicUsize>, SocketAddr) {
     let counter = Arc::new(AtomicUsize::new(0));
     let receiver = Receiver {
-        node: named_node(name),
+        node: Node::new(Config::default()),
         counter: counter.clone(),
     };
     receiver.enable_reading().await;

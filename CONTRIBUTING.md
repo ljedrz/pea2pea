@@ -35,7 +35,7 @@ To keep the library lightweight and maintainable, we generally **reject**:
 2.  **Run Tests:** Ensure all tests pass locally.
 
     ```bash
-    cargo test -p pea2pea
+    cargo test -p tests
     ```
 
 3.  **Format Code:** Ensure your code is formatted correctly, and that `clippy` is happy.

@@ -1,5 +1,4 @@
 use std::{
-    io,
     net::SocketAddr,
     sync::{
         Arc, LazyLock,
@@ -13,12 +12,9 @@ use pea2pea::{
     ConnectionSide, Node, Pea2Pea,
     protocols::{Reading, Writing},
 };
+use test_utils::{FullNoopNode, WritingExt, wait_for_connections};
 use tokio::{runtime::Runtime, sync::Notify};
-use tokio_util::codec::Decoder;
-
-#[path = "../../pea2pea/tests/common/mod.rs"]
-mod common;
-use common::{TestNode, WritingExt};
+use tokio_util::codec::BytesCodec;
 
 fn main() {
     divan::main();
@@ -35,11 +31,11 @@ const MSG_SIZE: usize = 32 * 1024;
 const SENDER_COUNTS: &[usize] = &[1, 10, 20, 50, 100];
 /// The sender's outbound queue depth; every Nth message is awaited to delivery
 /// so the bounded `unicast`/`unicast_fast` channel can't overflow.
-const QUEUE_DEPTH: usize = <TestNode as Writing>::MESSAGE_QUEUE_DEPTH;
+const QUEUE_DEPTH: usize = <FullNoopNode as Writing>::MESSAGE_QUEUE_DEPTH;
 
 /// A fixed payload. The content is irrelevant to throughput (nothing on the
 /// wire is compressed and the receiver discards the bytes), so zeros are fine.
-static PAYLOAD: LazyLock<Bytes> = LazyLock::new(|| Bytes::from(vec![0u8; MSG_SIZE - 2]));
+static PAYLOAD: LazyLock<Bytes> = LazyLock::new(|| Bytes::from(vec![0u8; MSG_SIZE]));
 
 /// The receiver counts decoded frames and fires `done` once `expected` of them
 /// have been processed.
@@ -58,27 +54,17 @@ impl Pea2Pea for Receiver {
 }
 
 impl Reading for Receiver {
-    type Message = ();
-    type Codec = common::TestCodec<()>;
+    type Message = BytesMut;
+    type Codec = BytesCodec;
 
     fn codec(&self, _addr: SocketAddr, _side: ConnectionSide) -> Self::Codec {
         Default::default()
     }
 
-    async fn process_message(&self, _src: SocketAddr, _msg: Self::Message) {
-        if self.received.fetch_add(1, Ordering::Relaxed) + 1 == self.expected {
+    async fn process_message(&self, _src: SocketAddr, msg: Self::Message) {
+        if self.received.fetch_add(msg.len(), Ordering::Relaxed) + msg.len() == self.expected {
             self.done.notify_one();
         }
-    }
-}
-
-// The receiver only cares how many frames arrived, not their contents.
-impl Decoder for common::TestCodec<()> {
-    type Item = ();
-    type Error = io::Error;
-
-    fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
-        Ok(self.0.decode(src)?.map(|_| ()))
     }
 }
 
@@ -92,8 +78,7 @@ impl Decoder for common::TestCodec<()> {
 #[divan::bench(args = SENDER_COUNTS, sample_count = 3, sample_size = 1)]
 fn spam_to_one(bencher: Bencher, sender_count: usize) {
     let rt = runtime();
-    let expected = sender_count * NUM_MESSAGES;
-    let total_bytes = (expected * MSG_SIZE) as u64;
+    let expected = sender_count * NUM_MESSAGES * MSG_SIZE;
 
     // Untimed setup: a reading receiver and `sender_count` writing senders, all
     // connected and settled.
@@ -109,55 +94,50 @@ fn spam_to_one(bencher: Bencher, sender_count: usize) {
 
         let mut senders = Vec::with_capacity(sender_count);
         for _ in 0..sender_count {
-            let sender = TestNode {
-                node: Node::new(Default::default()),
-                barrier: Default::default(),
-            };
+            let sender = FullNoopNode::default();
             sender.enable_writing().await;
             sender.node().connect(receiver_addr).await.unwrap();
             senders.push(sender);
         }
-        common::wait_for_connections(receiver.node(), sender_count).await;
+        wait_for_connections(receiver.node(), sender_count).await;
 
         (receiver, senders, receiver_addr)
     });
 
-    bencher
-        .counter(BytesCount::new(total_bytes))
-        .bench_local(|| {
-            rt.block_on(async {
-                // re-arm for this sample
-                receiver.received.store(0, Ordering::Relaxed);
+    bencher.counter(BytesCount::new(expected)).bench_local(|| {
+        rt.block_on(async {
+            // re-arm for this sample
+            receiver.received.store(0, Ordering::Relaxed);
 
-                // every sender blasts NUM_MESSAGES concurrently
-                let mut handles = Vec::with_capacity(sender_count);
-                for sender in &senders {
-                    let sender = sender.clone();
-                    handles.push(tokio::spawn(async move {
-                        for i in 0..NUM_MESSAGES {
-                            if (i + 1) % QUEUE_DEPTH == 0 {
-                                // sync point: wait until this message (and all
-                                // prior ones) have been flushed to the socket
-                                sender
-                                    .send_dm(receiver_addr, PAYLOAD.clone())
-                                    .await
-                                    .unwrap();
-                            } else {
-                                // fast path: queue without awaiting delivery
-                                sender.unicast_fast(receiver_addr, PAYLOAD.clone()).unwrap();
-                            }
+            // every sender blasts NUM_MESSAGES concurrently
+            let mut handles = Vec::with_capacity(sender_count);
+            for sender in &senders {
+                let sender = sender.clone();
+                handles.push(tokio::spawn(async move {
+                    for i in 0..NUM_MESSAGES {
+                        if (i + 1) % QUEUE_DEPTH == 0 {
+                            // sync point: wait until this message (and all
+                            // prior ones) have been flushed to the socket
+                            sender
+                                .send_dm(receiver_addr, PAYLOAD.clone())
+                                .await
+                                .unwrap();
+                        } else {
+                            // fast path: queue without awaiting delivery
+                            sender.unicast_fast(receiver_addr, PAYLOAD.clone()).unwrap();
                         }
-                    }));
-                }
+                    }
+                }));
+            }
 
-                // the receiver signals once every message has been processed
-                receiver.done.notified().await;
+            // the receiver signals once every message has been processed
+            receiver.done.notified().await;
 
-                for handle in handles {
-                    handle.await.unwrap();
-                }
-            });
+            for handle in handles {
+                handle.await.unwrap();
+            }
         });
+    });
 
     // Untimed teardown.
     rt.block_on(async {

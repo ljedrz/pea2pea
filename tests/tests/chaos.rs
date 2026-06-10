@@ -6,7 +6,7 @@
 //! rates every few seconds.
 //!
 //! Run with:
-//!     cargo test -p pea2pea --profile chaos chaos -- --ignored --nocapture
+//!     cargo test -p tests --profile chaos chaos -- --ignored --nocapture
 //!
 //! Set `CHAOS_SEED=<u64>` in the environment to reproduce a particular run.
 //! Note that reproducibility is best-effort - per-worker action sequences

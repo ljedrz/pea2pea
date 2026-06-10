@@ -1,5 +1,3 @@
-mod common;
-
 use std::{
     collections::{HashMap, HashSet},
     io,
@@ -16,6 +14,7 @@ use parking_lot::{Mutex, RwLock};
 use pea2pea::{
     Config, Connection, ConnectionSide, Node, Pea2Pea, connections::DisconnectOrigin, protocols::*,
 };
+use test_utils::{WritingExt, start_listening, wait_for_connections, wait_until};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpStream,
@@ -24,9 +23,8 @@ use tokio::{
 use tokio_util::codec::Decoder;
 use tracing::*;
 
-use crate::common::{
-    TestCodec, WritingExt, named_node, start_listening, wait_for_connections, wait_until,
-};
+mod common;
+use crate::common::{TestCodec, named_node};
 
 #[tokio::test]
 async fn messaging_example() {

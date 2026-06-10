@@ -1,12 +1,10 @@
 use divan::Bencher;
 use pea2pea::{
-    Node, Pea2Pea,
+    Pea2Pea,
     protocols::{Handshake, OnConnect, OnDisconnect, Reading, Writing},
 };
+use test_utils::FullNoopNode;
 use tokio::runtime::Runtime;
-
-mod common;
-use common::FullNoopNode;
 
 fn main() {
     divan::main();
@@ -25,7 +23,7 @@ fn node_startup(bencher: Bencher) {
 
     bencher.bench_local(|| {
         rt.block_on(async {
-            let node = FullNoopNode(Node::new(Default::default()));
+            let node = FullNoopNode::default();
 
             let (.., listener) = tokio::join!(
                 node.enable_handshake(),

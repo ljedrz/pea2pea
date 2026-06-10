@@ -1,17 +1,12 @@
+use std::{alloc::System, time::Duration};
+
 use bytes::Bytes;
 use heapster::Heapster;
-
-mod common;
-use std::{alloc::System, io, net::SocketAddr, time::Duration};
-
 use pea2pea::{
     Pea2Pea,
     protocols::{Handshake, OnDisconnect, Reading, Writing},
 };
-
-use crate::common::{WritingExt, wait_until};
-
-impl_noop_disconnect_and_handshake!(common::TestNode);
+use test_utils::{FullNoopNode, WritingExt, wait_until};
 
 #[global_allocator]
 static GLOBAL: Heapster<System> = Heapster::new(System);
@@ -23,7 +18,7 @@ async fn check_node_cleanups() {
     // register heap use before node setup
     let initial_heap_use = GLOBAL.use_curr();
 
-    let persistent_node = crate::test_node!("persistent");
+    let persistent_node = FullNoopNode::default();
 
     // measure the size of a node with no functionalities enabled
     let idle_node_size = GLOBAL.use_curr() - initial_heap_use;
@@ -51,7 +46,7 @@ async fn check_node_cleanups() {
     let mut heap_after_32_conns = 0;
 
     for i in 0..NUM_CONNS {
-        let temp_node = crate::test_node!("temp_node");
+        let temp_node = FullNoopNode::default();
 
         temp_node.enable_handshake().await;
         temp_node.enable_reading().await;

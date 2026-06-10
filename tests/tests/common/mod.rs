@@ -5,7 +5,6 @@ use std::{
     marker::PhantomData,
     net::SocketAddr,
     sync::{Arc, OnceLock},
-    time::Duration,
 };
 
 use bytes::{Bytes, BytesMut};
@@ -173,37 +172,11 @@ pub fn display_bytes(bytes: f64) -> String {
     }
 }
 
-pub async fn wait_until<F>(within: Duration, mut cond: F)
-where
-    F: FnMut() -> bool,
-{
-    let res = tokio::time::timeout(within, async {
-        let mut interval = tokio::time::interval(Duration::from_millis(10));
-        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-        loop {
-            interval.tick().await;
-            if cond() {
-                return;
-            }
-        }
-    })
-    .await;
-    assert!(res.is_ok(), "condition not satisfied within {within:?}");
-}
-
 pub fn named_node(name: &str) -> Node {
     Node::new(Config {
         name: Some(name.into()),
         ..Default::default()
     })
-}
-
-pub async fn start_listening<T: Pea2Pea>(node: &T) -> SocketAddr {
-    node.node().toggle_listener().await.unwrap().unwrap()
-}
-
-pub async fn wait_for_connections(node: &Node, n: usize) {
-    wait_until(Duration::from_secs(1), || node.num_connected() == n).await;
 }
 
 pub async fn connect_and_wait(nodes: &[TestNode], topology: Topology) -> io::Result<()> {
@@ -219,16 +192,4 @@ pub async fn connect_and_wait(nodes: &[TestNode], topology: Topology) -> io::Res
     connect_nodes(nodes, topology).await?;
     barrier.wait().await;
     Ok(())
-}
-
-pub fn assert_consistent(node: &Node) {
-    let connected = node.connected_addrs();
-    let infos = node.connection_infos();
-    assert_eq!(node.num_connected(), connected.len());
-    assert_eq!(node.num_connected(), infos.len());
-    for addr in &connected {
-        assert!(node.is_connected(*addr));
-        assert!(node.connection_info(*addr).is_some());
-        assert!(!node.is_connecting(*addr));
-    }
 }

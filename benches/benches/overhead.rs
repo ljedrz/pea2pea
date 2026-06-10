@@ -59,7 +59,7 @@ use bytes::{Bytes, BytesMut};
 use divan::{Bencher, counter::ItemsCount};
 use futures_util::{SinkExt, StreamExt};
 use pea2pea::{
-    Connection, ConnectionSide, Node, Pea2Pea,
+    Config, Connection, ConnectionSide, Node, Pea2Pea,
     protocols::{Handshake, Reading, Writing},
 };
 use tokio::{
@@ -68,11 +68,7 @@ use tokio::{
     sync::Notify,
     time::{sleep, timeout},
 };
-use tokio_util::codec::{FramedRead, FramedWrite};
-
-#[path = "../../pea2pea/tests/common/mod.rs"]
-mod common;
-use common::{TestCodec, named_node};
+use tokio_util::codec::{BytesCodec, FramedRead, FramedWrite};
 
 fn main() {
     divan::main();
@@ -94,6 +90,7 @@ struct Receiver {
     node: Node,
     counter: Arc<AtomicUsize>,
     done: Arc<Notify>,
+    msg_size: usize,
 }
 
 impl Pea2Pea for Receiver {
@@ -104,17 +101,17 @@ impl Pea2Pea for Receiver {
 
 impl Reading for Receiver {
     type Message = BytesMut;
-    type Codec = TestCodec<Self::Message>;
+    type Codec = BytesCodec;
 
     fn codec(&self, _addr: SocketAddr, _side: ConnectionSide) -> Self::Codec {
         Default::default()
     }
 
-    async fn process_message(&self, _source: SocketAddr, _message: Self::Message) {
+    async fn process_message(&self, _source: SocketAddr, msg: Self::Message) {
         // fetch_add is the single crossing point per boundary, so exactly one
         // message per sample trips the signal even under concurrent dispatch
-        let count = self.counter.fetch_add(1, Ordering::Relaxed) + 1;
-        if count.is_multiple_of(MESSAGES) {
+        let count = self.counter.fetch_add(msg.len(), Ordering::Relaxed) + msg.len();
+        if count.is_multiple_of(MESSAGES * self.msg_size) {
             self.done.notify_one();
         }
     }
@@ -133,7 +130,7 @@ impl Pea2Pea for Sender {
 
 impl Writing for Sender {
     type Message = Bytes;
-    type Codec = TestCodec<Self::Message>;
+    type Codec = BytesCodec;
 
     fn codec(&self, _addr: SocketAddr, _side: ConnectionSide) -> Self::Codec {
         Default::default()
@@ -178,13 +175,10 @@ fn raw(bencher: Bencher, size: usize) {
         let server = tokio::spawn(async move {
             let (stream, _) = listener.accept().await.unwrap();
             stream.set_nodelay(true).unwrap();
-            let mut frames = FramedRead::new(stream, TestCodec::<BytesMut>::default());
-            while let Some(frame) = frames.next().await {
-                if frame.is_err() {
-                    break;
-                }
-                let count = c.fetch_add(1, Ordering::Relaxed) + 1;
-                if count.is_multiple_of(MESSAGES) {
+            let mut frames = FramedRead::new(stream, BytesCodec::default());
+            while let Some(Ok(frame)) = frames.next().await {
+                let count = c.fetch_add(frame.len(), Ordering::Relaxed) + frame.len();
+                if count.is_multiple_of(MESSAGES * size) {
                     d.notify_one();
                 }
             }
@@ -192,7 +186,7 @@ fn raw(bencher: Bencher, size: usize) {
 
         let stream = TcpStream::connect(addr).await.unwrap();
         stream.set_nodelay(true).unwrap();
-        let sink = FramedWrite::new(stream, TestCodec::<Bytes>::default());
+        let sink = FramedWrite::new(stream, BytesCodec::default());
         sleep(Duration::from_millis(100)).await;
         (sink, server)
     });
@@ -202,7 +196,7 @@ fn raw(bencher: Bencher, size: usize) {
             for _ in 0..MESSAGES {
                 sink.feed(msg.clone()).await.unwrap();
             }
-            sink.flush().await.unwrap();
+            SinkExt::<bytes::Bytes>::flush(&mut sink).await.unwrap();
             await_batch(&done).await;
         });
     });
@@ -218,9 +212,10 @@ fn pea2pea(bencher: Bencher, size: usize) {
 
     let (receiver, sender, addr) = rt.block_on(async {
         let receiver = Receiver {
-            node: named_node("recv"),
+            node: Node::new(Config::default()),
             counter: counter.clone(),
             done: done.clone(),
+            msg_size: size,
         };
 
         receiver.enable_handshake().await;
@@ -228,7 +223,7 @@ fn pea2pea(bencher: Bencher, size: usize) {
         let addr = receiver.node().toggle_listener().await.unwrap().unwrap();
 
         let sender = Sender {
-            node: named_node("send"),
+            node: Node::new(Config::default()),
         };
         sender.enable_handshake().await;
         sender.enable_writing().await;

@@ -16,9 +16,7 @@ use pea2pea::{
     protocols::{Reading, Writing},
 };
 use tokio::{runtime::Runtime, sync::Notify, time::sleep};
-
-#[path = "../../pea2pea/tests/common/mod.rs"]
-mod common;
+use tokio_util::codec::BytesCodec;
 
 fn main() {
     divan::main();
@@ -41,7 +39,7 @@ impl Pea2Pea for Brigadier {
 
 impl Writing for Brigadier {
     type Message = Bytes;
-    type Codec = common::TestCodec<Self::Message>;
+    type Codec = BytesCodec;
 
     fn codec(&self, _addr: SocketAddr, _side: ConnectionSide) -> Self::Codec {
         Default::default()
@@ -50,7 +48,7 @@ impl Writing for Brigadier {
 
 impl Reading for Brigadier {
     type Message = BytesMut;
-    type Codec = common::TestCodec<Self::Message>;
+    type Codec = BytesCodec;
 
     fn codec(&self, _addr: SocketAddr, _side: ConnectionSide) -> Self::Codec {
         Default::default()
