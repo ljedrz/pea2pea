@@ -445,6 +445,13 @@ impl Node {
     /// deliberately avoids. If your application must reject such connections, do it in
     /// [`Handshake`] - typically by exchanging a unique node identifier and refusing matches,
     /// which also handles the simultaneous-connection case above.
+    ///
+    /// note: A disconnect is not instantaneous. From the moment a disconnect is initiated (by
+    /// [`Node::disconnect`], a read/write error, or peer-side close) until the connection is fully
+    /// removed, the address remains registered and `connect` to it returns
+    /// [`io::ErrorKind::AlreadyExists`]. If [`OnDisconnect`] is enabled this window spans the hook's
+    /// execution, bounded by [`OnDisconnect::TIMEOUT_MS`]. Reconnection logic that races a disconnect
+    /// should treat `AlreadyExists` as retriable and back off, rather than as a permanent failure.
     pub async fn connect(&self, addr: SocketAddr) -> io::Result<()> {
         self.connect_inner(addr, None)
             .await
@@ -498,6 +505,9 @@ impl Node {
     /// [`OnDisconnect::TIMEOUT_MS`]) before the connection is removed, and is the appropriate place
     /// to send any final messages. Messages queued via [`Writing`] but not awaited to delivery
     /// confirmation may be dropped once this function returns.
+    ///
+    /// note: The address is not immediately reusable. See [`Node::connect`] for the reconnection
+    /// contract during the teardown window.
     pub async fn disconnect(&self, addr: SocketAddr) -> bool {
         self.disconnect_w_origin(addr, DisconnectOrigin::User).await
     }
