@@ -352,24 +352,17 @@ struct CountingCodec<D: Decoder> {
     span: Span,
 }
 
-impl<D: Decoder> Decoder for CountingCodec<D> {
-    type Item = D::Item;
-    type Error = D::Error;
-
-    fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
-        let initial_buf_len = src.len();
-        let ret = self.codec.decode(src)?;
-        let final_buf_len = src.len();
-
+impl<D: Decoder> CountingCodec<D> {
+    fn account(&mut self, initial_len: usize, final_len: usize, produced: bool) {
         // defensive: the Decoder trait does not strictly forbid an inner codec from
         // growing `src`; use saturating_sub to guard against such a possibility
-        let consumed = initial_buf_len.saturating_sub(final_buf_len);
+        let consumed = initial_len.saturating_sub(final_len);
         let read_len = consumed + self.acc;
 
         if read_len != 0 {
             trace!(parent: &self.span, "read {read_len}B");
 
-            if ret.is_some() {
+            if produced {
                 self.acc = 0;
                 self.stats.register_received_message(read_len);
                 self.node.stats().register_received_message(read_len);
@@ -377,7 +370,24 @@ impl<D: Decoder> Decoder for CountingCodec<D> {
                 self.acc = read_len;
             }
         }
+    }
+}
 
+impl<D: Decoder> Decoder for CountingCodec<D> {
+    type Item = D::Item;
+    type Error = D::Error;
+
+    fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
+        let initial = src.len();
+        let ret = self.codec.decode(src)?;
+        self.account(initial, src.len(), ret.is_some());
+        Ok(ret)
+    }
+
+    fn decode_eof(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
+        let initial = src.len();
+        let ret = self.codec.decode_eof(src)?;
+        self.account(initial, src.len(), ret.is_some());
         Ok(ret)
     }
 }
