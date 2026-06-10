@@ -2,10 +2,7 @@ use std::{alloc::System, time::Duration};
 
 use bytes::Bytes;
 use heapster::Heapster;
-use pea2pea::{
-    Pea2Pea,
-    protocols::{Handshake, OnDisconnect, Reading, Writing},
-};
+use pea2pea::{Pea2Pea, protocols::*};
 use test_utils::{FullNoopNode, WritingExt, wait_until};
 
 #[global_allocator]
@@ -27,6 +24,7 @@ async fn check_node_cleanups() {
     persistent_node.enable_handshake().await;
     persistent_node.enable_reading().await;
     persistent_node.enable_writing().await;
+    persistent_node.enable_on_connect().await;
     persistent_node.enable_on_disconnect().await;
     let persistent_addr = persistent_node
         .node()
@@ -51,6 +49,7 @@ async fn check_node_cleanups() {
         temp_node.enable_handshake().await;
         temp_node.enable_reading().await;
         temp_node.enable_writing().await;
+        temp_node.enable_on_connect().await;
         temp_node.enable_on_disconnect().await;
         temp_node.node().toggle_listener().await.unwrap();
 
