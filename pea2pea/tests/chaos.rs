@@ -85,11 +85,12 @@ const MAX_MSG_SIZE: usize = 4096;
 // compiled with tokio's survival in mind - too many spawns and shutdowns
 // bog down the executor and the OS.
 const W_SPAWN: u16 = 10; // 10 pts (0.10%)
-const W_SHUTDOWN: u16 = 12; // 2 pts  (0.02%)
-const W_CONNECT: u16 = 4000; // 3988 pts (~40%)
-const W_DISCONNECT: u16 = 7988; // 3988 pts (~40%)
-const W_BROADCAST: u16 = 9000; // 1012 pts (~10%)
-// remainder: unicast (~10%)
+const W_SHUTDOWN: u16 = 12; //  2 pts (0.02%)
+const W_TOGGLE_LISTENER: u16 = 42; // 30 pts (0.30%)
+const W_CONNECT: u16 = 4030; // ~40%
+const W_DISCONNECT: u16 = 8018; // ~40%
+const W_BROADCAST: u16 = 9030; // ~10%
+// remainder: unicast (~9.7%)
 
 // Modest spread is enough - 64 sources splits the hash contention 64-way.
 // 127.0.0.2 .. 127.0.0.65 (skip .0 and .1, commonly used).
@@ -123,6 +124,7 @@ struct Stats {
     nodes_shutdown: AtomicUsize,
     connects_succeeded: AtomicUsize,
     disconnects: AtomicUsize,
+    listener_toggles: AtomicUsize,
     broadcasts: AtomicUsize,
     unicasts_attempted: AtomicUsize,
     unicasts_succeeded: AtomicUsize,
@@ -144,6 +146,7 @@ struct Snapshot {
     connects_succeeded: usize,
     disconnects: usize,
     broadcasts: usize,
+    listener_toggles: usize,
     unicasts_attempted: usize,
     unicasts_succeeded: usize,
     msgs_received: usize,
@@ -164,6 +167,7 @@ impl Snapshot {
             nodes_shutdown: s.nodes_shutdown.load(Ordering::Relaxed),
             connects_succeeded: s.connects_succeeded.load(Ordering::Relaxed),
             disconnects: s.disconnects.load(Ordering::Relaxed),
+            listener_toggles: s.listener_toggles.load(Ordering::Relaxed),
             broadcasts: s.broadcasts.load(Ordering::Relaxed),
             unicasts_attempted: s.unicasts_attempted.load(Ordering::Relaxed),
             unicasts_succeeded: s.unicasts_succeeded.load(Ordering::Relaxed),
@@ -374,6 +378,17 @@ async fn act_shutdown(pool: &Pool, stats: &Arc<Stats>, rng: &mut SmallRng) {
     }
 }
 
+async fn act_toggle_listener(pool: &Pool, stats: &Arc<Stats>, rng: &mut SmallRng) {
+    let Some(a) = pick_one(pool, rng) else { return };
+    // flap: off, briefly dark, back on; either call may legitimately fail
+    // if a shutdown races in - that race is precisely the coverage we want
+    if matches!(a.node().toggle_listener().await, Ok(None)) {
+        sleep(Duration::from_micros(rng.random_range(0..2_000))).await;
+        let _ = a.node().toggle_listener().await;
+        stats.listener_toggles.fetch_add(1, Ordering::Relaxed);
+    }
+}
+
 async fn act_connect(
     pool: &Pool,
     stats: &Arc<Stats>,
@@ -494,6 +509,8 @@ async fn worker(
             act_spawn(&pool, &stats, &token).await;
         } else if roll < W_SHUTDOWN {
             act_shutdown(&pool, &stats, &mut rng).await;
+        } else if roll < W_TOGGLE_LISTENER {
+            act_toggle_listener(&pool, &stats, &mut rng).await;
         } else if roll < W_CONNECT {
             act_connect(&pool, &stats, &mut rng, &token, fast_timeouts).await;
         } else if roll < W_DISCONNECT {
@@ -528,6 +545,7 @@ fn print_metrics(start: Instant, alive: usize, cur: &Snapshot, prev: &Snapshot) 
     println!(
         "[t={elapsed:>5.0}s] alive={alive:>2}/{max} | \
          nodes spawned/shut={ns}/{nd} | \
+         listener toggles={lt} | \
          conn att/ok/err={ca}/{cs}/{ce} | disc={dc} | \
          bcast={bc} ucast att/ok={ua}/{us} send-err={se} | \
          recv={rv} | on_c/on_d={oc}/{od} | \
@@ -535,6 +553,7 @@ fn print_metrics(start: Instant, alive: usize, cur: &Snapshot, prev: &Snapshot) 
         max = MAX_NODES,
         ns = cur.nodes_spawned,
         nd = cur.nodes_shutdown,
+        lt = cur.listener_toggles,
         ca = cur.connects_succeeded + cur.err_connect,
         cs = cur.connects_succeeded,
         ce = cur.err_connect,
@@ -552,12 +571,13 @@ fn print_metrics(start: Instant, alive: usize, cur: &Snapshot, prev: &Snapshot) 
         ifsd = cur.in_flight_shutdowns,
     );
     println!(
-        "           Δ/s: conn={:.1} disc={:.1} bcast={:.1} ucast={:.1} recv={:.1}",
+        "           Δ/s: conn={:.1} disc={:.1} bcast={:.1} ucast={:.1} recv={:.1} list={:.1}",
         rate(cur.connects_succeeded, prev.connects_succeeded),
         rate(cur.disconnects, prev.disconnects),
         rate(cur.broadcasts, prev.broadcasts),
         rate(cur.unicasts_succeeded, prev.unicasts_succeeded),
         rate(cur.msgs_received, prev.msgs_received),
+        rate(cur.listener_toggles, prev.listener_toggles),
     );
 }
 
