@@ -134,6 +134,12 @@ impl Node {
 
     /// Enables or disables listening for inbound connections; returns the actual bound address, which will
     /// differ from the one in [`Config::listener_addr`] if that one's port was unspecified (i.e. `0`).
+    ///
+    /// note: Disabling the listener aborts the accept loop, so no *new* inbound connections are
+    /// admitted after this returns. It does **not** abort inbound connections already accepted and
+    /// mid-setup (handshake/protocol wiring): those proceed to completion and may appear as active
+    /// connections shortly after the listener is reported disabled. To reject them, gate acceptance
+    /// in [`Handshake`], or follow up with [`Node::disconnect`] once they register.
     pub async fn toggle_listener(&self) -> io::Result<Option<SocketAddr>> {
         // we deliberately maintain the write guard for the entirety of this method
         let mut listening_addr = self.listening_addr.write().await;
