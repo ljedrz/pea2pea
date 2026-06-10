@@ -144,7 +144,7 @@ tests can't reach.
 
 A representative session: **16 worker tasks** driving fully randomized
 operations against a pool of up to **32 concurrent nodes**, with action
-delays of **0–500µs**, processing **~35 million** paired connection lifecycles
+delays of **0-500µs**, processing **~35 million** paired connection lifecycles
 with **~46 million** messages delivered over a single 2-hour run. Every
 operation - node spawning, shutdown, connection establishment, disconnection,
 broadcast, unicast - is selected at random, without any coordination. Workers

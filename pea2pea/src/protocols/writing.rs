@@ -356,7 +356,11 @@ impl<W: Writing> WritingInternal for W {
         let (outbound_message_sender, mut outbound_message_receiver) =
             mpsc::channel(Self::MESSAGE_QUEUE_DEPTH);
 
-        // register the connection's message sender with the Writing protocol handler
+        // register the connection's message sender with the Writing protocol handler; this happens
+        // before `Connections::add` in `adapt_stream`, so it's reachable by Writing slightly
+        // before the connection is fully finalized, which is is fine and deliberate, as writing is
+        // user-initiated and safe to accept early; do not synchronize these - gating writing buys
+        // nothing, and would only add complexity or hurt performance
         conn_senders.write().insert(
             addr,
             (
