@@ -8,8 +8,7 @@ license = "CC0-1.0 OR MIT"
 [dependencies]
 bytes = { workspace = true }
 parking_lot = { workspace = true }
+pea2pea = { workspace = true }
+rand = { workspace = true }
 tokio = { workspace = true }
 tokio-util = { workspace = true }
-
-pea2pea = { path = "../pea2pea", features = ["test"] }
-rand = { version = "0.10", default-features = false, features = ["thread_rng"] }

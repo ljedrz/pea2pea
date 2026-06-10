@@ -10,19 +10,19 @@ bytes = { workspace = true }
 futures-util = { workspace = true }
 heapster = { workspace = true }
 parking_lot = { workspace = true }
+pea2pea = { workspace = true }
 rand = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread" ] }
 tokio-util = { workspace = true }
 tracing = { workspace = true }
 
 libp2p = { version = "0.56", default-features = false, features = ["macros", "noise", "ping", "tcp", "tokio", "yamux"] }
 native-tls = "0.2"
-pea2pea = { path = "../pea2pea" }
 postcard = { version = "1.1.3", default-features = false, features = ["use-std"] }
 prost = "0.14"
 serde = { version = "1.0.100", default-features = false, features = ["derive"] }
 snow = "0.10"
 test-cert-gen = "0.9"
-tokio = { version = "1.24", features = ["rt-multi-thread" ] }
 tokio-native-tls = "0.3"
 tracing-subscriber = { version = "0.3.20", default-features = false, features = ["ansi", "env-filter", "fmt", "parking_lot", "registry", "smallvec"] }
 unsigned-varint = { version = "0.8", features = ["codec", "futures"] }

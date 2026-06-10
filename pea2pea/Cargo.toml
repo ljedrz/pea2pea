@@ -12,14 +12,6 @@ readme = "README.md"
 categories = ["network-programming", "asynchronous"]
 keywords = ["p2p", "networking", "tcp", "tokio", "distributed"]
 rust-version = "1.85"
-exclude = [
-    ".github",
-    ".gitignore",
-    ".tokeignore",
-    "assets",
-    "benches",
-    "tests"
-]
 
 [features]
 test = []

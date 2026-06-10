@@ -36,12 +36,9 @@ harness = false
 [dev-dependencies]
 bytes = { workspace = true }
 futures-util = { workspace = true }
-parking_lot = { workspace = true }
-rand = { workspace = true }
+pea2pea = { workspace = true, features = ["test"] }
 test-utils = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread" ] }
 tokio-util = { workspace = true }
-tracing = { workspace = true }
 
 divan = "0.1"
-pea2pea = { path = "../pea2pea", features = ["test"] }
-tokio = { version = "1.24", features = ["rt-multi-thread" ] }

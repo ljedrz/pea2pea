@@ -10,10 +10,9 @@ bytes = { workspace = true }
 futures-util = { workspace = true }
 heapster = { workspace = true }
 parking_lot = { workspace = true }
+pea2pea = { workspace = true, features = ["test"] }
 rand = { workspace = true }
 test-utils = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "signal" ] }
 tokio-util = { workspace = true }
 tracing = { workspace = true }
-
-pea2pea = { path = "../pea2pea", features = ["test"] }
-tokio = { version = "1.24", features = ["rt-multi-thread", "signal" ] }

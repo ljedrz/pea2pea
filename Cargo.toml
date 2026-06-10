@@ -6,6 +6,7 @@ members = [ "pea2pea", "examples", "benches", "tests", "test-utils" ]
 bytes = "1.11.1"
 heapster = { version = "0.8", features = ["fmt", "use_max"] }
 parking_lot = "0.12"
+pea2pea = { path = "pea2pea" }
 futures-util = { version = "0.3", features = ["sink"] }
 rand = { version = "0.10", default-features = false, features = ["thread_rng"] }
 test-utils = { path = "test-utils" }
