@@ -300,6 +300,14 @@ impl Node {
 
     /// Returns the node's current listening address; returns an error if the node was configured
     /// to not listen for inbound connections or if the listener is currently disabled.
+    ///
+    /// note: This returns the address the listener is *bound* to, which is not necessarily an
+    /// address peers can reach. If [`Config::listener_addr`] specified a wildcard IP (e.g.
+    /// `0.0.0.0` or `::`), this returns that same wildcard IP with the resolved port - e.g.
+    /// `0.0.0.0:34567` - which is **not routable** and must not be handed to peers as a dial
+    /// target. Resolving a wildcard bind to a concrete, advertisable address requires enumerating
+    /// local interfaces (and, behind NAT, discovering the external address), which the library
+    /// deliberately leaves to the application. The port, however, is always accurate.
     pub async fn listening_addr(&self) -> io::Result<SocketAddr> {
         self.listening_addr
             .read()
