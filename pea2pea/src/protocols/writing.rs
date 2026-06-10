@@ -159,7 +159,8 @@ where
     /// - [`io::ErrorKind::BrokenPipe`] if the outbound message channel is down
     /// - [`io::ErrorKind::NotConnected`] if the node is not connected to the provided address
     /// - [`io::ErrorKind::QuotaExceeded`] if the outbound message queue for this address is full
-    /// - [`io::ErrorKind::Unsupported`] if [`Writing::enable_writing`] hadn't been called yet
+    /// - [`io::ErrorKind::Unsupported`] if [`Writing::enable_writing`] hadn't been called yet, or
+    ///   if a duplicative owner of the underlying node has a different `Writing` impl (API misuse).
     fn unicast(
         &self,
         addr: SocketAddr,
@@ -171,7 +172,8 @@ where
             if let Some(erased) = handler.senders.read().get(&addr).map(|(_, s)| s.clone()) {
                 let sender = erased
                     .downcast_ref::<mpsc::Sender<WrappedMessage<Self::Message>>>()
-                    .unwrap(); // same Self => same M => TypeId always matches
+                    // under valid API use, same Self => same Message => TypeId always matches
+                    .ok_or(io::ErrorKind::Unsupported)?;
 
                 let (msg, delivery) = WrappedMessage::new(message, true);
                 sender
@@ -211,7 +213,8 @@ where
             if let Some(erased) = handler.senders.read().get(&addr).map(|(_, s)| s.clone()) {
                 let sender = erased
                     .downcast_ref::<mpsc::Sender<WrappedMessage<Self::Message>>>()
-                    .unwrap(); // same Self => same M => TypeId always matches
+                    // under valid API use, same Self => same Message => TypeId always matches
+                    .ok_or(io::ErrorKind::Unsupported)?;
 
                 let (msg, _) = WrappedMessage::new(message, false);
                 sender.try_send(msg).map_err(|e| {
@@ -248,7 +251,9 @@ where
     ///
     /// # Errors
     ///
-    /// Returns [`io::ErrorKind::Unsupported`] if [`Writing::enable_writing`] hadn't been called yet.
+    /// Returns [`io::ErrorKind::Unsupported`] if [`Writing::enable_writing`] hadn't been called
+    /// yet, or if a duplicative owner of the underlying node has a different `Writing` impl
+    /// (API misuse).
     fn broadcast(&self, message: Self::Message) -> io::Result<()>
     where
         Self::Message: Clone,
@@ -260,7 +265,8 @@ where
                 let sender = erased
                     .1
                     .downcast_ref::<mpsc::Sender<WrappedMessage<Self::Message>>>()
-                    .unwrap(); // same Self => same M => TypeId always matches
+                    // under valid API use, same Self => same Message => TypeId always matches
+                    .ok_or(io::ErrorKind::Unsupported)?;
 
                 let (msg, _) = WrappedMessage::new(message.clone(), false);
                 let _ = sender.try_send(msg).map_err(|e| {

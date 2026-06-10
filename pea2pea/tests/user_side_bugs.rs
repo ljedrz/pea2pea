@@ -1,12 +1,17 @@
 mod common;
 
-use std::{io, net::SocketAddr, sync::Arc, time::Duration};
+use std::{io, net::SocketAddr, str::FromStr, sync::Arc, time::Duration};
 
 use bytes::BytesMut;
 use pea2pea::{
     Config, Connection, ConnectionSide, Node, Pea2Pea, connections::DisconnectOrigin, protocols::*,
 };
-use tokio::{io::AsyncWriteExt, net::TcpStream, sync::Notify, time::timeout};
+use tokio::{
+    io::AsyncWriteExt,
+    net::{TcpListener, TcpStream},
+    sync::Notify,
+    time::timeout,
+};
 use tokio_util::codec::{BytesCodec, Decoder, Encoder};
 
 use crate::common::{start_listening, wait_for_connections};
@@ -240,4 +245,91 @@ async fn broken_on_disconnect_impl() {
         // this both proves that the hook was triggered, and tells us when to proceed
         timed_notified(&notify).await;
     }
+}
+
+#[tokio::test]
+async fn duplicative_node_owner() {
+    #[derive(Clone)]
+    struct FirstOwner(Node);
+
+    impl Pea2Pea for FirstOwner {
+        fn node(&self) -> &Node {
+            &self.0
+        }
+    }
+
+    struct FirstCodec;
+
+    impl Encoder<()> for FirstCodec {
+        type Error = io::Error;
+
+        fn encode(&mut self, _item: (), _dst: &mut BytesMut) -> Result<(), Self::Error> {
+            Ok(())
+        }
+    }
+
+    impl Writing for FirstOwner {
+        type Message = ();
+        type Codec = FirstCodec;
+
+        fn codec(&self, _addr: SocketAddr, _side: ConnectionSide) -> Self::Codec {
+            FirstCodec
+        }
+    }
+
+    #[derive(Clone)]
+    struct SecondOwner(Node);
+
+    impl Pea2Pea for SecondOwner {
+        fn node(&self) -> &Node {
+            &self.0
+        }
+    }
+
+    impl Writing for SecondOwner {
+        type Message = BytesMut;
+        type Codec = BytesCodec;
+
+        fn codec(&self, _addr: SocketAddr, _side: ConnectionSide) -> Self::Codec {
+            Default::default()
+        }
+    }
+
+    let node = Node::new(Config::default());
+
+    // this is fine, the Node hasn't been registered with anyone else yet
+    let owner1 = FirstOwner(node.clone());
+    owner1.enable_writing().await;
+
+    // invalid API use - a Node object should only have a single Pea2Pea owner
+    let owner2 = SecondOwner(node);
+    // owner2 wouldn't be able to call Writing::enable_writing
+
+    let sink_addr = SocketAddr::from_str("127.0.0.1:0").unwrap();
+    let sink_socket = TcpListener::bind(sink_addr).await.unwrap();
+    let sink_addr = sink_socket.local_addr().unwrap();
+    owner1.node().connect(sink_addr).await.unwrap();
+
+    assert!(owner1.unicast(sink_addr, ()).is_ok());
+    assert!(owner1.unicast_fast(sink_addr, ()).is_ok());
+    assert!(owner1.broadcast(()).is_ok());
+
+    assert_eq!(
+        owner2
+            .unicast(sink_addr, Default::default())
+            .unwrap_err()
+            .kind(),
+        io::ErrorKind::Unsupported
+    );
+    assert_eq!(
+        owner2
+            .unicast_fast(sink_addr, Default::default())
+            .unwrap_err()
+            .kind(),
+        io::ErrorKind::Unsupported
+    );
+    assert_eq!(
+        owner2.broadcast(Default::default()).unwrap_err().kind(),
+        io::ErrorKind::Unsupported
+    );
 }

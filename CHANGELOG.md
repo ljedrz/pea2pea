@@ -5,6 +5,10 @@
 - reorganized the workspace
 - co-located connection finalization in a single critical section
 
+### Fixed
+
+- remove any possibility of `Writing` panics (it was doable with gross API misuse)
+
 # 0.56.0
 
 ### Added
