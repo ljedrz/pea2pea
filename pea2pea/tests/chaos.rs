@@ -346,25 +346,18 @@ async fn act_spawn(pool: &Pool, stats: &Arc<Stats>, token: &CancellationToken) {
 
     let _guard = InFlightGuard::new(&stats.in_flight_spawns);
     let node = StressNode::new(stats.clone());
-
-    tokio::select! {
-        biased;
-        _ = token.cancelled() => {},
-        res = node.install() => if res.is_ok() {
-            let pushed = {
-                let mut pool = pool.lock();
-                if !token.is_cancelled() && pool.len() < MAX_NODES {
-                    pool.push(node.clone());
-                    stats.nodes_spawned.fetch_add(1, Ordering::Relaxed);
-                    true
-                } else {
-                    false
-                }
-            };
-            if !pushed {
-                node.node.shut_down().await;
-            }
+    let installed = node.install().await.is_ok();
+    let pushed = installed && {
+        let mut pool = pool.lock();
+        !token.is_cancelled() && pool.len() < MAX_NODES && {
+            pool.push(node.clone());
+            true
         }
+    };
+    if pushed {
+        stats.nodes_spawned.fetch_add(1, Ordering::Relaxed);
+    } else {
+        node.node().shut_down().await;
     }
 }
 
