@@ -2,6 +2,8 @@ use std::{io, net::SocketAddr, time::Duration};
 
 use pea2pea::{Node, Pea2Pea, protocols::*};
 
+pub mod barrier_node;
+
 mod noop_node;
 pub use noop_node::FullNoopNode;
 
@@ -54,4 +56,16 @@ pub fn assert_consistent(node: &Node) {
         assert!(node.connection_info(*addr).is_some());
         assert!(!node.is_connecting(*addr));
     }
+}
+
+pub async fn start_default_nodes<T: Pea2Pea + Default>(count: usize) -> Vec<T> {
+    let mut nodes = Vec::with_capacity(count);
+
+    for _ in 0..count {
+        let node = T::default();
+        node.node().toggle_listener().await.unwrap();
+        nodes.push(node);
+    }
+
+    nodes
 }

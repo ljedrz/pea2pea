@@ -13,7 +13,11 @@ use pea2pea::{
     Config, Connection, ConnectionSide, Node, Pea2Pea, Topology, connect_nodes, protocols::*,
 };
 use rand::RngExt;
-use test_utils::{assert_consistent, start_listening, wait_for_connections, wait_until};
+use test_utils::{
+    FullNoopNode, assert_consistent,
+    barrier_node::{BarrierNode, connect_and_wait},
+    start_default_nodes, start_listening, wait_for_connections, wait_until,
+};
 use tokio::{
     net::{TcpListener, TcpSocket},
     sync::{Barrier, Notify},
@@ -22,7 +26,6 @@ use tokio::{
 };
 
 mod common;
-use crate::common::connect_and_wait;
 
 #[tokio::test]
 async fn node_name_gets_auto_assigned() {
@@ -88,7 +91,7 @@ async fn listener_toggling() {
 
 #[tokio::test]
 async fn simple_connect_and_disconnect() {
-    let nodes = Arc::new(common::start_test_nodes(2).await);
+    let nodes = Arc::new(start_default_nodes::<FullNoopNode>(2).await);
     connect_nodes(&nodes, Topology::Line).await.unwrap();
     let node1_addr = nodes[1].node().listening_addr().await.unwrap();
 
@@ -282,14 +285,14 @@ async fn self_connection_fails() {
 
 #[tokio::test]
 async fn duplicate_connection_fails() {
-    let nodes = common::start_test_nodes(2).await;
+    let nodes = start_default_nodes::<FullNoopNode>(2).await;
     assert!(connect_nodes(&nodes, Topology::Line).await.is_ok());
     assert!(connect_nodes(&nodes, Topology::Line).await.is_err());
 }
 
 #[tokio::test]
 async fn two_way_connection_works() {
-    let mut nodes = common::start_test_nodes(2).await;
+    let mut nodes = start_default_nodes::<FullNoopNode>(2).await;
     assert!(connect_nodes(&nodes, Topology::Line).await.is_ok());
     nodes.reverse();
     assert!(connect_nodes(&nodes, Topology::Line).await.is_ok());
@@ -658,7 +661,7 @@ async fn connect_after_shut_down_is_rejected() {
 
 #[tokio::test]
 async fn connection_info_side_reflects_role() {
-    let nodes = common::start_test_nodes(2).await;
+    let nodes = start_default_nodes::<FullNoopNode>(2).await;
     let listener_addr = nodes[1].node().listening_addr().await.unwrap();
 
     nodes[0].node().connect(listener_addr).await.unwrap();
@@ -1081,7 +1084,7 @@ async fn unicast_returns_not_connected_for_unknown_peer() {
 
 #[tokio::test]
 async fn simple_broadcast() {
-    let random_nodes = common::start_test_nodes(4).await;
+    let random_nodes = start_default_nodes::<FullNoopNode>(4).await;
     for rando in &random_nodes {
         rando.enable_reading().await;
     }
@@ -1199,7 +1202,7 @@ async fn broadcast_continues_past_saturated_peer() {
 async fn line_conn_counts() {
     const N: usize = 10;
 
-    let nodes = common::start_test_nodes(N).await;
+    let nodes = start_default_nodes::<BarrierNode>(N).await;
     connect_and_wait(&nodes, Topology::Line).await.unwrap();
 
     assert!(nodes.iter().enumerate().all(|(i, node)| {
@@ -1215,7 +1218,7 @@ async fn line_conn_counts() {
 async fn ring_conn_counts() {
     const N: usize = 10;
 
-    let nodes = common::start_test_nodes(N).await;
+    let nodes = start_default_nodes::<BarrierNode>(N).await;
     connect_and_wait(&nodes, Topology::Ring).await.unwrap();
 
     assert!(nodes.iter().all(|node| node.node().num_connected() == 2));
@@ -1225,7 +1228,7 @@ async fn ring_conn_counts() {
 async fn mesh_conn_counts() {
     const N: usize = 10;
 
-    let nodes = common::start_test_nodes(N).await;
+    let nodes = start_default_nodes::<BarrierNode>(N).await;
     connect_and_wait(&nodes, Topology::Mesh).await.unwrap();
 
     assert!(nodes.iter().all(|n| n.node().num_connected() == N - 1));
@@ -1235,7 +1238,7 @@ async fn mesh_conn_counts() {
 async fn star_conn_counts() {
     const N: usize = 10;
 
-    let nodes = common::start_test_nodes(N).await;
+    let nodes = start_default_nodes::<BarrierNode>(N).await;
     connect_and_wait(&nodes, Topology::Star).await.unwrap();
 
     assert!(nodes.iter().enumerate().all(|(i, node)| {
@@ -1251,7 +1254,7 @@ async fn star_conn_counts() {
 async fn grid_conn_counts() {
     const N: usize = 10;
 
-    let nodes = common::start_test_nodes(N).await;
+    let nodes = start_default_nodes::<BarrierNode>(N).await;
     let topology = Topology::Grid {
         width: 5,
         height: 2,
@@ -1288,7 +1291,7 @@ async fn grid_conn_counts() {
 async fn tree_conn_counts() {
     const N: usize = 10;
 
-    let nodes = common::start_test_nodes(N).await;
+    let nodes = start_default_nodes::<BarrierNode>(N).await;
     connect_and_wait(&nodes, Topology::Tree).await.unwrap();
 
     assert!(nodes.iter().enumerate().all(|(i, node)| {
@@ -1317,7 +1320,7 @@ async fn tree_conn_counts() {
 async fn random_conn_counts() {
     const N: usize = 10;
 
-    let nodes = common::start_test_nodes(N).await;
+    let nodes = start_default_nodes::<BarrierNode>(N).await;
     let topology = Topology::Random {
         degree: 2,
         seed: 12345,
@@ -1344,7 +1347,7 @@ async fn connect_nodes_with_too_few_nodes_errors() {
     assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
 
     // one node
-    let nodes = common::start_test_nodes(1).await;
+    let nodes = start_default_nodes::<FullNoopNode>(1).await;
     let err = pea2pea::connect_nodes(&nodes, Topology::Mesh)
         .await
         .unwrap_err();
@@ -1354,7 +1357,7 @@ async fn connect_nodes_with_too_few_nodes_errors() {
 #[tokio::test]
 async fn topology_grid_dimension_mismatch_errors() {
     // 5 nodes, but a 2x3 grid wants 6
-    let nodes = common::start_test_nodes(5).await;
+    let nodes = start_default_nodes::<FullNoopNode>(5).await;
     let err = pea2pea::connect_nodes(
         &nodes,
         Topology::Grid {
@@ -1369,7 +1372,7 @@ async fn topology_grid_dimension_mismatch_errors() {
 
 #[tokio::test]
 async fn topology_random_degree_too_high_errors() {
-    let nodes = common::start_test_nodes(3).await;
+    let nodes = start_default_nodes::<FullNoopNode>(3).await;
     // degree must be < N (3); 3 is invalid
     let err = pea2pea::connect_nodes(
         &nodes,

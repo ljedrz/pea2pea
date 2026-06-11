@@ -13,7 +13,7 @@ use pea2pea::{
 use tokio_util::codec::BytesCodec;
 
 #[derive(Clone)]
-pub struct FullNoopNode(pub Node);
+pub struct FullNoopNode(Node);
 
 impl Default for FullNoopNode {
     fn default() -> Self {

@@ -8,7 +8,7 @@ use std::{
 };
 
 use bytes::{Bytes, BytesMut};
-use pea2pea::{Config, Node, Pea2Pea, Topology, connect_nodes, protocols::*};
+use pea2pea::{Config, Node, Pea2Pea, protocols::*};
 use tokio::sync::Barrier;
 use tokio_util::codec::{Decoder, Encoder, LengthDelimitedCodec};
 
@@ -36,21 +36,6 @@ macro_rules! test_node {
             barrier: Default::default(),
         }
     }};
-}
-
-pub async fn start_test_nodes(count: usize) -> Vec<TestNode> {
-    let mut nodes = Vec::with_capacity(count);
-
-    for _ in 0..count {
-        let test_node = TestNode {
-            node: Node::new(Default::default()),
-            barrier: Default::default(),
-        };
-        test_node.node().toggle_listener().await.unwrap();
-        nodes.push(test_node);
-    }
-
-    nodes
 }
 
 pub struct TestCodec<M>(pub LengthDelimitedCodec, PhantomData<M>);
@@ -139,32 +124,9 @@ macro_rules! impl_noop_disconnect_and_handshake {
     };
 }
 
-impl OnConnect for TestNode {
-    async fn on_connect(&self, _addr: SocketAddr) {
-        if let Some(barrier) = self.barrier.get() {
-            barrier.wait().await;
-        }
-    }
-}
-
 pub fn named_node(name: &str) -> Node {
     Node::new(Config {
         name: Some(name.into()),
         ..Default::default()
     })
-}
-
-pub async fn connect_and_wait(nodes: &[TestNode], topology: Topology) -> io::Result<()> {
-    // each edge triggers OnConnect on both peers, +1 for our wait below
-    let expected_fires = topology.num_expected_connections(nodes.len()) + 1;
-    let barrier = Arc::new(Barrier::new(expected_fires));
-    for node in nodes {
-        node.barrier
-            .set(barrier.clone())
-            .expect("barrier already configured");
-        node.enable_on_connect().await;
-    }
-    connect_nodes(nodes, topology).await?;
-    barrier.wait().await;
-    Ok(())
 }
