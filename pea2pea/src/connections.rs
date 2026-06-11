@@ -274,17 +274,16 @@ pub(crate) struct ConnectionGuard<'a> {
 impl<'a> Drop for ConnectionGuard<'a> {
     fn drop(&mut self) {
         let mut limits = self.connections.limits.lock();
-
-        debug_assert!(
-            limits.ip_counts.get(&self.addr.ip()).copied().unwrap_or(0) >= 1,
-            "ip_count for {} underflowing: decrement with no live reservation",
-            self.addr.ip()
-        );
-
         limits.connecting.remove(&self.addr);
 
         // if the connection wasn't successfully established, decrement the ip count
         if !self.completed {
+            debug_assert!(
+                limits.ip_counts.get(&self.addr.ip()).copied().unwrap_or(0) >= 1,
+                "ip_count for {} underflowing: decrement with no live reservation",
+                self.addr.ip()
+            );
+
             if let Entry::Occupied(mut e) = limits.ip_counts.entry(self.addr.ip()) {
                 if *e.get() > 1 {
                     *e.get_mut() -= 1;
