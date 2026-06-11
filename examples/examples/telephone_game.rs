@@ -1,7 +1,5 @@
 //! A group of nodes playing the telephone (AKA Chinese whispers) game.
 
-mod common;
-
 use std::{net::SocketAddr, time::Duration};
 
 use pea2pea::{
@@ -26,7 +24,7 @@ const NUM_PLAYERS: usize = 20;
 
 impl Reading for Player {
     type Message = String;
-    type Codec = common::TestCodec<Self::Message>;
+    type Codec = examples::TestCodec<Self::Message>;
 
     fn codec(&self, _addr: SocketAddr, _side: ConnectionSide) -> Self::Codec {
         Default::default()
@@ -63,7 +61,7 @@ impl Reading for Player {
 
 impl Writing for Player {
     type Message = String;
-    type Codec = common::TestCodec<Self::Message>;
+    type Codec = examples::TestCodec<Self::Message>;
 
     fn codec(&self, _addr: SocketAddr, _side: ConnectionSide) -> Self::Codec {
         Default::default()
@@ -72,7 +70,7 @@ impl Writing for Player {
 
 #[tokio::main]
 async fn main() {
-    common::start_logger(LevelFilter::INFO);
+    examples::start_logger(LevelFilter::INFO);
 
     let mut players = Vec::with_capacity(NUM_PLAYERS);
     for _ in 0..NUM_PLAYERS {

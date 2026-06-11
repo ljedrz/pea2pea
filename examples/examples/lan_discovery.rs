@@ -7,8 +7,6 @@
 //! Run this example in two or more different terminal windows or computers
 //! in your local network to see them find each other!
 
-mod common;
-
 use std::{
     io,
     net::{Ipv4Addr, SocketAddr},
@@ -44,7 +42,7 @@ impl Pea2Pea for DiscoveryNode {
 
 impl Reading for DiscoveryNode {
     type Message = String;
-    type Codec = common::TestCodec<Self::Message>;
+    type Codec = examples::TestCodec<Self::Message>;
 
     fn codec(&self, _addr: SocketAddr, _side: ConnectionSide) -> Self::Codec {
         Default::default()
@@ -57,7 +55,7 @@ impl Reading for DiscoveryNode {
 
 impl Writing for DiscoveryNode {
     type Message = String;
-    type Codec = common::TestCodec<Self::Message>;
+    type Codec = examples::TestCodec<Self::Message>;
 
     fn codec(&self, _addr: SocketAddr, _side: ConnectionSide) -> Self::Codec {
         Default::default()
@@ -173,7 +171,7 @@ impl DiscoveryNode {
 
 #[tokio::main]
 async fn main() {
-    common::start_logger(LevelFilter::INFO);
+    examples::start_logger(LevelFilter::INFO);
 
     let config = Config {
         name: Some("explorer".into()),

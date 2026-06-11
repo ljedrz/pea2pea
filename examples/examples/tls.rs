@@ -1,7 +1,5 @@
 //! Two nodes establishing a TLS connection.
 
-mod common;
-
 use std::{io, net::SocketAddr, time::Duration};
 
 use bytes::{Bytes, BytesMut};
@@ -116,7 +114,7 @@ impl Writing for TlsNode {
 
 #[tokio::main]
 async fn main() {
-    common::start_logger(LevelFilter::TRACE);
+    examples::start_logger(LevelFilter::TRACE);
 
     // start the TLS-capable nodes; note: both can initiate and accept connections
     let connector = TlsNode::new("connector");

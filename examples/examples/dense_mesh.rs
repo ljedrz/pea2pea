@@ -7,8 +7,6 @@
 //! note: To run this with >50 nodes, you likely need to increase your open file limit
 //! by running `ulimit -n 10000` (or more).
 
-mod common;
-
 use std::{
     alloc::System,
     net::SocketAddr,
@@ -52,7 +50,7 @@ impl Pea2Pea for MeshNode {
 
 impl Reading for MeshNode {
     type Message = BytesMut;
-    type Codec = common::TestCodec<Self::Message>;
+    type Codec = examples::TestCodec<Self::Message>;
 
     // optimization: reduce buffer from default 64kB to 4kB to minimize footprint
     const INITIAL_BUFFER_SIZE: usize = 4 * 1024;
@@ -71,7 +69,7 @@ impl Reading for MeshNode {
 
 impl Writing for MeshNode {
     type Message = Bytes;
-    type Codec = common::TestCodec<Self::Message>;
+    type Codec = examples::TestCodec<Self::Message>;
 
     // optimization: reduce buffer from default 64kB to 4kB to minimize footprint
     const INITIAL_BUFFER_SIZE: usize = 4 * 1024;
@@ -119,7 +117,7 @@ async fn main() {
         node.node()
             .toggle_listener()
             .await
-            .inspect_err(common::check_for_24)
+            .inspect_err(examples::check_for_24)
             .unwrap();
 
         nodes.push(node);
@@ -146,7 +144,7 @@ async fn main() {
 
     connect_nodes(&nodes, Topology::Mesh)
         .await
-        .inspect_err(common::check_for_24)
+        .inspect_err(examples::check_for_24)
         .unwrap();
 
     let conn_duration = start_conn.elapsed();

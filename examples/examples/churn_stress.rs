@@ -6,8 +6,6 @@
 //! - 1 Server Node ( Passive, Echoes data )
 //! - N Client Nodes ( Active, Loop: Connect->Send->Wait->Disconnect )
 
-mod common;
-
 use std::{
     net::SocketAddr,
     sync::{
@@ -47,7 +45,7 @@ impl Pea2Pea for Server {
 
 impl Writing for Server {
     type Message = Bytes;
-    type Codec = common::TestCodec<Self::Message>;
+    type Codec = examples::TestCodec<Self::Message>;
 
     fn codec(&self, _addr: SocketAddr, _side: ConnectionSide) -> Self::Codec {
         Default::default()
@@ -56,7 +54,7 @@ impl Writing for Server {
 
 impl Reading for Server {
     type Message = BytesMut;
-    type Codec = common::TestCodec<Self::Message>;
+    type Codec = examples::TestCodec<Self::Message>;
 
     fn codec(&self, _addr: SocketAddr, _side: ConnectionSide) -> Self::Codec {
         Default::default()
@@ -85,7 +83,7 @@ impl Pea2Pea for Client {
 
 impl Writing for Client {
     type Message = Bytes;
-    type Codec = common::TestCodec<Self::Message>;
+    type Codec = examples::TestCodec<Self::Message>;
 
     fn codec(&self, _addr: SocketAddr, _side: ConnectionSide) -> Self::Codec {
         Default::default()
@@ -94,7 +92,7 @@ impl Writing for Client {
 
 impl Reading for Client {
     type Message = BytesMut;
-    type Codec = common::TestCodec<Self::Message>;
+    type Codec = examples::TestCodec<Self::Message>;
 
     fn codec(&self, _addr: SocketAddr, _side: ConnectionSide) -> Self::Codec {
         Default::default()

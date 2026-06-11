@@ -2,12 +2,9 @@
 //!
 //! The supported libp2p protocol is ping.
 
-mod common;
-
 use std::{cmp, collections::HashMap, io, net::SocketAddr, sync::Arc, time::Duration};
 
 use bytes::{Bytes, BytesMut};
-use common::{noise, yamux};
 use futures_util::{SinkExt, StreamExt, TryStreamExt};
 use libp2p::{PeerId, core::multiaddr::Protocol, identity, ping};
 use libp2p::{SwarmBuilder, swarm::SwarmEvent};
@@ -23,6 +20,8 @@ use tokio_util::codec::{Decoder, Encoder, Framed, FramedParts};
 use tracing::*;
 use tracing_subscriber::filter::LevelFilter;
 use unsigned_varint::codec::UviBytes;
+
+use examples::{noise, yamux};
 
 // the protocol string of libp2p::ping
 const PROTOCOL_PING: &[u8] = b"\x13/multistream/1.0.0\n\x11/ipfs/ping/1.0.0\n";
@@ -475,7 +474,7 @@ impl OnDisconnect for Libp2pNode {
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() {
-    common::start_logger(LevelFilter::DEBUG);
+    examples::start_logger(LevelFilter::DEBUG);
 
     // prepare the pea2pea node
     let pea2pea_node = Libp2pNode::new();

@@ -1,7 +1,5 @@
 //! A JoJo-inspired example with fixed-length messages.
 
-mod common;
-
 use std::{io, net::SocketAddr, time::Duration};
 
 use bytes::{Buf, BufMut, BytesMut};
@@ -121,7 +119,7 @@ impl Writing for JoJoNode {
 
 #[tokio::main]
 async fn main() {
-    common::start_logger(LevelFilter::INFO);
+    examples::start_logger(LevelFilter::INFO);
 
     let config = Config {
         name: Some("Jotaro".into()),

@@ -1,11 +1,9 @@
 //! A noise XXpsk3 handshake example.
 
-mod common;
-
 use std::{collections::HashMap, io, net::SocketAddr, str, sync::Arc, time::Duration};
 
 use bytes::{Bytes, BytesMut};
-use common::noise;
+use examples::noise;
 use parking_lot::RwLock;
 use pea2pea::{
     Config, Connection, ConnectionSide, Node, Pea2Pea,
@@ -93,7 +91,7 @@ impl Writing for SecureNode {
 
 #[tokio::main]
 async fn main() {
-    common::start_logger(LevelFilter::TRACE);
+    examples::start_logger(LevelFilter::TRACE);
 
     let initiator = SecureNode::new("initiator");
     let responder = SecureNode::new("responder");

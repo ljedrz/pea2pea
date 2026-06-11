@@ -1,7 +1,5 @@
 //! An homage to the Naked Gun trilogy, showing the `OnDisconnect` protocol.
 
-mod common;
-
 use std::{io, net::SocketAddr, time::Duration};
 
 use pea2pea::{
@@ -47,7 +45,7 @@ impl Handshake for NakedNode {
 
 impl Reading for NakedNode {
     type Message = String;
-    type Codec = common::TestCodec<Self::Message>;
+    type Codec = examples::TestCodec<Self::Message>;
 
     fn codec(&self, _addr: SocketAddr, _side: ConnectionSide) -> Self::Codec {
         Default::default()
@@ -74,7 +72,7 @@ impl Reading for NakedNode {
 
 impl Writing for NakedNode {
     type Message = String;
-    type Codec = common::TestCodec<Self::Message>;
+    type Codec = examples::TestCodec<Self::Message>;
 
     fn codec(&self, _addr: SocketAddr, _side: ConnectionSide) -> Self::Codec {
         Default::default()
@@ -93,7 +91,7 @@ impl OnDisconnect for NakedNode {
 
 #[tokio::main]
 async fn main() {
-    common::start_logger(LevelFilter::INFO);
+    examples::start_logger(LevelFilter::INFO);
 
     const NUM_THUGS: usize = 10;
 

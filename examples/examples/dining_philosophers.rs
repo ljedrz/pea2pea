@@ -1,7 +1,5 @@
 //! A P2P rendition of the dining philosophers problem.
 
-mod common;
-
 use std::{
     io, mem,
     net::SocketAddr,
@@ -232,7 +230,7 @@ impl Writing for Philosopher {
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() {
-    common::start_logger(LevelFilter::INFO);
+    examples::start_logger(LevelFilter::INFO);
 
     let philosophers = vec![
         Philosopher::new("Socrates".to_owned()).await,

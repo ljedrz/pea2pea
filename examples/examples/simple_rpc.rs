@@ -3,8 +3,6 @@
 //! Demonstrates how to correlate requests with responses using IDs and oneshot channels,
 //! using standard tokio codecs without intermediate wrappers.
 
-mod common;
-
 use std::{
     collections::HashMap,
     io,
@@ -172,7 +170,7 @@ impl RpcNode {
 
 #[tokio::main]
 async fn main() {
-    common::start_logger(LevelFilter::INFO);
+    examples::start_logger(LevelFilter::INFO);
 
     let server = RpcNode::new("server");
     server.enable_reading().await;

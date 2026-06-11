@@ -1,7 +1,5 @@
 //! An example of simple statistics-driven rate limiting.
 
-mod common;
-
 use std::{net::SocketAddr, time::Duration};
 
 use bytes::{Bytes, BytesMut};
@@ -25,7 +23,7 @@ impl Pea2Pea for GenericNode {
 
 impl Reading for GenericNode {
     type Message = BytesMut;
-    type Codec = common::TestCodec<Self::Message>;
+    type Codec = examples::TestCodec<Self::Message>;
 
     fn codec(&self, _addr: SocketAddr, _side: ConnectionSide) -> Self::Codec {
         Default::default()
@@ -37,7 +35,7 @@ impl Reading for GenericNode {
 
 impl Writing for GenericNode {
     type Message = Bytes;
-    type Codec = common::TestCodec<Self::Message>;
+    type Codec = examples::TestCodec<Self::Message>;
 
     fn codec(&self, _addr: SocketAddr, _side: ConnectionSide) -> Self::Codec {
         Default::default()
@@ -48,7 +46,7 @@ const NUM_PEERS: usize = 10;
 
 #[tokio::main]
 async fn main() {
-    common::start_logger(LevelFilter::INFO);
+    examples::start_logger(LevelFilter::INFO);
 
     // obtain a source of randomness
     let mut rng = rand::rng();

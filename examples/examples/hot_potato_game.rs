@@ -1,7 +1,5 @@
 //! A group of nodes playing the hot potato game.
 
-mod common;
-
 use std::{
     collections::HashMap,
     io,
@@ -24,7 +22,7 @@ use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     time::sleep,
 };
-use tokio_util::codec::{Decoder, Encoder};
+use tokio_util::codec::{Decoder, Encoder, LengthDelimitedCodec};
 use tracing::*;
 use tracing_subscriber::filter::LevelFilter;
 
@@ -129,7 +127,18 @@ enum Message {
     IHaveThePotato(PlayerName),
 }
 
-impl Decoder for common::TestCodec<Message> {
+struct PotatoCodec(LengthDelimitedCodec);
+
+impl Default for PotatoCodec {
+    fn default() -> Self {
+        let inner = LengthDelimitedCodec::builder()
+            .length_field_length(1)
+            .new_codec();
+        Self(inner)
+    }
+}
+
+impl Decoder for PotatoCodec {
     type Item = Message;
     type Error = io::Error;
 
@@ -144,9 +153,18 @@ impl Decoder for common::TestCodec<Message> {
     }
 }
 
+impl Encoder<Message> for PotatoCodec {
+    type Error = io::Error;
+
+    fn encode(&mut self, item: Message, dst: &mut BytesMut) -> Result<(), Self::Error> {
+        let bytes = postcard::to_stdvec(&item).unwrap().into();
+        self.0.encode(bytes, dst)
+    }
+}
+
 impl Reading for Player {
     type Message = Message;
-    type Codec = common::TestCodec<Self::Message>;
+    type Codec = PotatoCodec;
 
     fn codec(&self, _addr: SocketAddr, _side: ConnectionSide) -> Self::Codec {
         Default::default()
@@ -182,18 +200,9 @@ impl Reading for Player {
     }
 }
 
-impl<M> Encoder<Message> for common::TestCodec<M> {
-    type Error = io::Error;
-
-    fn encode(&mut self, item: Message, dst: &mut BytesMut) -> Result<(), Self::Error> {
-        let bytes = postcard::to_stdvec(&item).unwrap().into();
-        self.0.encode(bytes, dst)
-    }
-}
-
 impl Writing for Player {
     type Message = Message;
-    type Codec = common::TestCodec<Self::Message>;
+    type Codec = PotatoCodec;
 
     fn codec(&self, _addr: SocketAddr, _side: ConnectionSide) -> Self::Codec {
         Default::default()
@@ -202,7 +211,7 @@ impl Writing for Player {
 
 #[tokio::main]
 async fn main() {
-    common::start_logger(LevelFilter::OFF);
+    examples::start_logger(LevelFilter::OFF);
 
     const GAME_TIME_SECS: u64 = 5;
     const NUM_PLAYERS: usize = 10;
