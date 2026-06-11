@@ -24,7 +24,7 @@ use tokio_util::codec::Decoder;
 use tracing::*;
 
 mod common;
-use crate::common::TestCodec;
+use crate::common::{TestCodec, TestNode};
 
 #[tokio::test]
 async fn messaging_example() {
@@ -97,7 +97,7 @@ async fn messaging_example() {
         }
     }
 
-    let shouter = crate::test_node!("shout");
+    let shouter = TestNode::default();
     shouter.enable_reading().await;
     shouter.enable_writing().await;
     start_listening(&shouter).await;
@@ -141,11 +141,11 @@ async fn messaging_example() {
 
 #[tokio::test]
 async fn drop_connection_on_invalid_message() {
-    let reader = crate::test_node!("reader");
+    let reader = TestNode::default();
     reader.enable_reading().await;
     let reader_addr = start_listening(&reader).await;
 
-    let writer = crate::test_node!("writer");
+    let writer = TestNode::default();
     writer.enable_writing().await;
 
     writer.node().connect(reader_addr).await.unwrap();
@@ -167,11 +167,11 @@ async fn drop_connection_on_invalid_message() {
 
 #[tokio::test]
 async fn drop_connection_on_zero_read() {
-    let reader = crate::test_node!("reader");
+    let reader = TestNode::default();
     reader.enable_reading().await;
     let reader_addr = start_listening(&reader).await;
 
-    let peer = crate::test_node!("peer");
+    let peer = TestNode::default();
 
     peer.node().connect(reader_addr).await.unwrap();
 
@@ -186,10 +186,10 @@ async fn drop_connection_on_zero_read() {
 
 #[tokio::test]
 async fn no_reading_no_delivery() {
-    let reader = crate::test_node!("defunct reader");
+    let reader = TestNode::default();
     let reader_addr = start_listening(&reader).await;
 
-    let writer = crate::test_node!("writer");
+    let writer = TestNode::default();
     writer.enable_writing().await;
 
     writer.node().connect(reader_addr).await.unwrap();
@@ -208,11 +208,11 @@ async fn no_reading_no_delivery() {
 
 #[tokio::test]
 async fn no_writing_no_delivery() {
-    let reader = crate::test_node!("reader");
+    let reader = TestNode::default();
     reader.enable_reading().await;
     let reader_addr = start_listening(&reader).await;
 
-    let writer = crate::test_node!("defunct writer");
+    let writer = TestNode::default();
 
     writer.node().connect(reader_addr).await.unwrap();
 
@@ -665,7 +665,7 @@ async fn connect_doesnt_wait_for_on_connect_hook() {
     let initiator = SlowNode(Node::new(Default::default()));
     initiator.enable_on_connect().await;
 
-    let target = crate::test_node!("target");
+    let target = TestNode::default();
     let target_addr = start_listening(&target).await;
 
     let start = Instant::now();
@@ -711,7 +711,7 @@ async fn on_connect_non_abortable_runs_to_completion() {
     };
     stubborn.enable_on_connect().await;
 
-    let target = crate::test_node!("target");
+    let target = TestNode::default();
     let target_addr = start_listening(&target).await;
 
     stubborn.node().connect(target_addr).await.unwrap();
@@ -755,7 +755,7 @@ async fn on_connect_abortable_is_cancelled_on_disconnect() {
     };
     abortable.enable_on_connect().await;
 
-    let target = crate::test_node!("target");
+    let target = TestNode::default();
     let target_addr = start_listening(&target).await;
 
     abortable.node().connect(target_addr).await.unwrap();
@@ -790,7 +790,7 @@ async fn on_disconnect_timeout_aborts_slow_hook() {
     slow.enable_on_disconnect().await;
     let slow_addr = slow.0.toggle_listener().await.unwrap().unwrap();
 
-    let peer = crate::test_node!("peer");
+    let peer = TestNode::default();
     peer.node().connect(slow_addr).await.unwrap();
 
     wait_for_connections(slow.node(), 1).await;

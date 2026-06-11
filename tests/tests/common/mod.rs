@@ -1,41 +1,22 @@
-#![allow(dead_code)]
-
-use std::{
-    io,
-    marker::PhantomData,
-    net::SocketAddr,
-    sync::{Arc, OnceLock},
-};
+use std::{io, marker::PhantomData, net::SocketAddr};
 
 use bytes::{Bytes, BytesMut};
-use pea2pea::{Node, Pea2Pea, protocols::*};
-use tokio::sync::Barrier;
+use pea2pea::{Config, Node, Pea2Pea, protocols::*};
 use tokio_util::codec::{Decoder, Encoder, LengthDelimitedCodec};
 
 #[derive(Clone)]
-pub struct TestNode {
-    pub node: Node,
-    pub barrier: OnceLock<Arc<Barrier>>,
+pub struct TestNode(Node);
+
+impl Default for TestNode {
+    fn default() -> Self {
+        Self(Node::new(Config::default()))
+    }
 }
 
 impl Pea2Pea for TestNode {
     fn node(&self) -> &Node {
-        &self.node
+        &self.0
     }
-}
-
-#[macro_export]
-macro_rules! test_node {
-    ($name: expr) => {{
-        let config = pea2pea::Config {
-            name: Some($name.into()),
-            ..Default::default()
-        };
-        common::TestNode {
-            node: pea2pea::Node::new(config),
-            barrier: Default::default(),
-        }
-    }};
 }
 
 pub struct TestCodec<M>(pub LengthDelimitedCodec, PhantomData<M>);
@@ -100,26 +81,3 @@ macro_rules! impl_messaging {
 }
 
 impl_messaging!(TestNode);
-
-#[macro_export]
-macro_rules! impl_noop_disconnect_and_handshake {
-    ($target: ty) => {
-        impl Handshake for $target {
-            async fn perform_handshake(
-                &self,
-                conn: pea2pea::Connection,
-            ) -> io::Result<pea2pea::Connection> {
-                Ok(conn)
-            }
-        }
-
-        impl OnDisconnect for $target {
-            async fn on_disconnect(
-                &self,
-                _addr: SocketAddr,
-                _origin: pea2pea::connections::DisconnectOrigin,
-            ) {
-            }
-        }
-    };
-}

@@ -26,6 +26,7 @@ use tokio::{
 };
 
 mod common;
+use common::TestNode;
 
 #[tokio::test]
 async fn node_name_gets_auto_assigned() {
@@ -140,11 +141,11 @@ async fn disconnect_isolates_peer() {
 
 #[tokio::test]
 async fn node_stats_survive_disconnect() {
-    let reader = crate::test_node!("reader");
+    let reader = TestNode::default();
     reader.enable_reading().await;
     let reader_addr = start_listening(&reader).await;
 
-    let writer = crate::test_node!("writer");
+    let writer = TestNode::default();
     writer.enable_writing().await;
 
     let msg = Bytes::from(&b"keepalive"[..]);
@@ -260,7 +261,7 @@ async fn is_connecting_is_observable() {
     };
     connector.enable_handshake().await;
 
-    let target = crate::test_node!("target");
+    let target = TestNode::default();
     let target_addr = start_listening(&target).await;
 
     let c = connector.clone();
@@ -691,11 +692,11 @@ async fn connection_info_unknown_addr_returns_none() {
 async fn message_stats() {
     let mut rng = rand::rng();
 
-    let reader = crate::test_node!("reader");
+    let reader = TestNode::default();
     let reader_addr = start_listening(&reader).await;
     reader.enable_reading().await;
 
-    let writer = crate::test_node!("writer");
+    let writer = TestNode::default();
     writer.enable_writing().await;
 
     writer.node().connect(reader_addr).await.unwrap();
@@ -786,7 +787,7 @@ async fn drops_messages_wo_backpressure() {
         }),
         num_processed_messages: Default::default(),
     };
-    let fast_node = crate::test_node!("fastboi");
+    let fast_node = TestNode::default();
 
     rt_node.enable_reading().await;
     fast_node.enable_writing().await;
@@ -835,7 +836,7 @@ async fn outbound_queue_saturation() {
         name: Some("sender".into()),
         ..Default::default()
     }));
-    let receiver = crate::test_node!("lazy_receiver");
+    let receiver = TestNode::default();
 
     sender.enable_writing().await;
     // note: receiver does not enable reading, forcing TCP backpressure
@@ -896,7 +897,7 @@ async fn idle_timeout_drops_silent_connection() {
     reader.enable_reading().await;
     let reader_addr = reader.0.toggle_listener().await.unwrap().unwrap();
 
-    let peer = crate::test_node!("quiet_peer");
+    let peer = TestNode::default();
     peer.node().connect(reader_addr).await.unwrap();
 
     wait_for_connections(reader.node(), 1).await;
@@ -940,7 +941,7 @@ async fn idle_timeout_zero_disables_timeout() {
     reader.enable_reading().await;
     let reader_addr = reader.0.toggle_listener().await.unwrap().unwrap();
 
-    let peer = crate::test_node!("silent_peer");
+    let peer = TestNode::default();
     peer.node().connect(reader_addr).await.unwrap();
 
     wait_for_connections(reader.node(), 1).await;
@@ -992,7 +993,7 @@ async fn write_timeout_propagates_to_delivery() {
     sender.enable_writing().await;
 
     // a receiver that never reads -> kernel recv buffer eventually fills
-    let receiver = crate::test_node!("blackhole");
+    let receiver = TestNode::default();
     let receiver_addr = receiver.node().toggle_listener().await.unwrap().unwrap();
 
     // shrink the sender's send buffer so its writer flush stalls within a
@@ -1051,7 +1052,7 @@ async fn write_timeout_propagates_to_delivery() {
 /// when `Writing` is not enabled.
 #[tokio::test]
 async fn writing_methods_return_unsupported_when_not_enabled() {
-    let node = crate::test_node!("mute");
+    let node = TestNode::default();
     // intentionally not calling enable_writing()
 
     let any: std::net::SocketAddr = "127.0.0.1:1".parse().unwrap();
@@ -1072,7 +1073,7 @@ async fn writing_methods_return_unsupported_when_not_enabled() {
 /// by `drop_connection_on_invalid_message`.
 #[tokio::test]
 async fn unicast_returns_not_connected_for_unknown_peer() {
-    let sender = crate::test_node!("sender");
+    let sender = TestNode::default();
     sender.enable_writing().await;
 
     let unconnected: std::net::SocketAddr = "127.0.0.1:1".parse().unwrap();
@@ -1089,7 +1090,7 @@ async fn simple_broadcast() {
         rando.enable_reading().await;
     }
 
-    let broadcaster = crate::test_node!("chatty");
+    let broadcaster = TestNode::default();
     broadcaster.enable_writing().await;
 
     let chatty = broadcaster.clone();
@@ -1124,7 +1125,7 @@ async fn simple_broadcast() {
 
 #[tokio::test]
 async fn broadcast_with_no_peers_is_ok() {
-    let node = crate::test_node!("loner");
+    let node = TestNode::default();
     node.enable_writing().await;
     // no connections at all - should still return Ok
     assert!(
@@ -1156,11 +1157,11 @@ async fn broadcast_continues_past_saturated_peer() {
     sender.enable_writing().await;
 
     // a peer that won't read -> its queue + kernel buffer saturate
-    let slow = crate::test_node!("slow");
+    let slow = TestNode::default();
     let slow_addr = slow.node().toggle_listener().await.unwrap().unwrap();
 
     // a peer that will read normally
-    let fast = crate::test_node!("fast");
+    let fast = TestNode::default();
     fast.enable_reading().await;
     let fast_addr = fast.node().toggle_listener().await.unwrap().unwrap();
 
