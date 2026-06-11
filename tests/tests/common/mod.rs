@@ -8,7 +8,7 @@ use std::{
 };
 
 use bytes::{Bytes, BytesMut};
-use pea2pea::{Config, Node, Pea2Pea, protocols::*};
+use pea2pea::{Node, Pea2Pea, protocols::*};
 use tokio::sync::Barrier;
 use tokio_util::codec::{Decoder, Encoder, LengthDelimitedCodec};
 
@@ -122,11 +122,4 @@ macro_rules! impl_noop_disconnect_and_handshake {
             }
         }
     };
-}
-
-pub fn named_node(name: &str) -> Node {
-    Node::new(Config {
-        name: Some(name.into()),
-        ..Default::default()
-    })
 }

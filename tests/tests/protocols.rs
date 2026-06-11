@@ -24,7 +24,7 @@ use tokio_util::codec::Decoder;
 use tracing::*;
 
 mod common;
-use crate::common::{TestCodec, named_node};
+use crate::common::TestCodec;
 
 #[tokio::test]
 async fn messaging_example() {
@@ -626,11 +626,11 @@ async fn on_connect_message() {
         }
     }
 
-    let connector = HelloNode(named_node("connector"));
+    let connector = HelloNode(Node::new(Config::default()));
     connector.enable_writing().await;
     connector.enable_on_connect().await;
 
-    let connectee = HelloNode(named_node("connectee"));
+    let connectee = HelloNode(Node::new(Config::default()));
     connectee.enable_reading().await;
     let connectee_addr = start_listening(&connectee).await;
 
