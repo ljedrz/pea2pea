@@ -34,11 +34,11 @@ jobs:
       - name: clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 
-      - name: cargo check
-        run: cargo check --workspace --all-targets
+      - name: unit tests
+        run: cargo test -p pea2pea
 
-      - name: cargo test
+      - name: integration test
         run: cargo test -p tests
 
-      - name: cargo bench
+      - name: benches
         run: cargo bench -p benches

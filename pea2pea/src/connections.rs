@@ -352,3 +352,95 @@ pub enum DisconnectOrigin {
     /// pipeline problems (slow consumer, broken pipe).
     Writing,
 }
+
+#[cfg(test)]
+mod ip_count_tests {
+    use super::*;
+
+    use std::{collections::hash_map::Entry, sync::atomic::AtomicBool};
+
+    fn new_conns() -> Connections {
+        Connections::new(Arc::new(AtomicBool::new(false)))
+    }
+
+    // mirrors the increment side of `Node::check_and_reserve`
+    fn reserve(conns: &Connections, addr: SocketAddr) -> ConnectionGuard<'_> {
+        let mut limits = conns.limits.lock();
+        *limits.ip_counts.entry(addr.ip()).or_insert(0) += 1;
+        limits.connecting.insert(addr);
+        drop(limits);
+        ConnectionGuard {
+            addr,
+            connections: conns,
+            completed: false,
+        }
+    }
+
+    // mirrors the disconnect-path decrement in `Node::disconnect_w_origin`
+    fn disconnect_decrement(conns: &Connections, addr: SocketAddr) {
+        let mut limits = conns.limits.lock();
+        if let Entry::Occupied(mut e) = limits.ip_counts.entry(addr.ip()) {
+            if *e.get() > 1 {
+                *e.get_mut() -= 1;
+            } else {
+                e.remove();
+            }
+        }
+    }
+
+    fn ip_count(conns: &Connections, addr: SocketAddr) -> Option<usize> {
+        conns.limits.lock().ip_counts.get(&addr.ip()).copied()
+    }
+
+    #[test]
+    fn completed_guard_drop_after_concurrent_decrement_is_a_noop() {
+        let conns = new_conns();
+        let addr: SocketAddr = "127.0.0.1:9000".parse().unwrap();
+
+        let mut guard = reserve(&conns, addr);
+        // `add` marks the reservation completed: count ownership transfers to the
+        // live entry in `active`, and `active` is unlocked before this guard drops
+        guard.completed = true;
+
+        // a concurrent disconnect removes the connection and decrements to zero
+        // inside that window.
+        disconnect_decrement(&conns, addr);
+        assert_eq!(ip_count(&conns, addr), None);
+
+        // must not panic and must leave the (already-correct) count untouched
+        drop(guard);
+
+        assert_eq!(ip_count(&conns, addr), None);
+        assert!(!conns.limits.lock().connecting.contains(&addr)); // guard still clears `connecting`
+    }
+
+    #[test]
+    fn failed_guard_drop_decrements() {
+        let conns = new_conns();
+        let addr: SocketAddr = "127.0.0.1:9001".parse().unwrap();
+
+        let guard = reserve(&conns, addr); // completed stays false
+        assert_eq!(ip_count(&conns, addr), Some(1));
+
+        drop(guard);
+        assert_eq!(ip_count(&conns, addr), None);
+        assert!(!conns.limits.lock().connecting.contains(&addr));
+    }
+
+    #[test]
+    fn per_ip_count_tracks_multiple_addrs() {
+        let conns = new_conns();
+        let a1: SocketAddr = "127.0.0.1:1".parse().unwrap();
+        let a2: SocketAddr = "127.0.0.1:2".parse().unwrap();
+
+        let g1 = reserve(&conns, a1);
+        let g2 = reserve(&conns, a2);
+        assert_eq!(ip_count(&conns, a1), Some(2));
+
+        drop(g1); // 2 -> 1
+        assert_eq!(ip_count(&conns, a1), Some(1));
+
+        drop(g2); // 1 -> removed
+        assert_eq!(ip_count(&conns, a1), None);
+    }
+}
