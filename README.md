@@ -137,10 +137,10 @@ For the security policy, see [SECURITY.md](SECURITY.md).
 
 ### 🌀 Chaos Testing
 
-`pea2pea` is routinely subjected to extensive adversarial stress testing:
-long runs of maximally hostile concurrent churn, designed to surface
-synchronization bugs, leaks, and lifecycle inconsistencies that simpler
-tests can't reach.
+`pea2pea` is [routinely](https://github.com/ljedrz/pea2pea/actions/workflows/nightly-chaos.yml)
+subjected to extensive adversarial stress testing: long runs of maximally hostile concurrent churn,
+designed to surface synchronization bugs, leaks, and lifecycle inconsistencies that simpler tests
+can't reach.
 
 A representative session: **16 worker tasks** driving fully randomized
 operations against a pool of up to **32 concurrent nodes**, with action
