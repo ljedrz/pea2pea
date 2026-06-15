@@ -1,5 +1,10 @@
-use std::{future::Future, net::SocketAddr};
+use std::{
+    future::Future,
+    net::SocketAddr,
+    panic::{AssertUnwindSafe, resume_unwind},
+};
 
+use futures_util::FutureExt;
 use tokio::{
     sync::{mpsc, oneshot},
     task::JoinHandle,
@@ -13,9 +18,9 @@ use crate::{
 };
 use crate::{
     Pea2Pea,
-    connections::DisconnectOrigin,
+    connections::{DisconnectOrigin, create_connection_span},
     node::NodeTask,
-    protocols::{DisconnectOnDrop, ProtocolHandler},
+    protocols::{DisconnectOnDrop, ProtocolHandler, panic_message},
 };
 
 // The value returned to the node is a bit complex, so use an alias to break it down.
@@ -108,9 +113,21 @@ where
                             DisconnectOrigin::OnConnectAbort,
                         );
                         // perform the specified initial actions
-                        self_clone2.on_connect(addr).await;
-                        // if there was no panic, do not disconnect - this "defuses" the auto-cleanup
-                        conn_cleanup.node.take();
+                        match AssertUnwindSafe(self_clone2.on_connect(addr))
+                            .catch_unwind()
+                            .await
+                        {
+                            // if there was no panic, do not disconnect - this "defuses" the auto-cleanup
+                            Ok(()) => {
+                                conn_cleanup.node.take();
+                            }
+                            Err(payload) => {
+                                let conn_span =
+                                    create_connection_span(addr, self_clone2.node().span());
+                                error!(parent: conn_span, "OnConnect::on_connect panicked: {}", panic_message(&*payload));
+                                resume_unwind(payload); // conn_cleanup stays armed, drops on unwind → disconnect
+                            }
+                        }
                     });
                     // notify the node that the initial actions have been scheduled
                     let _ = notifier.send((handle, Self::ABORTABLE)); // can't really fail

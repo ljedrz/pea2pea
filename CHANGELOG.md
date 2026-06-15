@@ -4,6 +4,7 @@
 
 - the semaphore used to throttle the accept loop is now also used for outbound connections
 - the MSRV is bumped to 1.88
+- user implementation panics are now registered as `ERROR` tracing logs
 
 ### Fixed
 

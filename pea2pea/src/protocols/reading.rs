@@ -2,12 +2,13 @@ use std::{
     future::Future,
     io,
     net::SocketAddr,
+    panic::{AssertUnwindSafe, resume_unwind},
     sync::Arc,
     time::{Duration, Instant},
 };
 
 use bytes::BytesMut;
-use futures_util::StreamExt;
+use futures_util::{FutureExt, StreamExt};
 use tokio::{
     io::AsyncRead,
     sync::{mpsc, oneshot},
@@ -23,7 +24,9 @@ use crate::{
     Connection, ConnectionSide, Node, Pea2Pea, Stats,
     connections::DisconnectOrigin,
     node::NodeTask,
-    protocols::{DisconnectOnDrop, ProtocolHandler, ReturnableConnection, log_setup_join},
+    protocols::{
+        DisconnectOnDrop, ProtocolHandler, ReturnableConnection, log_setup_join, panic_message,
+    },
 };
 
 /// Can be used to specify and enable reading, i.e. receiving inbound messages. If the [`Handshake`]
@@ -224,8 +227,14 @@ impl<R: Reading> ReadingInternal for R {
             let _conn_cleanup =
                 DisconnectOnDrop::new(node.clone(), addr, DisconnectOrigin::Reading);
 
-            while let Some(msg) = inbound_message_receiver.recv().await {
-                self_clone.process_message(addr, msg).await;
+            let processing = AssertUnwindSafe(async {
+                while let Some(msg) = inbound_message_receiver.recv().await {
+                    self_clone.process_message(addr, msg).await;
+                }
+            });
+            if let Err(payload) = processing.catch_unwind().await {
+                error!(parent: &conn_span, "Reading::process_message panicked: {}", panic_message(&*payload));
+                resume_unwind(payload);
             }
         }));
         let _ = rx_processing.await;
@@ -256,73 +265,80 @@ impl<R: Reading> ReadingInternal for R {
             let mut dropped_count: usize = 0;
             let mut last_drop_log = Instant::now();
 
-            loop {
-                let next_frame_future = framed.next();
+            let reading = AssertUnwindSafe(async {
+                loop {
+                    let next_frame_future = framed.next();
 
-                let read_result = if Self::IDLE_TIMEOUT_MS != 0 {
-                    match timeout(
-                        Duration::from_millis(Self::IDLE_TIMEOUT_MS),
-                        next_frame_future,
-                    )
-                    .await
-                    {
-                        Ok(res) => res, // IO completed (success or error)
-                        Err(_) => {
-                            debug!(parent: &conn_span, "connection timed out due to inactivity");
-                            break;
-                        }
-                    }
-                } else {
-                    next_frame_future.await
-                };
-
-                match read_result {
-                    Some(Ok(msg)) => {
-                        // send the message for further processing
-                        match Self::BACKPRESSURE {
-                            true => {
-                                if let Err(e) = inbound_message_sender.send(msg).await {
-                                    error!(parent: &conn_span, "can't process a message: {e}");
-                                    break;
-                                }
+                    let read_result = if Self::IDLE_TIMEOUT_MS != 0 {
+                        match timeout(
+                            Duration::from_millis(Self::IDLE_TIMEOUT_MS),
+                            next_frame_future,
+                        )
+                        .await
+                        {
+                            Ok(res) => res, // IO completed (success or error)
+                            Err(_) => {
+                                debug!(parent: &conn_span, "connection timed out due to inactivity");
+                                break;
                             }
-                            false => {
-                                if let Err(e) = inbound_message_sender.try_send(msg) {
-                                    match e {
-                                        mpsc::error::TrySendError::Full(_) => {
-                                            // avoid log flooding
-                                            dropped_count += 1;
-                                            if last_drop_log.elapsed() >= Duration::from_secs(1) {
-                                                warn_about_dropped_messages(
-                                                    &conn_span,
-                                                    &mut dropped_count,
-                                                    &mut last_drop_log,
-                                                );
+                        }
+                    } else {
+                        next_frame_future.await
+                    };
+
+                    match read_result {
+                        Some(Ok(msg)) => {
+                            // send the message for further processing
+                            match Self::BACKPRESSURE {
+                                true => {
+                                    if let Err(e) = inbound_message_sender.send(msg).await {
+                                        error!(parent: &conn_span, "can't process a message: {e}");
+                                        break;
+                                    }
+                                }
+                                false => {
+                                    if let Err(e) = inbound_message_sender.try_send(msg) {
+                                        match e {
+                                            mpsc::error::TrySendError::Full(_) => {
+                                                // avoid log flooding
+                                                dropped_count += 1;
+                                                if last_drop_log.elapsed() >= Duration::from_secs(1)
+                                                {
+                                                    warn_about_dropped_messages(
+                                                        &conn_span,
+                                                        &mut dropped_count,
+                                                        &mut last_drop_log,
+                                                    );
+                                                }
+                                            }
+                                            mpsc::error::TrySendError::Closed(_) => {
+                                                error!(parent: &conn_span, "inbound channel closed");
+                                                break;
                                             }
                                         }
-                                        mpsc::error::TrySendError::Closed(_) => {
-                                            error!(parent: &conn_span, "inbound channel closed");
-                                            break;
-                                        }
+                                    } else if dropped_count != 0 {
+                                        warn_about_dropped_messages(
+                                            &conn_span,
+                                            &mut dropped_count,
+                                            &mut last_drop_log,
+                                        );
+                                        debug!(parent: &conn_span, "the inbound queue is no longer saturated");
                                     }
-                                } else if dropped_count != 0 {
-                                    warn_about_dropped_messages(
-                                        &conn_span,
-                                        &mut dropped_count,
-                                        &mut last_drop_log,
-                                    );
-                                    debug!(parent: &conn_span, "the inbound queue is no longer saturated");
                                 }
                             }
                         }
+                        Some(Err(e)) => {
+                            error!(parent: &conn_span, "couldn't read: {e}");
+                            // `tokio_util` codecs fuse on error, but break just to be safe
+                            break;
+                        }
+                        None => break, // end of stream
                     }
-                    Some(Err(e)) => {
-                        error!(parent: &conn_span, "couldn't read: {e}");
-                        // `tokio_util` codecs fuse on error, but break just to be safe
-                        break;
-                    }
-                    None => break, // end of stream
                 }
+            });
+            if let Err(payload) = reading.catch_unwind().await {
+                error!(parent: &conn_span, "Reading::Codec panicked while decoding: {}", panic_message(&*payload));
+                resume_unwind(payload);
             }
         }));
         let _ = rx_reader.await;

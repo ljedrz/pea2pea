@@ -1,5 +1,11 @@
-use std::{future::Future, net::SocketAddr, time::Duration};
+use std::{
+    future::Future,
+    net::SocketAddr,
+    panic::{AssertUnwindSafe, resume_unwind},
+    time::Duration,
+};
 
+use futures_util::FutureExt;
 use tokio::{
     sync::{mpsc, oneshot},
     task::JoinHandle,
@@ -16,7 +22,7 @@ use crate::{
     Pea2Pea,
     connections::{DisconnectOrigin, create_connection_span},
     node::NodeTask,
-    protocols::ProtocolHandler,
+    protocols::{ProtocolHandler, panic_message},
 };
 
 // The value returned to the node is a bit complex, so use an alias to break it down.
@@ -89,16 +95,22 @@ where
                     let (done_tx, done_rx) = oneshot::channel();
 
                     let handle = tokio::spawn(async move {
+                        let hook = AssertUnwindSafe(self_clone2.on_disconnect(addr, origin))
+                            .catch_unwind();
                         // perform the specified extra actions
-                        if timeout(
-                            Duration::from_millis(Self::TIMEOUT_MS),
-                            self_clone2.on_disconnect(addr, origin),
-                        )
-                        .await
-                        .is_err()
-                        {
-                            let conn_span = create_connection_span(addr, self_clone2.node().span());
-                            warn!(parent: conn_span, "OnDisconnect logic timed out");
+                        match timeout(Duration::from_millis(Self::TIMEOUT_MS), hook).await {
+                            Ok(Ok(())) => {}
+                            Ok(Err(payload)) => {
+                                let conn_span =
+                                    create_connection_span(addr, self_clone2.node().span());
+                                error!(parent: conn_span, "OnDisconnect::on_disconnect panicked: {}", panic_message(&*payload));
+                                resume_unwind(payload);
+                            }
+                            Err(_) => {
+                                let conn_span =
+                                    create_connection_span(addr, self_clone2.node().span());
+                                warn!(parent: conn_span, "OnDisconnect logic timed out");
+                            }
                         }
                         // notify on completion
                         let _ = done_tx.send(());

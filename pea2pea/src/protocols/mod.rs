@@ -107,3 +107,12 @@ pub(crate) fn log_setup_join(
         tracing::error!(parent: span, "a {protocol} setup task panicked: {e}");
     }
 }
+
+/// Extracts a human-readable message from a panic payload caught via `catch_unwind`.
+pub(crate) fn panic_message(payload: &(dyn std::any::Any + Send)) -> &str {
+    payload
+        .downcast_ref::<&'static str>()
+        .copied()
+        .or_else(|| payload.downcast_ref::<String>().map(String::as_str))
+        .unwrap_or("<non-string panic payload>")
+}

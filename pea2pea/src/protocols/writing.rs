@@ -4,6 +4,7 @@ use std::{
     future::Future,
     io,
     net::SocketAddr,
+    panic::{AssertUnwindSafe, resume_unwind},
     sync::{
         Arc,
         atomic::{AtomicU64, Ordering},
@@ -13,7 +14,7 @@ use std::{
 
 #[cfg(doc)]
 use bytes::Bytes;
-use futures_util::sink::SinkExt;
+use futures_util::{FutureExt, SinkExt};
 use parking_lot::RwLock;
 use tokio::{
     io::AsyncWrite,
@@ -32,6 +33,7 @@ use crate::{
     node::NodeTask,
     protocols::{
         DisconnectOnDrop, Protocol, ProtocolHandler, ReturnableConnection, log_setup_join,
+        panic_message,
     },
 };
 
@@ -402,33 +404,39 @@ impl<W: Writing> WritingInternal for W {
             let _conn_cleanup =
                 DisconnectOnDrop::new(node.clone(), addr, DisconnectOrigin::Writing);
 
-            let mut batch: Vec<WrappedMessage<Self::Message>> = Vec::new();
-            // recv_many blocks for the first message, then takes whatever else is
-            // already queued (capped by the queue depth) - so we coalesce without
-            // ever waiting to fill a batch. Returns 0 only once the channel closes.
-            while outbound_message_receiver
-                .recv_many(&mut batch, Self::MESSAGE_QUEUE_DEPTH)
-                .await
-                > 0
-            {
-                match self_clone.write_batch(&mut batch, &mut framed).await {
-                    Ok((msgs, bytes)) => {
-                        for tx in batch.drain(..).filter_map(|w| w.delivery_notification) {
-                            let _ = tx.send(Ok(()));
+            let writing = AssertUnwindSafe(async {
+                let mut batch: Vec<WrappedMessage<Self::Message>> = Vec::new();
+                // recv_many blocks for the first message, then takes whatever else is
+                // already queued (capped by the queue depth) - so we coalesce without
+                // ever waiting to fill a batch. Returns 0 only once the channel closes.
+                while outbound_message_receiver
+                    .recv_many(&mut batch, Self::MESSAGE_QUEUE_DEPTH)
+                    .await
+                    > 0
+                {
+                    match self_clone.write_batch(&mut batch, &mut framed).await {
+                        Ok((msgs, bytes)) => {
+                            for tx in batch.drain(..).filter_map(|w| w.delivery_notification) {
+                                let _ = tx.send(Ok(()));
+                            }
+                            conn_stats.register_sent_messages(msgs, bytes);
+                            node.stats().register_sent_messages(msgs, bytes);
+                            trace!(parent: &conn_span, "wrote {bytes}B ({msgs} messages)");
                         }
-                        conn_stats.register_sent_messages(msgs, bytes);
-                        node.stats().register_sent_messages(msgs, bytes);
-                        trace!(parent: &conn_span, "wrote {bytes}B ({msgs} messages)");
-                    }
-                    Err(e) => {
-                        error!(parent: &conn_span, "couldn't write a batch of {} message(s): {e}", batch.len());
-                        // the connection is going down; fail every queued delivery
-                        for tx in batch.drain(..).filter_map(|w| w.delivery_notification) {
-                            let _ = tx.send(Err(io::Error::new(e.kind(), e.to_string())));
+                        Err(e) => {
+                            error!(parent: &conn_span, "couldn't write a batch of {} message(s): {e}", batch.len());
+                            // the connection is going down; fail every queued delivery
+                            for tx in batch.drain(..).filter_map(|w| w.delivery_notification) {
+                                let _ = tx.send(Err(io::Error::new(e.kind(), e.to_string())));
+                            }
+                            break;
                         }
-                        break;
                     }
                 }
+            });
+            if let Err(payload) = writing.catch_unwind().await {
+                error!(parent: &conn_span, "Writing::Codec panicked while encoding: {}", panic_message(&*payload));
+                resume_unwind(payload);
             }
         }));
         let _ = rx_writer.await;
