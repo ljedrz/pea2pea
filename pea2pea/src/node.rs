@@ -94,6 +94,11 @@ pub struct InnerNode {
     pub(crate) protocols: Protocols,
     /// Contains objects related to the node's active connections.
     pub(crate) connections: Connections,
+    /// Bounds the number of concurrent connection *setups* to [`Config::max_connecting`],
+    /// covering inbound accepts **and** outbound connects from a single budget. Sharing the
+    /// budget means heavy outbound dialing applies real backpressure to the inbound accept
+    /// loop (surplus connections wait in the kernel accept queue).
+    connecting_permits: Arc<Semaphore>,
     /// Collects statistics related to the node itself.
     stats: Stats,
     /// The node's tasks.
@@ -113,6 +118,9 @@ impl Node {
         // create a tracing span containing the node's name
         let span = create_span(config.name.as_deref().unwrap());
 
+        // shared budget for concurrent connection setups
+        let connecting_permits = Arc::new(Semaphore::new(config.max_connecting as usize));
+
         // create the shutdown flag
         let shutting_down = Arc::new(AtomicBool::default());
 
@@ -122,6 +130,7 @@ impl Node {
             listening_addr: Default::default(),
             protocols: Default::default(),
             connections: Connections::new(shutting_down.clone()),
+            connecting_permits,
             stats: Default::default(),
             tasks: Default::default(),
             shutting_down,
@@ -200,12 +209,6 @@ impl Node {
         // use a channel to know when the listening task is ready
         let (tx, rx) = oneshot::channel();
 
-        // cap the number of in-flight inbound connection handlers; the hard
-        // connection limits are still enforced inside `handle_connection_request`
-        // via `check_and_reserve`; this bound exists separately to prevent per-SYN
-        // task-creation overhead from being unbounded under flood
-        let inbound_permits = Arc::new(Semaphore::new(self.config.max_connecting as usize));
-
         let node = self.clone();
         let listening_task = tokio::spawn(async move {
             trace!(parent: node.span(), "spawned the listening task");
@@ -213,6 +216,14 @@ impl Node {
                 error!(parent: node.span(), "listener setup interrupted; shutting down the listening task");
                 return;
             }
+
+            // inbound accepts draw from the node-wide connection-setup budget that outbound
+            // connects also consume; the hard connection limits are still enforced inside
+            // `handle_connection_request` via `check_and_reserve`, but gating accept on this
+            // shared budget keeps surplus inbound connections in the kernel accept queue
+            // (cheap backpressure) instead of accepting, spawning, and immediately rejecting
+            // them while outbound dialing holds the `connecting` slots
+            let inbound_permits = node.connecting_permits.clone();
 
             loop {
                 // wait for capacity before accepting
@@ -504,6 +515,24 @@ impl Node {
                 ));
             }
         }
+
+        // take a slot in the shared connection-setup budget before reserving, so an
+        // in-flight outbound connect counts against the same `max_connecting` ceiling the
+        // inbound accept loop honors; the permit is held for the whole setup and released
+        // when this function returns
+        let _permit = self
+            .connecting_permits
+            .clone()
+            .try_acquire_owned()
+            .map_err(|_| {
+                io::Error::new(
+                    ErrorKind::QuotaExceeded,
+                    format!(
+                        "maximum number ({}) of pending connections reached",
+                        self.config.max_connecting
+                    ),
+                )
+            })?;
 
         // attempt to reserve a connection slot atomically
         let guard = self.check_and_reserve(addr)?;

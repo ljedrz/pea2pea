@@ -1,3 +1,9 @@
+# 0.56.2
+
+### Changed
+
+- the semaphore used to throttle the accept loop is now also used for outbound connections
+
 # 0.56.1
 
 ### Changed
