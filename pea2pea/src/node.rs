@@ -27,7 +27,7 @@ use crate::{
     Config, Stats,
     connections::{
         Connection, ConnectionGuard, ConnectionInfo, ConnectionSide, Connections, DisconnectOrigin,
-        create_connection_span,
+        canonical_ip, create_connection_span,
     },
     protocols::{Protocol, Protocols},
 };
@@ -618,16 +618,18 @@ impl Node {
             // concurrent `check_and_reserve` has a consistent view of connection counts
             let mut limits = self.connections.limits.lock();
 
+            // canonicalize so this matches the key used at reservation time
+            let ip = canonical_ip(addr);
+
             debug_assert!(
-                limits.ip_counts.get(&addr.ip()).copied().unwrap_or(0) >= 1,
-                "ip_count for {} underflowing: decrement with no live reservation",
-                addr.ip()
+                limits.ip_counts.get(&ip).copied().unwrap_or(0) >= 1,
+                "ip_count for {ip} underflowing: decrement with no live reservation",
             );
 
             let _ = self.connections.remove(addr);
 
             // decrement the per-IP connection count
-            if let Entry::Occupied(mut e) = limits.ip_counts.entry(addr.ip()) {
+            if let Entry::Occupied(mut e) = limits.ip_counts.entry(ip) {
                 if *e.get() > 1 {
                     *e.get_mut() -= 1;
                 } else {
@@ -690,7 +692,7 @@ impl Node {
         }
 
         // check the per-IP limit first
-        let ip = addr.ip();
+        let ip = canonical_ip(addr);
         let num_ip_conns = *limits.ip_counts.get(&ip).unwrap_or(&0);
         let per_ip_limit = self.config.max_connections_per_ip as usize;
         if num_ip_conns >= per_ip_limit {

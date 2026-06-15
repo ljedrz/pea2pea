@@ -4,6 +4,10 @@
 
 - the semaphore used to throttle the accept loop is now also used for outbound connections
 
+### Fixed
+
+- the IP address is canonicalized for the purposes of per-IP connection limits
+
 # 0.56.1
 
 ### Changed

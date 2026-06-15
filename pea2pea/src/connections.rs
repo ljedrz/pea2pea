@@ -278,13 +278,15 @@ impl<'a> Drop for ConnectionGuard<'a> {
 
         // if the connection wasn't successfully established, decrement the ip count
         if !self.completed {
+            // canonicalize so this matches the key used at reservation time
+            let ip = canonical_ip(self.addr);
+
             debug_assert!(
-                limits.ip_counts.get(&self.addr.ip()).copied().unwrap_or(0) >= 1,
-                "ip_count for {} underflowing: decrement with no live reservation",
-                self.addr.ip()
+                limits.ip_counts.get(&ip).copied().unwrap_or(0) >= 1,
+                "ip_count for {ip} underflowing: decrement with no live reservation",
             );
 
-            if let Entry::Occupied(mut e) = limits.ip_counts.entry(self.addr.ip()) {
+            if let Entry::Occupied(mut e) = limits.ip_counts.entry(ip) {
                 if *e.get() > 1 {
                     *e.get_mut() -= 1;
                 } else {
@@ -353,6 +355,16 @@ pub enum DisconnectOrigin {
     Writing,
 }
 
+/// Returns the IP address used as the per-IP accounting key.
+///
+/// IPv4-mapped IPv6 addresses (`::ffff:a.b.c.d`, produced when a dual-stack listener bound
+/// to `::` accepts IPv4 traffic without `IPV6_V6ONLY`) are folded back to their canonical
+/// IPv4 form. Without this, `IpAddr::V4(a.b.c.d)` and `IpAddr::V6(::ffff:a.b.c.d)` hash as
+/// distinct keys, letting a single host claim two separate `max_connections_per_ip` quotas.
+pub(crate) const fn canonical_ip(addr: SocketAddr) -> IpAddr {
+    addr.ip().to_canonical()
+}
+
 #[cfg(test)]
 mod ip_count_tests {
     use super::*;
@@ -366,7 +378,7 @@ mod ip_count_tests {
     // mirrors the increment side of `Node::check_and_reserve`
     fn reserve(conns: &Connections, addr: SocketAddr) -> ConnectionGuard<'_> {
         let mut limits = conns.limits.lock();
-        *limits.ip_counts.entry(addr.ip()).or_insert(0) += 1;
+        *limits.ip_counts.entry(canonical_ip(addr)).or_insert(0) += 1;
         limits.connecting.insert(addr);
         drop(limits);
         ConnectionGuard {
@@ -379,7 +391,7 @@ mod ip_count_tests {
     // mirrors the disconnect-path decrement in `Node::disconnect_w_origin`
     fn disconnect_decrement(conns: &Connections, addr: SocketAddr) {
         let mut limits = conns.limits.lock();
-        if let Entry::Occupied(mut e) = limits.ip_counts.entry(addr.ip()) {
+        if let Entry::Occupied(mut e) = limits.ip_counts.entry(canonical_ip(addr)) {
             if *e.get() > 1 {
                 *e.get_mut() -= 1;
             } else {
@@ -389,7 +401,12 @@ mod ip_count_tests {
     }
 
     fn ip_count(conns: &Connections, addr: SocketAddr) -> Option<usize> {
-        conns.limits.lock().ip_counts.get(&addr.ip()).copied()
+        conns
+            .limits
+            .lock()
+            .ip_counts
+            .get(&canonical_ip(addr))
+            .copied()
     }
 
     #[test]
@@ -442,5 +459,31 @@ mod ip_count_tests {
 
         drop(g2); // 1 -> removed
         assert_eq!(ip_count(&conns, a1), None);
+    }
+
+    #[test]
+    fn ipv4_mapped_v6_shares_the_native_v4_bucket() {
+        let conns = new_conns();
+        let v4: SocketAddr = "127.0.0.1:8000".parse().unwrap();
+        // the same host as it appears on a dual-stack `::` listener without IPV6_V6ONLY
+        let mapped: SocketAddr = "[::ffff:127.0.0.1]:8001".parse().unwrap();
+
+        // sanity: as raw IpAddr these hash as two different keys (the bug being fixed)
+        assert_ne!(v4.ip(), mapped.ip());
+        // ...but canonicalization collapses them to one
+        assert_eq!(canonical_ip(v4), canonical_ip(mapped));
+
+        let g1 = reserve(&conns, v4);
+        let g2 = reserve(&conns, mapped);
+
+        // both reservations land in the single canonical (IPv4) bucket, so an attacker
+        // can't claim 2x the per-IP quota by switching between native and mapped forms
+        assert_eq!(ip_count(&conns, v4), Some(2));
+        assert_eq!(ip_count(&conns, mapped), Some(2));
+
+        drop(g1); // 2 -> 1
+        assert_eq!(ip_count(&conns, v4), Some(1));
+        drop(g2); // 1 -> removed
+        assert_eq!(ip_count(&conns, mapped), None);
     }
 }
