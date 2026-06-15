@@ -261,6 +261,55 @@ pub(crate) struct ConnectionLimits {
     pub(crate) ip_counts: HashMap<IpAddr, usize>,
 }
 
+impl ConnectionLimits {
+    /// Records a new pending connection: marks `addr` as connecting and charges its
+    /// (canonicalized) IP against the per-IP count. Undone by clearing `connecting` and,
+    /// if the connection never finalizes, [`ConnectionLimits::release_ip`].
+    pub(crate) fn reserve(&mut self, addr: SocketAddr) {
+        self.connecting.insert(addr);
+        *self.ip_counts.entry(canonical_ip(addr)).or_insert(0) += 1;
+    }
+
+    /// Returns the number of connections (pending + established) charged to `addr`'s IP.
+    pub(crate) fn ip_count(&self, addr: SocketAddr) -> usize {
+        self.ip_counts
+            .get(&canonical_ip(addr))
+            .copied()
+            .unwrap_or(0)
+    }
+
+    /// Releases one per-IP charge for `addr`, removing the bucket once it reaches zero.
+    ///
+    /// note: this does **not** touch `connecting`. A finalized connection clears its
+    /// `connecting` entry separately (its charge having moved to the live entry), while a
+    /// failed setup clears both. Because the key is derived here, every caller releases the
+    /// exact bucket [`ConnectionLimits::reserve`] charged.
+    pub(crate) fn release_ip(&mut self, addr: SocketAddr) {
+        let ip = canonical_ip(addr);
+        debug_assert!(
+            self.ip_counts.get(&ip).copied().unwrap_or(0) >= 1,
+            "ip_count for {ip} underflowing: release with no live reservation",
+        );
+        if let Entry::Occupied(mut e) = self.ip_counts.entry(ip) {
+            if *e.get() > 1 {
+                *e.get_mut() -= 1;
+            } else {
+                e.remove();
+            }
+        }
+    }
+}
+
+/// Returns the IP address used as the per-IP accounting key.
+///
+/// IPv4-mapped IPv6 addresses (`::ffff:a.b.c.d`, produced when a dual-stack listener bound
+/// to `::` accepts IPv4 traffic without `IPV6_V6ONLY`) are folded back to their canonical
+/// IPv4 form. Without this, `IpAddr::V4(a.b.c.d)` and `IpAddr::V6(::ffff:a.b.c.d)` hash as
+/// distinct keys, letting a single host claim two separate `max_connections_per_ip` quotas.
+const fn canonical_ip(addr: SocketAddr) -> IpAddr {
+    addr.ip().to_canonical()
+}
+
 // A helper object which ensures that a connecting entry is unique and eventually cleaned up.
 pub(crate) struct ConnectionGuard<'a> {
     /// The applicable connection's address.
@@ -275,24 +324,10 @@ impl<'a> Drop for ConnectionGuard<'a> {
     fn drop(&mut self) {
         let mut limits = self.connections.limits.lock();
         limits.connecting.remove(&self.addr);
-
-        // if the connection wasn't successfully established, decrement the ip count
+        // only release the IP charge if the connection never finalized; once completed,
+        // ownership of the charge moves to the live entry and the disconnect path releases it
         if !self.completed {
-            // canonicalize so this matches the key used at reservation time
-            let ip = canonical_ip(self.addr);
-
-            debug_assert!(
-                limits.ip_counts.get(&ip).copied().unwrap_or(0) >= 1,
-                "ip_count for {ip} underflowing: decrement with no live reservation",
-            );
-
-            if let Entry::Occupied(mut e) = limits.ip_counts.entry(ip) {
-                if *e.get() > 1 {
-                    *e.get_mut() -= 1;
-                } else {
-                    e.remove();
-                }
-            }
+            limits.release_ip(self.addr);
         }
     }
 }
@@ -355,32 +390,18 @@ pub enum DisconnectOrigin {
     Writing,
 }
 
-/// Returns the IP address used as the per-IP accounting key.
-///
-/// IPv4-mapped IPv6 addresses (`::ffff:a.b.c.d`, produced when a dual-stack listener bound
-/// to `::` accepts IPv4 traffic without `IPV6_V6ONLY`) are folded back to their canonical
-/// IPv4 form. Without this, `IpAddr::V4(a.b.c.d)` and `IpAddr::V6(::ffff:a.b.c.d)` hash as
-/// distinct keys, letting a single host claim two separate `max_connections_per_ip` quotas.
-pub(crate) const fn canonical_ip(addr: SocketAddr) -> IpAddr {
-    addr.ip().to_canonical()
-}
-
 #[cfg(test)]
 mod ip_count_tests {
     use super::*;
 
-    use std::{collections::hash_map::Entry, sync::atomic::AtomicBool};
+    use std::sync::atomic::AtomicBool;
 
     fn new_conns() -> Connections {
         Connections::new(Arc::new(AtomicBool::new(false)))
     }
 
-    // mirrors the increment side of `Node::check_and_reserve`
     fn reserve(conns: &Connections, addr: SocketAddr) -> ConnectionGuard<'_> {
-        let mut limits = conns.limits.lock();
-        *limits.ip_counts.entry(canonical_ip(addr)).or_insert(0) += 1;
-        limits.connecting.insert(addr);
-        drop(limits);
+        conns.limits.lock().reserve(addr);
         ConnectionGuard {
             addr,
             connections: conns,
@@ -388,18 +409,11 @@ mod ip_count_tests {
         }
     }
 
-    // mirrors the disconnect-path decrement in `Node::disconnect_w_origin`
     fn disconnect_decrement(conns: &Connections, addr: SocketAddr) {
-        let mut limits = conns.limits.lock();
-        if let Entry::Occupied(mut e) = limits.ip_counts.entry(canonical_ip(addr)) {
-            if *e.get() > 1 {
-                *e.get_mut() -= 1;
-            } else {
-                e.remove();
-            }
-        }
+        conns.limits.lock().release_ip(addr);
     }
 
+    // direct map access keeps None = "bucket removed" for the existing assertions
     fn ip_count(conns: &Connections, addr: SocketAddr) -> Option<usize> {
         conns
             .limits

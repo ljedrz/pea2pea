@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, hash_map::Entry},
+    collections::HashMap,
     io::{self, ErrorKind},
     net::SocketAddr,
     ops::Deref,
@@ -27,7 +27,7 @@ use crate::{
     Config, Stats,
     connections::{
         Connection, ConnectionGuard, ConnectionInfo, ConnectionSide, Connections, DisconnectOrigin,
-        canonical_ip, create_connection_span,
+        create_connection_span,
     },
     protocols::{Protocol, Protocols},
 };
@@ -617,25 +617,8 @@ impl Node {
             // drop the connection from the active set under the limits lock, so any
             // concurrent `check_and_reserve` has a consistent view of connection counts
             let mut limits = self.connections.limits.lock();
-
-            // canonicalize so this matches the key used at reservation time
-            let ip = canonical_ip(addr);
-
-            debug_assert!(
-                limits.ip_counts.get(&ip).copied().unwrap_or(0) >= 1,
-                "ip_count for {ip} underflowing: decrement with no live reservation",
-            );
-
             let _ = self.connections.remove(addr);
-
-            // decrement the per-IP connection count
-            if let Entry::Occupied(mut e) = limits.ip_counts.entry(ip) {
-                if *e.get() > 1 {
-                    *e.get_mut() -= 1;
-                } else {
-                    e.remove();
-                }
-            }
+            limits.release_ip(addr);
         }
 
         debug!(parent: &conn_span, "fully disconnected");
@@ -692,13 +675,15 @@ impl Node {
         }
 
         // check the per-IP limit first
-        let ip = canonical_ip(addr);
-        let num_ip_conns = *limits.ip_counts.get(&ip).unwrap_or(&0);
+        let num_ip_conns = limits.ip_count(addr);
         let per_ip_limit = self.config.max_connections_per_ip as usize;
         if num_ip_conns >= per_ip_limit {
             return Err(io::Error::new(
                 ErrorKind::QuotaExceeded,
-                format!("maximum number ({per_ip_limit}) of per-IP connections reached with {ip}"),
+                format!(
+                    "maximum number ({per_ip_limit}) of per-IP connections reached with {}",
+                    addr.ip()
+                ),
             ));
         }
 
@@ -731,8 +716,7 @@ impl Node {
         }
 
         // reserve a connecting slot
-        *limits.ip_counts.entry(ip).or_insert(0) += 1;
-        limits.connecting.insert(addr);
+        limits.reserve(addr);
 
         Ok(ConnectionGuard {
             addr,
