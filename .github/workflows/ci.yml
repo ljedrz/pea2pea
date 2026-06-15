@@ -34,6 +34,9 @@ jobs:
       - name: clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 
+      - name: doc tests
+        run: RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --workspace
+
       - name: unit tests
         run: cargo test -p pea2pea
 
