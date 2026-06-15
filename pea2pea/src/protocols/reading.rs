@@ -71,6 +71,9 @@ where
     type Message: Send;
 
     /// The user-supplied [`Decoder`] used to interpret inbound messages.
+    ///
+    /// note: The library does not cap read-buffer growth, so this `Decoder` **must** bound the
+    /// maximum frame size - otherwise a peer can declare an oversized frame and exhaust memory.
     type Codec: Decoder<Item = Self::Message, Error = io::Error> + Send;
 
     /// Prepares the node to receive messages.

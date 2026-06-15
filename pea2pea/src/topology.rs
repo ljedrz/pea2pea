@@ -26,6 +26,9 @@ pub enum Topology {
     Tree,
     /// Each node connects to a specific number of unique random peers.
     /// Uses a deterministic hash seeded by `seed`.
+    ///
+    /// note: Target selection retries until `degree` distinct peers are chosen, with no hard
+    /// bound on attempts; intended for small test graphs.
     Random {
         /// The number of connections each node attempts to initiate.
         degree: usize,
@@ -57,6 +60,10 @@ impl Topology {
 ///
 /// note: This is primarily a test utility; the connections are established sequentially,
 /// and it expects all the connections to succeed.
+///
+/// note: Nodes typically share `127.0.0.1` here, so this needs `Config::max_connections_per_ip`
+/// to admit the topology's degree - the `test` feature's default (100) does; the production
+/// default (1) does not.
 pub async fn connect_nodes<T: Pea2Pea>(nodes: &[T], topology: Topology) -> io::Result<()> {
     let count = nodes.len();
     if count < 2 {

@@ -22,7 +22,7 @@ use tokio::{
 use tracing::*;
 
 #[cfg(doc)]
-use crate::protocols::{Handshake, OnDisconnect, Writing};
+use crate::protocols::{Handshake, OnConnect, OnDisconnect, Reading, Writing};
 use crate::{
     Config, Stats,
     connections::{
@@ -743,6 +743,11 @@ impl Node {
 
     /// Gracefully shuts the node down. This is permanent - the node cannot be restarted,
     /// you need to create a new one.
+    ///
+    /// note: Do not `await` this from inside a per-connection hook ([`Reading::process_message`],
+    /// [`OnConnect::on_connect`], [`OnDisconnect::on_disconnect`]). `shut_down` tears down the very
+    /// connection - and aborts the very task - the hook runs on; instead, signal shutdown to a
+    /// separate task and call it there.
     pub async fn shut_down(&self) {
         // immediately mark the node as shutting down
         self.shutting_down.store(true, Release);

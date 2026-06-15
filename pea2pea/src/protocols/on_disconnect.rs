@@ -130,6 +130,12 @@ where
     /// Any extra actions to be executed during a disconnect; in order to still be able to
     /// communicate with the peer in the usual manner (i.e. via [`Writing`]), only its [`SocketAddr`]
     /// (as opposed to the related [`Connection`] object) is provided as an argument.
+    ///
+    /// note: To send a final message to the peer from this hook and be sure it is flushed before
+    /// teardown, use [`Writing::unicast`] and await the returned receiver (within
+    /// [`OnDisconnect::TIMEOUT_MS`]). [`Writing::unicast_fast`] and [`Writing::broadcast`] return no
+    /// delivery feedback, so a message queued through them may not reach the socket before the
+    /// writer is torn down.
     fn on_disconnect(
         &self,
         addr: SocketAddr,
