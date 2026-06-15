@@ -7,6 +7,7 @@
 ### Fixed
 
 - the IP address is canonicalized for the purposes of per-IP connection limits
+- don't disconnect on drop in case the tokio runtime has already shut down
 
 # 0.56.1
 

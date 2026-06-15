@@ -89,8 +89,8 @@ impl Drop for DisconnectOnDrop {
                 .read()
                 .get(&addr)
                 .is_some_and(|c| !c.disconnecting.load(Ordering::Acquire));
-            if needs_recovery {
-                tokio::spawn(async move { node.disconnect_w_origin(addr, origin).await });
+            if needs_recovery && let Ok(handle) = tokio::runtime::Handle::try_current() {
+                handle.spawn(async move { node.disconnect_w_origin(addr, origin).await });
             }
         }
     }
