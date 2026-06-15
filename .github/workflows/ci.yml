@@ -45,3 +45,19 @@ jobs:
 
       - name: benches
         run: cargo bench -p benches
+
+  msrv:
+    name: MSRV
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout source code
+        uses: actions/checkout@v6
+
+      - name: install the MSRV
+        uses: dtolnay/rust-toolchain@1.88.0
+
+      - name: enable Rust caching
+        uses: Swatinem/rust-cache@v2
+
+      - name: check on MSRV
+        run: cargo check -p pea2pea

@@ -505,15 +505,14 @@ impl Node {
         }
 
         // a simple self-connect attempt check
-        if let Ok(listening_addr) = self.listening_addr().await {
-            if addr == listening_addr
-                || addr.ip().is_loopback() && addr.port() == listening_addr.port()
-            {
-                return Err(io::Error::new(
-                    ErrorKind::AddrInUse,
-                    format!("can't connect to node's own listening address ({addr})"),
-                ));
-            }
+        if let Ok(listening_addr) = self.listening_addr().await
+            && (addr == listening_addr
+                || addr.ip().is_loopback() && addr.port() == listening_addr.port())
+        {
+            return Err(io::Error::new(
+                ErrorKind::AddrInUse,
+                format!("can't connect to node's own listening address ({addr})"),
+            ));
         }
 
         // take a slot in the shared connection-setup budget before reserving, so an

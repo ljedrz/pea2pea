@@ -11,7 +11,7 @@ documentation = "https://docs.rs/pea2pea"
 readme = "../README.md"
 categories = ["network-programming", "asynchronous"]
 keywords = ["p2p", "networking", "tcp", "tokio", "distributed"]
-rust-version = "1.85"
+rust-version = "1.88"
 
 [features]
 test = []

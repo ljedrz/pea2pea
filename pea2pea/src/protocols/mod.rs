@@ -101,9 +101,9 @@ pub(crate) fn log_setup_join(
     protocol: &'static str,
     res: Option<Result<(), tokio::task::JoinError>>,
 ) {
-    if let Some(Err(e)) = res {
-        if e.is_panic() {
-            tracing::error!(parent: span, "a {protocol} setup task panicked: {e}");
-        }
+    if let Some(Err(e)) = res
+        && e.is_panic()
+    {
+        tracing::error!(parent: span, "a {protocol} setup task panicked: {e}");
     }
 }
