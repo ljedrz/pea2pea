@@ -1048,8 +1048,7 @@ async fn write_timeout_propagates_to_delivery() {
     wait_for_connections(sender.node(), 0).await;
 }
 
-/// `unicast` / `unicast_fast` / `broadcast` must return `Unsupported`
-/// when `Writing` is not enabled.
+/// `unicast(_fast)` must return `Unsupported` when `Writing` is not enabled.
 #[tokio::test]
 async fn writing_methods_return_unsupported_when_not_enabled() {
     let node = TestNode::default();
@@ -1062,9 +1061,6 @@ async fn writing_methods_return_unsupported_when_not_enabled() {
     assert_eq!(err.kind(), io::ErrorKind::Unsupported);
 
     let err = node.unicast(any, dummy.clone()).unwrap_err();
-    assert_eq!(err.kind(), io::ErrorKind::Unsupported);
-
-    let err = node.broadcast(dummy).unwrap_err();
     assert_eq!(err.kind(), io::ErrorKind::Unsupported);
 }
 
@@ -1099,8 +1095,8 @@ async fn simple_broadcast() {
         let bytes = Bytes::from(message.as_bytes());
 
         loop {
-            if chatty.node().num_connected() != 0 {
-                chatty.broadcast(bytes.clone()).unwrap();
+            for addr in chatty.node().connected_addrs() {
+                chatty.unicast_fast(addr, bytes.clone()).unwrap();
             }
 
             sleep(Duration::from_millis(50)).await;
@@ -1119,82 +1115,6 @@ async fn simple_broadcast() {
         random_nodes
             .iter()
             .all(|rando| rando.node().stats().received().0 >= 2)
-    })
-    .await;
-}
-
-#[tokio::test]
-async fn broadcast_with_no_peers_is_ok() {
-    let node = TestNode::default();
-    node.enable_writing().await;
-    // no connections at all - should still return Ok
-    assert!(
-        node.broadcast(Bytes::from(&b"echoes in the void"[..]))
-            .is_ok()
-    );
-}
-
-#[tokio::test]
-async fn broadcast_continues_past_saturated_peer() {
-    // A broadcaster with depth=1 makes per-peer queues trivial to fill.
-    #[derive(Clone)]
-    struct TinyQueueSender(Node);
-    impl Pea2Pea for TinyQueueSender {
-        fn node(&self) -> &Node {
-            &self.0
-        }
-    }
-    impl Writing for TinyQueueSender {
-        const MESSAGE_QUEUE_DEPTH: usize = 1;
-        type Message = Bytes;
-        type Codec = common::TestCodec<Bytes>;
-        fn codec(&self, _: SocketAddr, _: ConnectionSide) -> Self::Codec {
-            Default::default()
-        }
-    }
-
-    let sender = TinyQueueSender(Node::new(Default::default()));
-    sender.enable_writing().await;
-
-    // a peer that won't read -> its queue + kernel buffer saturate
-    let slow = TestNode::default();
-    let slow_addr = slow.node().toggle_listener().await.unwrap().unwrap();
-
-    // a peer that will read normally
-    let fast = TestNode::default();
-    fast.enable_reading().await;
-    let fast_addr = fast.node().toggle_listener().await.unwrap().unwrap();
-
-    sender.0.connect(slow_addr).await.unwrap();
-    sender.0.connect(fast_addr).await.unwrap();
-    tokio::time::sleep(Duration::from_millis(50)).await;
-
-    // saturate the slow peer's pipeline with large messages until try_send fails
-    let big = Bytes::from(vec![0xAB; 60_000]);
-    let mut slow_saturated = false;
-    for _ in 0..200 {
-        if !sender.0.is_connected(slow_addr) {
-            break; // shouldn't happen, but be defensive
-        }
-        if sender.unicast_fast(slow_addr, big.clone()).is_err() {
-            slow_saturated = true;
-            break;
-        }
-    }
-    assert!(
-        slow_saturated,
-        "couldn't saturate the slow peer's outbound queue"
-    );
-
-    let baseline = fast.node().stats().received().0;
-
-    // The broadcast: slow peer drops it (queue full), fast peer must still receive.
-    sender
-        .broadcast(Bytes::from(&b"to all who can hear me"[..]))
-        .unwrap();
-
-    wait_until(Duration::from_secs(2), || {
-        fast.node().stats().received().0 > baseline
     })
     .await;
 }

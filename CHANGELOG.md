@@ -1,3 +1,9 @@
+# 0.56.3
+
+### Deprecated
+
+- `Writing::broadcast`, a thin helper that hid per-peer send errors; prefer `Node::connected_addrs` + `unicast`/`unicast_fast`
+
 # 0.56.2
 
 ### Changed

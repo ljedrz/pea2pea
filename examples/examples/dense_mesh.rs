@@ -168,7 +168,10 @@ async fn main() {
     let start_broadcast = Instant::now();
 
     for node in &nodes {
-        node.broadcast(payload.clone()).unwrap();
+        let peers = node.node().connected_addrs();
+        for addr in peers {
+            let _ = node.unicast_fast(addr, payload.clone());
+        }
     }
 
     completion_signal.notified().await;

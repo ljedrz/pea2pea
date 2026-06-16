@@ -125,7 +125,7 @@ struct Stats {
     connects_succeeded: AtomicUsize,
     disconnects: AtomicUsize,
     listener_toggles: AtomicUsize,
-    broadcasts: AtomicUsize,
+    fast_send: AtomicUsize,
     unicasts_attempted: AtomicUsize,
     unicasts_succeeded: AtomicUsize,
     msgs_received: AtomicUsize,
@@ -145,7 +145,7 @@ struct Snapshot {
     nodes_shutdown: usize,
     connects_succeeded: usize,
     disconnects: usize,
-    broadcasts: usize,
+    fast_send: usize,
     listener_toggles: usize,
     unicasts_attempted: usize,
     unicasts_succeeded: usize,
@@ -168,7 +168,7 @@ impl Snapshot {
             connects_succeeded: s.connects_succeeded.load(Ordering::Relaxed),
             disconnects: s.disconnects.load(Ordering::Relaxed),
             listener_toggles: s.listener_toggles.load(Ordering::Relaxed),
-            broadcasts: s.broadcasts.load(Ordering::Relaxed),
+            fast_send: s.fast_send.load(Ordering::Relaxed),
             unicasts_attempted: s.unicasts_attempted.load(Ordering::Relaxed),
             unicasts_succeeded: s.unicasts_succeeded.load(Ordering::Relaxed),
             msgs_received: s.msgs_received.load(Ordering::Relaxed),
@@ -455,13 +455,19 @@ async fn act_disconnect(pool: &Pool, stats: &Arc<Stats>, rng: &mut SmallRng) {
 
 async fn act_broadcast(pool: &Pool, stats: &Arc<Stats>, rng: &mut SmallRng) {
     let Some(a) = pick_one(pool, rng) else { return };
+    let peers = a.node().connected_addrs();
+    if peers.is_empty() {
+        return;
+    }
     let msg = random_message(rng);
-    match a.broadcast(msg) {
-        Ok(_) => {
-            stats.broadcasts.fetch_add(1, Ordering::Relaxed);
-        }
-        Err(_) => {
-            stats.err_send.fetch_add(1, Ordering::Relaxed);
+    for addr in peers {
+        match a.unicast_fast(addr, msg.clone()) {
+            Ok(_) => {
+                stats.fast_send.fetch_add(1, Ordering::Relaxed);
+            }
+            Err(_) => {
+                stats.err_send.fetch_add(1, Ordering::Relaxed);
+            }
         }
     }
 }
@@ -475,9 +481,12 @@ async fn act_unicast(pool: &Pool, stats: &Arc<Stats>, rng: &mut SmallRng) {
     let target = peers[rng.random_range(0..peers.len())];
     let msg = random_message(rng);
     stats.unicasts_attempted.fetch_add(1, Ordering::Relaxed);
-    match a.unicast_fast(target, msg) {
-        Ok(_) => {
-            stats.unicasts_succeeded.fetch_add(1, Ordering::Relaxed);
+    match a.unicast(target, msg) {
+        Ok(rx) => {
+            match rx.await {
+                Ok(Ok(())) => stats.unicasts_succeeded.fetch_add(1, Ordering::Relaxed),
+                _ => stats.err_send.fetch_add(1, Ordering::Relaxed),
+            };
         }
         Err(_) => {
             stats.err_send.fetch_add(1, Ordering::Relaxed);
@@ -540,7 +549,7 @@ fn print_metrics(start: Instant, alive: usize, cur: &Snapshot, prev: &Snapshot) 
          nodes spawned/shut={ns}/{nd} | \
          listener toggles={lt} | \
          conn att/ok/err={ca}/{cs}/{ce} | disc={dc} | \
-         bcast={bc} ucast att/ok={ua}/{us} send-err={se} | \
+         ufast={fs} ucast att/ok={ua}/{us} send-err={se} | \
          recv={rv} | on_c/on_d={oc}/{od} | \
          ifc={ifc} | ifdc={ifdc} | ifsp={ifsp} | ifsd={ifsd}",
         max = MAX_NODES,
@@ -551,7 +560,7 @@ fn print_metrics(start: Instant, alive: usize, cur: &Snapshot, prev: &Snapshot) 
         cs = cur.connects_succeeded,
         ce = cur.err_connect,
         dc = cur.disconnects,
-        bc = cur.broadcasts,
+        fs = cur.fast_send,
         ua = cur.unicasts_attempted,
         us = cur.unicasts_succeeded,
         se = cur.err_send,
@@ -564,10 +573,10 @@ fn print_metrics(start: Instant, alive: usize, cur: &Snapshot, prev: &Snapshot) 
         ifsd = cur.in_flight_shutdowns,
     );
     println!(
-        "           Δ/s: conn={:.1} disc={:.1} bcast={:.1} ucast={:.1} recv={:.1} list={:.1}",
+        "           Δ/s: conn={:.1} disc={:.1} ufast={:.1} ucast={:.1} recv={:.1} list={:.1}",
         rate(cur.connects_succeeded, prev.connects_succeeded),
         rate(cur.disconnects, prev.disconnects),
-        rate(cur.broadcasts, prev.broadcasts),
+        rate(cur.fast_send, prev.fast_send),
         rate(cur.unicasts_succeeded, prev.unicasts_succeeded),
         rate(cur.msgs_received, prev.msgs_received),
         rate(cur.listener_toggles, prev.listener_toggles),

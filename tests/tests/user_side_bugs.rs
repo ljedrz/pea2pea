@@ -309,7 +309,6 @@ async fn duplicative_node_owner() {
 
     assert!(owner1.unicast(sink_addr, ()).is_ok());
     assert!(owner1.unicast_fast(sink_addr, ()).is_ok());
-    assert!(owner1.broadcast(()).is_ok());
 
     assert_eq!(
         owner2
@@ -323,10 +322,6 @@ async fn duplicative_node_owner() {
             .unicast_fast(sink_addr, Default::default())
             .unwrap_err()
             .kind(),
-        io::ErrorKind::Unsupported
-    );
-    assert_eq!(
-        owner2.broadcast(Default::default()).unwrap_err().kind(),
         io::ErrorKind::Unsupported
     );
 }
