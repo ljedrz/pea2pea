@@ -34,7 +34,7 @@ use crate::{
 
 // Starts the selected protocol handler for a new connection
 macro_rules! enable_protocol {
-    ($handler_type: ident, $node:expr, $conn: expr) => {
+    ($handler_type:ident, $node:expr, $conn:expr) => {
         if let Some(handler) = $node.protocols.$handler_type.get() {
             let (conn_returner, conn_retriever) = oneshot::channel();
 
