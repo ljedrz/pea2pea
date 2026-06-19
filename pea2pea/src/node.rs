@@ -669,7 +669,7 @@ impl Node {
         if self.connections.is_connected(addr) {
             return Err(io::Error::new(
                 ErrorKind::AlreadyExists,
-                format!("already connected to {addr}"),
+                "already connected",
             ));
         }
 
@@ -679,10 +679,7 @@ impl Node {
         if num_ip_conns >= per_ip_limit {
             return Err(io::Error::new(
                 ErrorKind::QuotaExceeded,
-                format!(
-                    "maximum number ({per_ip_limit}) of per-IP connections reached with {}",
-                    addr.ip()
-                ),
+                format!("maximum number ({per_ip_limit}) of per-IP connections reached"),
             ));
         }
 
@@ -710,7 +707,7 @@ impl Node {
         if limits.connecting.contains(&addr) {
             return Err(io::Error::new(
                 ErrorKind::AlreadyExists,
-                format!("already connecting to {addr}"),
+                "already connecting",
             ));
         }
 
