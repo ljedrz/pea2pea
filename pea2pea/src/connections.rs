@@ -286,11 +286,12 @@ impl ConnectionLimits {
     /// exact bucket [`ConnectionLimits::reserve`] charged.
     pub(crate) fn release_ip(&mut self, addr: SocketAddr) {
         let ip = canonical_ip(addr);
-        debug_assert!(
-            self.ip_counts.get(&ip).copied().unwrap_or(0) >= 1,
-            "ip_count for {ip} underflowing: release with no live reservation",
-        );
         if let Entry::Occupied(mut e) = self.ip_counts.entry(ip) {
+            debug_assert!(
+                *e.get() >= 1,
+                "ip_count for {ip} underflowing: release with no live reservation",
+            );
+
             if *e.get() > 1 {
                 *e.get_mut() -= 1;
             } else {
