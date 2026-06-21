@@ -1,5 +1,9 @@
 # 0.56.3
 
+### Changed
+
+- `Node::new` now uses a `Relaxed` ordering if its name is not provided
+
 ### Deprecated
 
 - `Writing::broadcast`, a thin helper that hid per-peer send errors; prefer `Node::connected_addrs` + `unicast`/`unicast_fast`
