@@ -23,6 +23,7 @@ These examples demonstrate standard infrastructure patterns, security integratio
 
 | Example | Description | Key Features |
 | :--- | :--- | :--- |
+| **[Hole Punching](examples/hole_punching.rs)** | Two peers behind NATs establish a direct connection via a rendezvous server and TCP **simultaneous open**: each dials the other from the same advertised port, so their SYNs cross into a single connection - no relay. Brings its own pre-bound socket to `connect_using_socket`. | NAT Traversal, TCP Simultaneous Open, Rendezvous Signaling, Custom Socket |
 | **[Kademlia DHT](examples/kademlia_dht.rs)** | A minimal Kademlia DHT - the canonical P2P distributed hash table | DHT, All Protocols In Action |
 | **[LAN Discovery](examples/lan_discovery.rs)** | A "zero-conf" example where nodes broadcast their presence via UDP beacons to automatically discover and connect to peers in the local network. | UDP Broadcasting, Automatic Discovery, Hybrid TCP/UDP |
 | **[Libp2p Interop](examples/libp2p.rs)** | A fully compatible `libp2p` node that performs a Noise handshake and multiplexes streams using Yamux to talk to `rust-libp2p` nodes. | Interop, Noise Encryption, Yamux Multiplexing, Complex Handshake |
