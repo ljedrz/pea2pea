@@ -1,5 +1,6 @@
 #![deny(missing_docs)]
 #![deny(unsafe_code)]
+#![deny(rustdoc::broken_intra_doc_links)]
 
 //! **pea2pea** is a simple, low-level, and customizable implementation of a TCP P2P node.
 
