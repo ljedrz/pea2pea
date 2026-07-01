@@ -1,6 +1,8 @@
 # pea2pea
 
 [![Crates.io](https://img.shields.io/crates/v/pea2pea.svg)](https://crates.io/crates/pea2pea)
+[![CI](https://github.com/ljedrz/pea2pea/actions/workflows/ci.yml/badge.svg)](https://github.com/ljedrz/pea2pea/actions/workflows/ci.yml)
+[![chaos](https://github.com/ljedrz/pea2pea/actions/workflows/nightly-chaos.yml/badge.svg)](https://github.com/ljedrz/pea2pea/actions/workflows/nightly-chaos.yml)
 [![Documentation](https://docs.rs/pea2pea/badge.svg)](https://docs.rs/pea2pea)
 [![dependency status](https://deps.rs/repo/github/ljedrz/pea2pea/status.svg)](https://deps.rs/repo/github/ljedrz/pea2pea)
 
