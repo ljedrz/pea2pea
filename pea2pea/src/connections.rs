@@ -7,7 +7,7 @@ use std::{
     ops::Not,
     sync::{
         Arc,
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
     },
 };
 
@@ -168,10 +168,19 @@ impl ConnectionInfo {
     }
 }
 
+/// A process-wide, monotonic generator of per-connection instance ids. Successive connections
+/// that reuse the same [`SocketAddr`] receive distinct ids, which lets cleanup guards tell a
+/// torn-down connection apart from its replacement (see [`crate::protocols::DisconnectOnDrop`]).
+static SEQUENTIAL_CONN_ID: AtomicU64 = AtomicU64::new(0);
+
 /// Created for each active connection; used by the protocols to obtain a handle for
 /// reading and writing, and keeps track of tasks that have been spawned for the purposes
 /// of the connection.
 pub struct Connection {
+    /// A process-unique id distinguishing this connection instance from any earlier or later
+    /// connection that happens to reuse the same address. Used to prevent a cleanup guard
+    /// belonging to a defunct connection from acting on its live successor at the same address.
+    pub(crate) id: u64,
     /// Basic information related to a connection.
     pub(crate) info: ConnectionInfo,
     /// Available and used only in the [`Handshake`] protocol.
@@ -197,6 +206,7 @@ impl Connection {
         span: Span,
     ) -> Self {
         Self {
+            id: SEQUENTIAL_CONN_ID.fetch_add(1, Ordering::Relaxed),
             info: ConnectionInfo {
                 span,
                 addr,

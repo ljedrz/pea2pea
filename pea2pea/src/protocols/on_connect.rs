@@ -86,7 +86,7 @@ where
             );
 
             let (from_node_sender, mut from_node_receiver) =
-                mpsc::channel::<(SocketAddr, oneshot::Sender<OnConnectBundle>)>(
+                mpsc::channel::<((SocketAddr, u64), oneshot::Sender<OnConnectBundle>)>(
                     self.node().config().max_connections as usize,
                 );
 
@@ -103,13 +103,14 @@ where
                     return;
                 }
 
-                while let Some((addr, notifier)) = from_node_receiver.recv().await {
+                while let Some(((addr, conn_id), notifier)) = from_node_receiver.recv().await {
                     let self_clone2 = self_clone.clone();
                     let handle = tokio::spawn(async move {
                         // disconnect automatically if the OnConnect impl panics
                         let mut conn_cleanup = DisconnectOnDrop::new(
                             self_clone2.node().clone(),
                             addr,
+                            conn_id,
                             DisconnectOrigin::OnConnectAbort,
                         );
                         // perform the specified initial actions

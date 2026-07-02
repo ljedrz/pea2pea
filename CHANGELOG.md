@@ -1,3 +1,9 @@
+# 0.56.4
+
+### Fixed
+
+- the connection cleanup plumbing was made more robust against reconnection churn (edge case)
+
 # 0.56.3
 
 ### Changed

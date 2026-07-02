@@ -36,7 +36,7 @@ pub(crate) struct Protocols {
     pub(crate) handshake: OnceLock<ProtocolHandler<Connection, io::Result<Connection>>>,
     pub(crate) reading: OnceLock<ProtocolHandler<Connection, io::Result<Connection>>>,
     pub(crate) writing: OnceLock<writing::WritingHandler>,
-    pub(crate) on_connect: OnceLock<ProtocolHandler<SocketAddr, OnConnectBundle>>,
+    pub(crate) on_connect: OnceLock<ProtocolHandler<(SocketAddr, u64), OnConnectBundle>>,
     pub(crate) on_disconnect:
         OnceLock<ProtocolHandler<(SocketAddr, DisconnectOrigin), OnDisconnectBundle>>,
 }
@@ -66,14 +66,24 @@ impl<T, U> Protocol<T, U> for ProtocolHandler<T, U> {
 pub(crate) struct DisconnectOnDrop {
     pub(crate) node: Option<Node>,
     pub(crate) addr: SocketAddr,
+    /// The id of the specific connection instance this guard belongs to. On drop the guard only
+    /// acts if the address is still occupied by that same instance; otherwise a connection that
+    /// reused the address after a rapid reconnect would be torn down by a stale guard.
+    pub(crate) conn_id: u64,
     pub(crate) origin: DisconnectOrigin,
 }
 
 impl DisconnectOnDrop {
-    pub(crate) fn new(node: Node, addr: SocketAddr, origin: DisconnectOrigin) -> Self {
+    pub(crate) fn new(
+        node: Node,
+        addr: SocketAddr,
+        conn_id: u64,
+        origin: DisconnectOrigin,
+    ) -> Self {
         Self {
             node: Some(node),
             addr,
+            conn_id,
             origin,
         }
     }
@@ -82,15 +92,22 @@ impl DisconnectOnDrop {
 impl Drop for DisconnectOnDrop {
     fn drop(&mut self) {
         if let Some(node) = self.node.take() {
-            let (addr, origin) = (self.addr, self.origin);
+            let (addr, conn_id, origin) = (self.addr, self.conn_id, self.origin);
+            // only recover if the address is still held by *our* connection instance and it isn't
+            // already being disconnected; a different id means a newer connection reused the
+            // address and must not be touched by this defunct connection's guard. This check only
+            // avoids a needless spawn - the address could still be reused before the spawned task
+            // runs, so the id is passed along and re-checked atomically with the disconnect claim
             let needs_recovery = node
                 .connections
                 .active
                 .read()
                 .get(&addr)
-                .is_some_and(|c| !c.disconnecting.load(Ordering::Acquire));
+                .is_some_and(|c| c.id == conn_id && !c.disconnecting.load(Ordering::Acquire));
             if needs_recovery && let Ok(handle) = tokio::runtime::Handle::try_current() {
-                handle.spawn(async move { node.disconnect_w_origin(addr, origin).await });
+                handle.spawn(
+                    async move { node.disconnect_w_origin(addr, origin, Some(conn_id)).await },
+                );
             }
         }
     }

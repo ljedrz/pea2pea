@@ -390,6 +390,10 @@ impl Node {
         // if Reading is enabled, we'll notify the related task when the connection is fully ready
         let conn_ready_tx = connection.readiness_notifier.take();
 
+        // capture the connection's instance id before it's moved into the active set, so OnConnect's
+        // cleanup guard can be scoped to this exact connection (see DisconnectOnDrop)
+        let conn_id = connection.id;
+
         // connecting -> connected
         self.connections.add(connection, guard)?;
 
@@ -404,7 +408,7 @@ impl Node {
         if let Some(handler) = self.protocols.on_connect.get() {
             trace!(parent: &conn_span, "executing OnConnect logic...");
             let (sender, receiver) = oneshot::channel();
-            handler.trigger((peer_addr, sender)).await;
+            handler.trigger(((peer_addr, conn_id), sender)).await;
 
             // receive the handle for the running task
             if let Ok((handle, abortable)) = receiver.await {
@@ -412,11 +416,20 @@ impl Node {
                     // leak the OnConnect task handle in order to ensure that its logic gets
                     // executed in full
                     drop(handle);
-                } else if let Some(conn) = self.connections.active.write().get_mut(&peer_addr) {
-                    // add the task to the connection so it gets aborted in case of a disconnect
+                } else if let Some(conn) = self
+                    .connections
+                    .active
+                    .write()
+                    .get_mut(&peer_addr)
+                    .filter(|conn| conn.id == conn_id)
+                {
+                    // add the task to *this* connection so it gets aborted on its disconnect; the
+                    // id check ensures we don't attach it to a different connection that has since
+                    // reused the address after a rapid reconnect (mirrors DisconnectOnDrop)
                     conn.tasks.push(handle);
                 } else {
-                    // the connection has just been terminated; abort the OnConnect work
+                    // the connection was terminated (or a newer one already replaced it at this
+                    // address); abort the OnConnect work rather than attach it to a stranger
                     handle.abort();
                 }
             }
@@ -554,16 +567,28 @@ impl Node {
     /// note: The address is not immediately reusable. See [`Node::connect`] for the reconnection
     /// contract during the teardown window.
     pub async fn disconnect(&self, addr: SocketAddr) -> bool {
-        self.disconnect_w_origin(addr, DisconnectOrigin::User).await
+        self.disconnect_w_origin(addr, DisconnectOrigin::User, None)
+            .await
     }
 
+    /// `conn_id`, when provided, restricts the disconnect to that exact connection instance; if
+    /// the address has since been reused by a newer connection, the call is a no-op. Internal
+    /// callers acting on behalf of a specific connection (e.g. its cleanup guards) must pass it,
+    /// as it is checked atomically with the claim below - an earlier id check outside this
+    /// function is only an optimization and cannot rule out an address reuse in between.
     pub(crate) async fn disconnect_w_origin(
         &self,
         addr: SocketAddr,
         origin: DisconnectOrigin,
+        conn_id: Option<u64>,
     ) -> bool {
         // claim the disconnect to avoid duplicate executions, or return early if already claimed
         if let Some(conn) = self.connections.active.read().get(&addr) {
+            if conn_id.is_some_and(|id| conn.id != id) {
+                // the address now belongs to a newer connection; this call was aimed at its
+                // defunct predecessor
+                return false;
+            }
             if conn.disconnecting.swap(true, AcqRel) {
                 // valid connection, but someone else is already disconnecting it
                 return false;
@@ -748,7 +773,7 @@ impl Node {
             .map(|addr| {
                 let node = self.clone();
                 async move {
-                    node.disconnect_w_origin(addr, DisconnectOrigin::Shutdown)
+                    node.disconnect_w_origin(addr, DisconnectOrigin::Shutdown, None)
                         .await
                 }
             })

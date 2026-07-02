@@ -350,6 +350,7 @@ impl<W: Writing> WritingInternal for W {
         sender_id: u64,
     ) {
         let addr = conn.addr();
+        let conn_id = conn.id;
         let codec = self.codec(addr, !conn.side());
         let Some(writer) = conn.writer.take() else {
             let err = io::Error::other("the stream was not returned during the handshake");
@@ -406,7 +407,7 @@ impl<W: Writing> WritingInternal for W {
 
             // disconnect automatically regardless of how this task concludes
             let _conn_cleanup =
-                DisconnectOnDrop::new(node.clone(), addr, DisconnectOrigin::Writing);
+                DisconnectOnDrop::new(node.clone(), addr, conn_id, DisconnectOrigin::Writing);
 
             let writing = AssertUnwindSafe(async {
                 let mut batch: Vec<WrappedMessage<Self::Message>> = Vec::new();

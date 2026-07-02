@@ -192,6 +192,7 @@ trait ReadingInternal: Reading {
 impl<R: Reading> ReadingInternal for R {
     async fn handle_new_connection(&self, (mut conn, conn_returner): ReturnableConnection) {
         let addr = conn.addr();
+        let conn_id = conn.id;
         let codec = self.codec(addr, !conn.side());
         let Some(reader) = conn.reader.take() else {
             let err = io::Error::other("the stream was not returned during the handshake");
@@ -225,7 +226,7 @@ impl<R: Reading> ReadingInternal for R {
 
             // disconnect automatically regardless of how this task concludes
             let _conn_cleanup =
-                DisconnectOnDrop::new(node.clone(), addr, DisconnectOrigin::Reading);
+                DisconnectOnDrop::new(node.clone(), addr, conn_id, DisconnectOrigin::Reading);
 
             let processing = AssertUnwindSafe(async {
                 while let Some(msg) = inbound_message_receiver.recv().await {
@@ -259,7 +260,7 @@ impl<R: Reading> ReadingInternal for R {
 
             // disconnect automatically regardless of how this task concludes
             let _conn_cleanup =
-                DisconnectOnDrop::new(node.clone(), addr, DisconnectOrigin::Reading);
+                DisconnectOnDrop::new(node.clone(), addr, conn_id, DisconnectOrigin::Reading);
 
             // dropped message log suppression helpers
             let mut dropped_count: usize = 0;
