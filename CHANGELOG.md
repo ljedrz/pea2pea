@@ -19,6 +19,7 @@
 - a `Node::disconnect` future dropped mid-execution (e.g. due to an enclosing timeout) could hang `Node::shut_down`
 - a `Node::shut_down` future dropped mid-execution will no longer leak the node's long-running tasks
 - a `Node::connect` future dropped mid-execution can no longer skip the `OnConnect` logic (or detach its task) for a connection that got established
+- an idle connection listener no longer holds one permit from the shared connection-setup budget
 
 # 0.56.2
 

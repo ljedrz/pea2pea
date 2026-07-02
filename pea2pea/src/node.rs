@@ -243,26 +243,29 @@ impl Node {
 
             // inbound accepts draw from the node-wide connection-setup budget that outbound
             // connects also consume; the hard connection limits are still enforced inside
-            // `handle_connection_request` via `check_and_reserve`, but gating accept on this
-            // shared budget keeps surplus inbound connections in the kernel accept queue
-            // (cheap backpressure) instead of accepting, spawning, and immediately rejecting
-            // them while outbound dialing holds the `connecting` slots
+            // `handle_connection_request` via `check_and_reserve`, but gating on this shared
+            // budget keeps surplus inbound connections in the kernel accept queue (cheap
+            // backpressure) instead of accepting, spawning, and immediately rejecting them
+            // while outbound dialing holds the `connecting` slots. The permit is only acquired
+            // *after* `accept` returns: a listener idling in `accept` must not park a permit
+            // that outbound connects could otherwise use
             let inbound_permits = node.connecting_permits.clone();
 
             loop {
-                // wait for capacity before accepting
-                let permit = match inbound_permits.clone().acquire_owned().await {
-                    Ok(p) => p,
-                    Err(_) => {
-                        // semaphore is never closed in practice; bail defensively
-                        error!(parent: node.span(), "inbound permit semaphore closed unexpectedly");
-                        debug_assert!(false, "acquiring an owned listening semaphore failed");
-                        return;
-                    }
-                };
-
                 match listener.accept().await {
                     Ok((stream, addr)) => {
+                        // wait for setup capacity before spawning the handler; while the budget
+                        // is exhausted, no further connections are accepted
+                        let permit = match inbound_permits.clone().acquire_owned().await {
+                            Ok(p) => p,
+                            Err(_) => {
+                                // semaphore is never closed in practice; bail defensively
+                                error!(parent: node.span(), "inbound permit semaphore closed unexpectedly");
+                                debug_assert!(false, "acquiring an owned listening semaphore failed");
+                                return;
+                            }
+                        };
+
                         // handle connection requests asynchronously
                         let node = node.clone();
                         tokio::spawn(async move {
@@ -281,9 +284,6 @@ impl Node {
                         });
                     }
                     Err(e) => {
-                        // free the permit immediately
-                        drop(permit);
-
                         match e.kind() {
                             // a peer aborted/reset before accept completed; no backoff - the listener is healthy
                             ErrorKind::ConnectionAborted | ErrorKind::ConnectionReset => {
@@ -1088,5 +1088,29 @@ mod budget_tests {
 
         assert_eq!(err.kind(), ErrorKind::QuotaExceeded);
         assert_eq!(node.heuristics().connect_budget_rejections(), 1);
+    }
+
+    // A listener idling in `accept` must not hold a permit from the shared connection-setup
+    // budget: with `max_connecting = 1`, a listening node must still be able to dial out.
+    #[tokio::test]
+    async fn idle_listener_does_not_hold_the_connect_budget() {
+        let node = Node::new(Config {
+            max_connecting: 1,
+            listener_addr: Some("127.0.0.1:0".parse().unwrap()),
+            ..Default::default()
+        });
+        node.toggle_listener().await.unwrap();
+
+        let peer = Node::new(Config {
+            listener_addr: Some("127.0.0.1:0".parse().unwrap()),
+            ..Default::default()
+        });
+        let peer_addr = peer.toggle_listener().await.unwrap().unwrap();
+
+        // make sure the listening task is up and parked in `accept` before dialing
+        sleep(Duration::from_millis(50)).await;
+
+        node.connect(peer_addr).await.unwrap();
+        assert_eq!(node.heuristics().connect_budget_rejections(), 0);
     }
 }
