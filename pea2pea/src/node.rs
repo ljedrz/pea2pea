@@ -182,7 +182,9 @@ impl Node {
         // we deliberately maintain the write guard for the entirety of this method
         let mut listening_addr = self.listening_addr.write().await;
 
-        if let Some(old_listening_addr) = listening_addr.take() {
+        if let Some(old_listening_addr) = *listening_addr {
+            // validate before mutating: if the listener task is gone, the node is shutting
+            // down, and the address is `shut_down`'s to clear
             let Some(listener_task) = self.tasks.lock().remove(&NodeTask::Listener) else {
                 return Err(io::Error::other("shutting down"));
             };
@@ -908,7 +910,12 @@ impl Node {
             handle.abort();
             return Err(io::Error::other("shutting down"));
         }
-        tasks.insert(kind, handle);
+        // a duplicate registration could only result from a concurrent double-enable of a
+        // protocol - API misuse that also panics in the enable itself; surface it in debug
+        // builds, but don't abort the displaced handle, as depending on the order of the racing
+        // registrations it may belong to the handler that ends up wired into the node
+        let prev = tasks.insert(kind, handle);
+        debug_assert!(prev.is_none(), "a Node task was registered more than once");
         Ok(())
     }
 }
