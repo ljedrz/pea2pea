@@ -166,6 +166,7 @@ impl<H: Handshake> HandshakeInternal for H {
                 Err(e)
             }
             Err(_) => {
+                self.node().heuristics().register_handshake_timeout();
                 error!(parent: &conn_span, "handshake timed out");
                 Err(io::ErrorKind::TimedOut.into())
             }

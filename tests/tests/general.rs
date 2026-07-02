@@ -323,6 +323,30 @@ async fn conn_limit_rejects_on_both_sides() {
 }
 
 #[tokio::test]
+async fn inbound_rejection_is_recorded_in_heuristics() {
+    // a connectee that admits no connections rejects every inbound attempt in its accept loop,
+    // before any protocol runs - a path that is otherwise invisible to user code
+    let connectee = Node::new(Config {
+        max_connections: 0,
+        ..Default::default()
+    });
+    let connectee_addr = connectee.toggle_listener().await.unwrap().unwrap();
+
+    assert_eq!(connectee.heuristics().inbound_connections_rejected(), 0);
+
+    let connector = Node::new(Default::default());
+    connector.connect(connectee_addr).await.unwrap();
+
+    // the rejection is recorded asynchronously in the accept loop; give it a moment
+    sleep(Duration::from_millis(50)).await;
+
+    assert_eq!(connectee.num_connected(), 0);
+    assert_eq!(connectee.heuristics().inbound_connections_rejected(), 1);
+    // a pure admission rejection is not an OS-level accept failure
+    assert_eq!(connectee.heuristics().accept_errors(), 0);
+}
+
+#[tokio::test]
 async fn max_connections_per_ip_is_distinct() {
     let config = Config {
         name: Some("server".into()),

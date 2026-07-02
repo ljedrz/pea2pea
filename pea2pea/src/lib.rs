@@ -4,6 +4,7 @@
 //! **pea2pea** is a simple, low-level, and customizable implementation of a TCP P2P node.
 
 mod config;
+mod heuristics;
 mod node;
 mod stats;
 mod topology;
@@ -13,6 +14,7 @@ pub mod protocols;
 
 pub use config::Config;
 pub use connections::{Connection, ConnectionInfo, ConnectionSide, DisconnectOrigin};
+pub use heuristics::Heuristics;
 pub use node::Node;
 pub use stats::Stats;
 pub use topology::{Topology, connect_nodes};

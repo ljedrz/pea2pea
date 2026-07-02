@@ -99,6 +99,13 @@ pub struct Config {
     /// note: On the inbound path this doubles as a backpressure bound - at most `max_connecting`
     /// inbound connections are set up concurrently, and any surplus waits in the OS accept queue
     /// (see [`Config::listener_backlog`], which should be sized accordingly).
+    ///
+    /// note: The shared budget is a single hard ceiling; an inbound flood that would starve outbound
+    /// would *already* be refusing all new inbound peers, so it is a node-health event the operator
+    /// must detect and handle. Mitigation is left to the application: shed inbound load via
+    /// [`Node::toggle_listener`], reject unwanted peers early in [`Handshake`], or block offending
+    /// address ranges at the network layer. See [`Node::connect`] for detecting and reacting to this
+    /// condition.
     pub max_connecting: u16,
     /// The maximum time (in milliseconds) allowed to establish a raw (before the [`Handshake`] protocol) TCP connection.
     pub connection_timeout_ms: u16,

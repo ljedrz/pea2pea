@@ -24,7 +24,7 @@ use tracing::*;
 #[cfg(doc)]
 use crate::protocols::{Handshake, OnConnect, OnDisconnect, Reading, Writing};
 use crate::{
-    Config, Stats,
+    Config, Heuristics, Stats,
     connections::{
         Connection, ConnectionGuard, ConnectionInfo, ConnectionSide, Connections, DisconnectOrigin,
         create_connection_span,
@@ -101,6 +101,8 @@ pub struct InnerNode {
     connecting_permits: Arc<Semaphore>,
     /// Collects statistics related to the node itself.
     stats: Stats,
+    /// Node-level operational signals not attributable to any single connection.
+    heuristics: Heuristics,
     /// The node's tasks.
     pub(crate) tasks: Mutex<HashMap<NodeTask, JoinHandle<()>>>,
     /// Indicates whether the shutdown sequence has begun.
@@ -132,6 +134,7 @@ impl Node {
             connections: Connections::new(shutting_down.clone()),
             connecting_permits,
             stats: Default::default(),
+            heuristics: Default::default(),
             tasks: Default::default(),
             shutting_down,
         }));
@@ -268,6 +271,7 @@ impl Node {
                             // otherwise, assume fd / memory exhaustion (EMFILE, ENFILE, ENOBUFS, ...)
                             // and back off so we don't spin at 100% CPU waiting for a slot to free
                             _ => {
+                                node.heuristics.register_accept_error();
                                 error!(parent: node.span(), "couldn't accept a connection: {e}");
                                 sleep(Duration::from_millis(500)).await;
                             }
@@ -293,8 +297,12 @@ impl Node {
             return Err(io::Error::other("shutting down"));
         }
 
-        // check connection limits and set up a connection guard
-        let guard = self.check_and_reserve(addr)?;
+        // check connection limits and set up a connection guard; a rejection here means admission
+        // control turned the peer away before any protocol ran - invisible to user hooks, so record
+        // it as a node-level signal of inbound pressure
+        let guard = self.check_and_reserve(addr).inspect_err(|_| {
+            self.heuristics.register_inbound_rejection();
+        })?;
 
         // finalize the connection
         self.adapt_stream(stream, addr, ConnectionSide::Responder, guard)
@@ -318,6 +326,13 @@ impl Node {
     #[inline]
     pub fn stats(&self) -> &Stats {
         &self.stats
+    }
+
+    /// Returns a reference to the node's operational [`Heuristics`] - node-level health signals (e.g.
+    /// connection-setup budget exhaustion) that the library observes internally.
+    #[inline]
+    pub fn heuristics(&self) -> &Heuristics {
+        &self.heuristics
     }
 
     /// Returns the tracing [`Span`] associated with the node.
@@ -493,6 +508,18 @@ impl Node {
     /// [`io::ErrorKind::AlreadyExists`]. If [`OnDisconnect`] is enabled this window spans the hook's
     /// execution, bounded by [`OnDisconnect::TIMEOUT_MS`]. Reconnection logic that races a disconnect
     /// should treat `AlreadyExists` as retriable and back off, rather than as a permanent failure.
+    ///
+    /// note: A return of [`ErrorKind::QuotaExceeded`] covers several distinct limits - the per-IP
+    /// cap ([`Config::max_connections_per_ip`]), the global connection cap ([`Config::max_connections`]),
+    /// and exhaustion of the shared connection-setup budget ([`Config::max_connecting`]). The intended
+    /// usage is to check your own outbound conditions (e.g. [`Node::num_connecting`] /
+    /// [`Node::num_connected`] against the configured caps) *before* dialing, so a `QuotaExceeded`
+    /// here is not expected during normal operation. The budget case is the notable exception: because
+    /// inbound accepts and outbound connects share that budget, a hostile inbound flood can exhaust it
+    /// and make *your own* outbound dials fail here even when you are below your own caps. For
+    /// monitoring that specifically, [`Heuristics::connect_budget_rejections`] counts these rejections
+    /// for rate-based detection; react by shedding inbound load (e.g. [`Node::toggle_listener`]) or
+    /// filtering peers in [`Handshake`].
     pub async fn connect(&self, addr: SocketAddr) -> io::Result<()> {
         self.connect_inner(addr, None)
             .await
@@ -537,6 +564,7 @@ impl Node {
             .clone()
             .try_acquire_owned()
             .map_err(|_| {
+                self.heuristics.register_connect_budget_rejection();
                 io::Error::new(
                     ErrorKind::QuotaExceeded,
                     format!(
@@ -839,4 +867,33 @@ fn create_span(node_name: &str) -> Span {
     try_span!(Level::WARN);
 
     error_span!("node", name = node_name)
+}
+
+#[cfg(test)]
+mod budget_tests {
+    use super::*;
+
+    // A saturated connection-setup budget must reject an outbound dial with a `QuotaExceeded` error
+    // and bump the node-level counter. Drains the private semaphore directly so the assertion is
+    // deterministic (no network, no timing).
+    #[tokio::test]
+    async fn exhausted_connecting_budget_is_signalled() {
+        let config = Config {
+            max_connecting: 1,
+            listener_addr: None, // no listener needed; the self-connect check is skipped
+            ..Default::default()
+        };
+        let node = Node::new(config);
+
+        // hold the sole permit, simulating a fully saturated budget
+        let _held = node.connecting_permits.clone().try_acquire_owned().unwrap();
+
+        let err = node
+            .connect("127.0.0.1:9".parse().unwrap())
+            .await
+            .unwrap_err();
+
+        assert_eq!(err.kind(), ErrorKind::QuotaExceeded);
+        assert_eq!(node.heuristics().connect_budget_rejections(), 1);
+    }
 }

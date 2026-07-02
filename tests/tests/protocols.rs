@@ -557,6 +557,53 @@ async fn timeout_when_spammed_with_connections() {
         victim.node().num_connecting() + victim.node().num_connected() == 0
     })
     .await;
+
+    // every stalled handshake that reached the node timed out, and each is recorded as such
+    wait_until(Duration::from_secs(1), || {
+        victim.node().heuristics().handshake_timeouts() == NUM_ATTEMPTS as u64
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn idle_timeout_is_recorded_in_heuristics() {
+    // a reader-enabled node that considers a connection dead after a short idle period
+    #[derive(Clone)]
+    struct IdleNode(Node);
+    impl Pea2Pea for IdleNode {
+        fn node(&self) -> &Node {
+            &self.0
+        }
+    }
+    impl Reading for IdleNode {
+        type Message = BytesMut;
+        type Codec = TestCodec<BytesMut>;
+        const IDLE_TIMEOUT_MS: u64 = 100;
+
+        fn codec(&self, _addr: SocketAddr, _side: ConnectionSide) -> Self::Codec {
+            Default::default()
+        }
+
+        async fn process_message(&self, _source: SocketAddr, _message: Self::Message) {}
+    }
+
+    let node = IdleNode(Node::new(Default::default()));
+    node.enable_reading().await;
+    let addr = start_listening(&node).await;
+
+    // a bare peer that connects and then stays silent, never sending a frame
+    let _silent = TcpStream::connect(addr).await.unwrap();
+
+    // the reader admits the connection, waits IDLE_TIMEOUT_MS for a frame, then drops it as idle
+    wait_until(Duration::from_secs(2), || {
+        node.node().heuristics().idle_timeouts() == 1
+    })
+    .await;
+
+    assert_eq!(node.node().num_connected(), 0);
+    // an idle timeout must not be miscounted as a handshake or write timeout
+    assert_eq!(node.node().heuristics().handshake_timeouts(), 0);
+    assert_eq!(node.node().heuristics().write_timeouts(), 0);
 }
 
 #[tokio::test]

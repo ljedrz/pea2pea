@@ -279,6 +279,7 @@ impl<R: Reading> ReadingInternal for R {
                         {
                             Ok(res) => res, // IO completed (success or error)
                             Err(_) => {
+                                node.heuristics().register_idle_timeout();
                                 debug!(parent: &conn_span, "connection timed out due to inactivity");
                                 break;
                             }

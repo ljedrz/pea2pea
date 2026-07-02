@@ -1,4 +1,8 @@
-# 0.56.4
+# 0.57.0
+
+### Added
+
+- `Node::heuristics`, exposing some node-level operational/health signals that would otherwise be inaccessible to the user
 
 ### Fixed
 

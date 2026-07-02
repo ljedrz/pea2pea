@@ -339,7 +339,10 @@ impl<W: Writing> WritingInternal for W {
         match timeout(Duration::from_millis(Self::TIMEOUT_MS), write).await {
             Ok(Ok(stats)) => Ok(stats),
             Ok(Err(e)) => Err(e),
-            Err(_) => Err(io::Error::new(io::ErrorKind::TimedOut, "write timed out")),
+            Err(_) => {
+                self.node().heuristics().register_write_timeout();
+                Err(io::Error::new(io::ErrorKind::TimedOut, "write timed out"))
+            }
         }
     }
 
