@@ -4,7 +4,7 @@ members = [ "pea2pea", "examples", "benches", "tests", "test-utils" ]
 
 [workspace.dependencies]
 bytes = "1.11.1"
-heapster = { version = "0.8", features = ["fmt", "use_max"] }
+heapster = { version = "0.9", features = ["fmt", "use_max"] }
 parking_lot = "0.12"
 pea2pea = { path = "pea2pea" }
 futures-util = { version = "0.3", features = ["sink"] }
