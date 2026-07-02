@@ -594,6 +594,11 @@ impl Node {
     ///
     /// note: The address is not immediately reusable. See [`Node::connect`] for the reconnection
     /// contract during the teardown window.
+    ///
+    /// note: If this future is dropped before completion (e.g. due to an enclosing timeout), the
+    /// connection is still fully torn down and the accounting remains consistent; only the
+    /// [`OnDisconnect`] hook's run-to-completion guarantee is lost - it may be skipped, aborted
+    /// mid-flight, or overlap the connection's removal.
     pub async fn disconnect(&self, addr: SocketAddr) -> bool {
         self.disconnect_w_origin(addr, DisconnectOrigin::User, None)
             .await
@@ -629,6 +634,12 @@ impl Node {
         let conn_span = create_connection_span(addr, self.span());
         debug!(parent: &conn_span, "disconnecting (origin: {origin:?})...");
 
+        // the claim is taken, so from this point on the teardown must run even if this future is
+        // dropped at one of the awaits below (e.g. due to a timeout around `Node::disconnect`);
+        // no other path can reclaim the connection, so a skipped teardown would leave it in the
+        // active set forever and hang the drain loop in `Node::shut_down`
+        let finalizer = DisconnectFinalizer { node: self, addr };
+
         // if the OnDisconnect protocol is enabled, trigger it
         if let Some(handler) = self.protocols.on_disconnect.get() {
             trace!(parent: &conn_span, "executing OnDisconnect logic...");
@@ -656,22 +667,8 @@ impl Node {
 
         // the OnDisconnect hook (above) is the appropriate place to send any final
         // messages; by the time we get here, the user has already had their chance
-        // to flush; closing the channel below just signals the writer task to wind down
-        //
-        // the writer task's own `SenderCleanup` guard will attempt the same removal
-        // on drop; that's a harmless no-op second removal and serves as a safety
-        // net for non-disconnect exits (e.g. write errors)
-        if let Some(writing) = self.protocols.writing.get() {
-            writing.senders.write().remove(&addr);
-        }
-
-        {
-            // drop the connection from the active set under the limits lock, so any
-            // concurrent `check_and_reserve` has a consistent view of connection counts
-            let mut limits = self.connections.limits.lock();
-            let _ = self.connections.remove(addr);
-            limits.release_ip(addr);
-        }
+        // to flush
+        drop(finalizer);
 
         debug!(parent: &conn_span, "fully disconnected");
 
@@ -847,6 +844,35 @@ impl Node {
         }
         tasks.insert(kind, handle);
         Ok(())
+    }
+}
+
+/// Completes a claimed disconnect. Created in `Node::disconnect_w_origin` right after the
+/// `disconnecting` claim is taken; its `Drop` performs the synchronous teardown tail, so the
+/// connection is removed and its accounting released even if the disconnect future is dropped
+/// at an await point (e.g. by a user-side timeout around [`Node::disconnect`]). Without this,
+/// a cancelled disconnect would leak the claim, making the connection permanently stuck (every
+/// other teardown path honors the claim) and hanging the drain loop in [`Node::shut_down`].
+struct DisconnectFinalizer<'a> {
+    node: &'a Node,
+    addr: SocketAddr,
+}
+
+impl Drop for DisconnectFinalizer<'_> {
+    fn drop(&mut self) {
+        // closing the sender channel signals the writer task to wind down; the writer task's
+        // own `SenderCleanup` guard will attempt the same removal on drop - that's a harmless
+        // no-op second removal and serves as a safety net for non-disconnect exits (e.g. write
+        // errors)
+        if let Some(writing) = self.node.protocols.writing.get() {
+            writing.senders.write().remove(&self.addr);
+        }
+
+        // drop the connection from the active set under the limits lock, so any concurrent
+        // `check_and_reserve` has a consistent view of connection counts
+        let mut limits = self.node.connections.limits.lock();
+        let _ = self.node.connections.remove(self.addr);
+        limits.release_ip(self.addr);
     }
 }
 

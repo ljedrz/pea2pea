@@ -15,6 +15,7 @@
 ### Fixed
 
 - the connection cleanup plumbing was made more robust against reconnection churn (edge case)
+- a `Node::disconnect` future dropped mid-execution (e.g. due to an enclosing timeout) could hang `Node::shut_down`
 
 # 0.56.2
 

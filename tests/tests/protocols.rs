@@ -18,7 +18,7 @@ use test_utils::{WritingExt, start_listening, wait_for_connections, wait_until};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpStream,
-    time::sleep,
+    time::{sleep, timeout},
 };
 use tokio_util::codec::Decoder;
 use tracing::*;
@@ -853,6 +853,56 @@ async fn on_disconnect_timeout_aborts_slow_hook() {
         elapsed < Duration::from_secs(2),
         "OnDisconnect timeout did not fire: disconnect took {elapsed:?}"
     );
+}
+
+#[tokio::test]
+async fn cancelled_disconnect_still_tears_down() {
+    #[derive(Clone)]
+    struct SlowDisconnectNode(Node);
+    impl Pea2Pea for SlowDisconnectNode {
+        fn node(&self) -> &Node {
+            &self.0
+        }
+    }
+    impl OnDisconnect for SlowDisconnectNode {
+        async fn on_disconnect(&self, _: SocketAddr, _: DisconnectOrigin) {
+            sleep(Duration::from_secs(10)).await;
+        }
+    }
+
+    let slow = SlowDisconnectNode(Node::new(Default::default()));
+    slow.enable_on_disconnect().await;
+    let slow_addr = slow.0.toggle_listener().await.unwrap().unwrap();
+
+    let peer = TestNode::default();
+    peer.node().connect(slow_addr).await.unwrap();
+
+    wait_for_connections(slow.node(), 1).await;
+    let peer_addr = slow.0.connected_addrs()[0];
+
+    // cancel the disconnect future while it's waiting on the slow hook; a disconnect, once
+    // claimed, must complete its teardown regardless - otherwise the connection would become
+    // permanently stuck (no other path can reclaim it) and `shut_down` would hang on it
+    assert!(
+        timeout(Duration::from_millis(100), slow.0.disconnect(peer_addr))
+            .await
+            .is_err()
+    );
+
+    // dropping the cancelled future performs the teardown synchronously
+    assert!(!slow.0.is_connected(peer_addr));
+    assert_eq!(slow.0.num_connected(), 0);
+
+    // the teardown must have released the accounting (incl. the per-IP charge), so a new
+    // connection from the same IP must be admitted right away
+    let peer2 = TestNode::default();
+    peer2.node().connect(slow_addr).await.unwrap();
+    wait_for_connections(slow.node(), 1).await;
+
+    // and the drain loop in `shut_down` must not wait on a stuck entry
+    timeout(Duration::from_secs(2), slow.0.shut_down())
+        .await
+        .expect("shut_down hung after a cancelled disconnect");
 }
 
 #[tokio::test]
