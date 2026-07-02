@@ -68,6 +68,7 @@ use pea2pea::{
     Config, ConnectionSide, Node, Pea2Pea,
     protocols::{Reading, Writing},
 };
+use rand::RngExt;
 use tokio::{net::TcpSocket, time::sleep};
 use tokio_util::codec::LengthDelimitedCodec;
 use tracing::*;
@@ -78,9 +79,21 @@ const DEFAULT_RENDEZVOUS: &str = "127.0.0.1:9000";
 /// How many times a peer will retry the simultaneous-open connection before
 /// giving up. Each retry is a fresh pair of crossing SYNs.
 const HOLE_PUNCH_ATTEMPTS: usize = 20;
-/// Delay between simultaneous-open attempts. Kept short so the two peers'
-/// dials overlap within roughly one round-trip.
-const HOLE_PUNCH_INTERVAL: Duration = Duration::from_millis(100);
+/// Bounds (in ms) for the randomized delay between simultaneous-open attempts.
+/// Kept short so the two peers' dials overlap within roughly one round-trip,
+/// and *jittered* so the two retry cadences can't phase-lock: a dial that
+/// doesn't cross the peer's SYN fails almost instantly (on loopback it is
+/// RST'd within microseconds), so peers redialing on identical fixed intervals
+/// would preserve whatever phase offset they started with - an unlucky offset
+/// would then stay unlucky for every attempt. Random per-attempt delays make
+/// the phases drift until the SYNs cross.
+const HOLE_PUNCH_INTERVAL_MS: std::ops::Range<u64> = 50..150;
+
+/// Sleep for a random duration drawn from [`HOLE_PUNCH_INTERVAL_MS`].
+async fn punch_backoff() {
+    let delay_ms = rand::rng().random_range(HOLE_PUNCH_INTERVAL_MS);
+    sleep(Duration::from_millis(delay_ms)).await;
+}
 
 /// Wait this long after connecting to the rendezvous before registering;
 /// gives the reading/writing tasks a moment to spin up.
@@ -198,6 +211,11 @@ impl Rendezvous {
 impl Reading for Rendezvous {
     type Message = BytesMut;
     type Codec = LengthDelimitedCodec;
+    // registration is a one-shot exchange, but the connection must survive an
+    // arbitrarily long wait for a partner; the default 60s idle timeout would
+    // silently tear down a waiting peer's connection, leaving a stale
+    // registration that gets paired with a dead peer
+    const IDLE_TIMEOUT_MS: u64 = 0;
 
     fn codec(&self, _addr: SocketAddr, _side: ConnectionSide) -> Self::Codec {
         LengthDelimitedCodec::new()
@@ -290,7 +308,7 @@ impl Peer {
                 Ok(s) => s,
                 Err(e) => {
                     warn!(parent: self.node.span(), "punch bind failed (attempt {attempt}): {e}");
-                    sleep(HOLE_PUNCH_INTERVAL).await;
+                    punch_backoff().await;
                     continue;
                 }
             };
@@ -316,7 +334,7 @@ impl Peer {
                             parent: self.node.span(),
                             "attempt {attempt} to {peer_addr} failed: {e}; retrying...",
                         );
-                        sleep(HOLE_PUNCH_INTERVAL).await;
+                        punch_backoff().await;
                     }
                 }
             }
@@ -327,6 +345,11 @@ impl Peer {
 impl Reading for Peer {
     type Message = BytesMut;
     type Codec = LengthDelimitedCodec;
+    // the punched P2P connection is meant to be long-lived (that is the whole
+    // point of the traversal), and the signaling connection may sit idle for an
+    // arbitrarily long time while waiting to be paired; disable the default
+    // 60s idle timeout on both
+    const IDLE_TIMEOUT_MS: u64 = 0;
 
     fn codec(&self, _addr: SocketAddr, _side: ConnectionSide) -> Self::Codec {
         LengthDelimitedCodec::new()
