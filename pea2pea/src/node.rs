@@ -100,7 +100,8 @@ pub struct InnerNode {
     /// Bounds the number of concurrent connection *setups* to [`Config::max_connecting`],
     /// covering inbound accepts **and** outbound connects from a single budget. Sharing the
     /// budget means heavy outbound dialing applies real backpressure to the inbound accept
-    /// loop (surplus connections wait in the kernel accept queue).
+    /// loop (all but one of the surplus connections wait in the kernel accept queue; a single
+    /// already-accepted one waits for a permit in the accept loop).
     connecting_permits: Arc<Semaphore>,
     /// Collects statistics related to the node itself.
     stats: Stats,
@@ -176,7 +177,8 @@ impl Node {
     /// note: Disabling the listener aborts the accept loop, so no *new* inbound connections are
     /// admitted after this returns. It does **not** abort inbound connections already accepted and
     /// mid-setup (handshake/protocol wiring): those proceed to completion and may appear as active
-    /// connections shortly after the listener is reported disabled. To reject them, gate acceptance
+    /// connections shortly after the listener is reported disabled (an accepted connection still
+    /// awaiting a connection-setup slot is dropped instead). To reject them, gate acceptance
     /// in [`Handshake`], or follow up with [`Node::disconnect`] once they register.
     pub async fn toggle_listener(&self) -> io::Result<Option<SocketAddr>> {
         // we deliberately maintain the write guard for the entirety of this method

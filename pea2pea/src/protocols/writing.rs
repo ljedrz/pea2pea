@@ -171,8 +171,10 @@ where
     ///   going down. Since writes are batched, this does not guarantee that the message did not
     ///   reach the socket - preceding messages of the failed batch may have been flushed along
     ///   the way.
-    /// - `Err(RecvError)`: the connection was torn down while the message was still queued; it
-    ///   was never written.
+    /// - `Err(RecvError)`: the connection was torn down before the write concluded - either the
+    ///   message was still queued (never written), or the writer task was aborted mid-batch, in
+    ///   which case the message *may* have reached the socket. Like the `Ok(Err(_))` case, this
+    ///   is not a safe "not sent" signal for deduplication purposes.
     ///
     /// # Errors
     ///
