@@ -42,7 +42,10 @@ macro_rules! enable_protocol {
 
             match conn_retriever.await {
                 Ok(Ok(conn)) => conn,
-                Err(_) => return Err(ErrorKind::BrokenPipe.into()),
+                // the handler (and the channel with the connection's returner) is gone, which
+                // only happens when its task was aborted, i.e. the node is shutting down; match
+                // the error used by the other shutdown-race paths
+                Err(_) => return Err(io::Error::other("shutting down")),
                 Ok(e) => return e,
             }
         } else {
@@ -598,6 +601,17 @@ impl Node {
             return Err(io::Error::new(
                 ErrorKind::AddrInUse,
                 format!("can't connect to node's own listening address ({addr})"),
+            ));
+        }
+
+        // the address may already be occupied by a live connection, e.g. one still inside its
+        // teardown window; check before drawing from the connection-setup budget, so that the
+        // documented `AlreadyExists` is returned even if the budget happens to be exhausted at
+        // the same time (the check is repeated atomically in `check_and_reserve`)
+        if self.connections.is_connected(addr) {
+            return Err(io::Error::new(
+                ErrorKind::AlreadyExists,
+                "already connected",
             ));
         }
 
