@@ -301,47 +301,60 @@ async fn two_way_connection_works() {
 
 #[tokio::test]
 async fn conn_limit_rejects_on_both_sides() {
-    // outbound: connector with max_connections=0 refuses its own connect()
+    // outbound: a connector at its connection limit refuses its own connect()
     let connector = Node::new(Config {
-        max_connections: 0,
+        max_connections: 1,
         ..Default::default()
     });
-    let target = Node::new(Default::default());
-    let target_addr = target.toggle_listener().await.unwrap().unwrap();
-    assert!(connector.connect(target_addr).await.is_err());
+    let target1 = Node::new(Default::default());
+    let target1_addr = target1.toggle_listener().await.unwrap().unwrap();
+    let target2 = Node::new(Default::default());
+    let target2_addr = target2.toggle_listener().await.unwrap().unwrap();
+    connector.connect(target1_addr).await.unwrap();
+    assert!(connector.connect(target2_addr).await.is_err());
 
-    // inbound: connectee with max_connections=0 accepts then drops
+    // inbound: a connectee at its connection limit accepts then drops
     let connectee = Node::new(Config {
-        max_connections: 0,
+        max_connections: 1,
         ..Default::default()
     });
     let connectee_addr = connectee.toggle_listener().await.unwrap().unwrap();
-    let connector = Node::new(Default::default());
-    connector.connect(connectee_addr).await.unwrap();
+    let connector1 = Node::new(Default::default());
+    connector1.connect(connectee_addr).await.unwrap();
+    wait_until(Duration::from_secs(1), || connectee.num_connected() == 1).await;
+    let connector2 = Node::new(Default::default());
+    connector2.connect(connectee_addr).await.unwrap();
     sleep(Duration::from_millis(50)).await;
-    assert_eq!(connectee.num_connected(), 0);
+    assert_eq!(connectee.num_connected(), 1);
 }
 
 #[tokio::test]
 async fn inbound_rejection_is_recorded_in_heuristics() {
-    // a connectee that admits no connections rejects every inbound attempt in its accept loop,
+    // a connectee at its connection limit rejects surplus inbound attempts in its accept loop,
     // before any protocol runs - a path that is otherwise invisible to user code
     let connectee = Node::new(Config {
-        max_connections: 0,
+        max_connections: 1,
         ..Default::default()
     });
     let connectee_addr = connectee.toggle_listener().await.unwrap().unwrap();
 
+    // fill the sole connection slot
+    let connector1 = Node::new(Default::default());
+    connector1.connect(connectee_addr).await.unwrap();
+    wait_until(Duration::from_secs(1), || connectee.num_connected() == 1).await;
+
     assert_eq!(connectee.heuristics().inbound_connections_rejected(), 0);
 
-    let connector = Node::new(Default::default());
-    connector.connect(connectee_addr).await.unwrap();
+    let connector2 = Node::new(Default::default());
+    connector2.connect(connectee_addr).await.unwrap();
 
-    // the rejection is recorded asynchronously in the accept loop; give it a moment
-    sleep(Duration::from_millis(50)).await;
+    // the rejection is recorded asynchronously in the accept loop
+    wait_until(Duration::from_secs(1), || {
+        connectee.heuristics().inbound_connections_rejected() == 1
+    })
+    .await;
 
-    assert_eq!(connectee.num_connected(), 0);
-    assert_eq!(connectee.heuristics().inbound_connections_rejected(), 1);
+    assert_eq!(connectee.num_connected(), 1);
     // a pure admission rejection is not an OS-level accept failure
     assert_eq!(connectee.heuristics().accept_errors(), 0);
 }

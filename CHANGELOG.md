@@ -7,6 +7,7 @@
 ### Changed
 
 - `Node::new` now uses a `Relaxed` ordering if its name is not provided
+- `Node::new` now panics if any of the `Config` connection limits (`max_connections`, `max_connections_per_ip`, `max_connecting`) is `0`; such values would render the node inoperable
 
 ### Deprecated
 

@@ -74,6 +74,9 @@ pub struct Config {
     ///
     /// note: As a `u16`, a single node tops out at 65,535 connections; scaling beyond that means
     /// distributing load across multiple nodes/listeners.
+    ///
+    /// note: Must not be `0` - [`Node::new`] panics on such a value. A node that should never
+    /// have any connections can simply not listen and not dial instead.
     pub max_connections: u16,
     /// The maximum number of active connections the node can maintain with a single IP.
     ///
@@ -89,6 +92,8 @@ pub struct Config {
     /// note: Conversely, when many connections legitimately share one source IP - load tests, a NAT
     /// gateway, a reverse proxy, or anything over loopback - raise this to match, or those peers are
     /// rejected once the per-IP count is hit. Note the default outside the `test` feature is 1.
+    ///
+    /// note: Must not be `0` - [`Node::new`] panics on such a value.
     pub max_connections_per_ip: u16,
     /// The maximum number of simultaneous connection attempts (a.k.a. pending connections), covering
     /// both outbound connects in progress and inbound connections still being accepted and handshaked.
@@ -106,6 +111,9 @@ pub struct Config {
     /// [`Node::toggle_listener`], reject unwanted peers early in [`Handshake`], or block offending
     /// address ranges at the network layer. See [`Node::connect`] for detecting and reacting to this
     /// condition.
+    ///
+    /// note: Must not be `0` - [`Node::new`] panics on such a value. To stop admitting inbound
+    /// connections at runtime, use [`Node::toggle_listener`] instead.
     pub max_connecting: u16,
     /// The maximum time (in milliseconds) allowed to establish a raw (before the [`Handshake`] protocol) TCP connection.
     pub connection_timeout_ms: u16,

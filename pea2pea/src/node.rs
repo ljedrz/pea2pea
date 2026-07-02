@@ -111,7 +111,28 @@ pub struct InnerNode {
 
 impl Node {
     /// Creates a new [`Node`] using the given [`Config`].
+    ///
+    /// # Panics
+    ///
+    /// Panics if any of [`Config::max_connections`], [`Config::max_connections_per_ip`], or
+    /// [`Config::max_connecting`] is `0`; such values would render the node inoperable.
     pub fn new(mut config: Config) -> Self {
+        // reject limit values that would render the node inoperable; a zero for any of them
+        // would otherwise wedge the accept loop or break protocol setup in ways that are much
+        // harder to diagnose than an upfront panic
+        assert!(
+            config.max_connections != 0,
+            "Config::max_connections must not be 0"
+        );
+        assert!(
+            config.max_connections_per_ip != 0,
+            "Config::max_connections_per_ip must not be 0"
+        );
+        assert!(
+            config.max_connecting != 0,
+            "Config::max_connecting must not be 0"
+        );
+
         // if there is no pre-configured name, assign a sequential numeric identifier
         if config.name.is_none() {
             config.name = Some(SEQUENTIAL_NODE_ID.fetch_add(1, Relaxed).to_string());
@@ -937,6 +958,40 @@ fn create_span(node_name: &str) -> Span {
     try_span!(Level::WARN);
 
     error_span!("node", name = node_name)
+}
+
+#[cfg(test)]
+mod config_tests {
+    use super::*;
+
+    // A zero value for any of the connection limits would render the node inoperable (and break
+    // internal channel/semaphore setup), so it must be rejected upfront.
+    #[test]
+    #[should_panic(expected = "Config::max_connections must not be 0")]
+    fn zero_max_connections_is_rejected() {
+        let _ = Node::new(Config {
+            max_connections: 0,
+            ..Default::default()
+        });
+    }
+
+    #[test]
+    #[should_panic(expected = "Config::max_connections_per_ip must not be 0")]
+    fn zero_max_connections_per_ip_is_rejected() {
+        let _ = Node::new(Config {
+            max_connections_per_ip: 0,
+            ..Default::default()
+        });
+    }
+
+    #[test]
+    #[should_panic(expected = "Config::max_connecting must not be 0")]
+    fn zero_max_connecting_is_rejected() {
+        let _ = Node::new(Config {
+            max_connecting: 0,
+            ..Default::default()
+        });
+    }
 }
 
 #[cfg(test)]
