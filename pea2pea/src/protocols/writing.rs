@@ -261,7 +261,7 @@ where
     /// yet, or if a duplicative owner of the underlying node has a different `Writing` impl
     /// (API misuse).
     #[deprecated(
-        since = "0.56.3",
+        since = "0.57.0",
         note = "use Node::connected_addrs + unicast(_fast) depending on your specific use case"
     )]
     fn broadcast(&self, message: Self::Message) -> io::Result<()>

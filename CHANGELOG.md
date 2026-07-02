@@ -4,12 +4,6 @@
 
 - `Node::heuristics`, exposing some node-level operational/health signals that would otherwise be inaccessible to the user
 
-### Fixed
-
-- the connection cleanup plumbing was made more robust against reconnection churn (edge case)
-
-# 0.56.3
-
 ### Changed
 
 - `Node::new` now uses a `Relaxed` ordering if its name is not provided
@@ -17,6 +11,10 @@
 ### Deprecated
 
 - `Writing::broadcast`, a thin helper that hid per-peer send errors; prefer `Node::connected_addrs` + `unicast`/`unicast_fast`
+
+### Fixed
+
+- the connection cleanup plumbing was made more robust against reconnection churn (edge case)
 
 # 0.56.2
 
