@@ -778,16 +778,24 @@ impl Node {
     /// [`OnConnect::on_connect`], [`OnDisconnect::on_disconnect`]). `shut_down` tears down the very
     /// connection - and aborts the very task - the hook runs on; instead, signal shutdown to a
     /// separate task and call it there.
+    ///
+    /// note: If this future is dropped before completion (e.g. due to an enclosing timeout), the
+    /// node's long-running tasks are aborted right away - active [`OnDisconnect`] hooks may then
+    /// be cut short - and the shutdown can be concluded with another `shut_down` call.
     pub async fn shut_down(&self) {
         // immediately mark the node as shutting down
         self.shutting_down.store(true, Release);
 
         debug!(parent: self.span(), "shutting down");
 
-        let mut tasks = std::mem::take(&mut *self.tasks.lock());
+        // move the task handles into a guard that aborts them on drop; they are detached from the
+        // node from this point on, so if this future is dropped at one of the awaits below, they
+        // would otherwise keep running - unreachable even to a repeated `shut_down` call - and,
+        // as each holds a `Node` clone, keep the node alive for the lifetime of the runtime
+        let mut tasks = NodeTaskAborter(std::mem::take(&mut *self.tasks.lock()));
 
         // abort the listening task first (if it exists)
-        if let Some(listening_task) = tasks.remove(&NodeTask::Listener) {
+        if let Some(listening_task) = tasks.0.remove(&NodeTask::Listener) {
             listening_task.abort();
         }
 
@@ -825,9 +833,7 @@ impl Node {
         }
 
         // abort the remaining tasks, which should now be inert
-        for handle in tasks.into_values() {
-            handle.abort();
-        }
+        drop(tasks);
 
         // erase the listening address in case toggle_listener is called afterwards
         *self.listening_addr.write().await = None;
@@ -844,6 +850,21 @@ impl Node {
         }
         tasks.insert(kind, handle);
         Ok(())
+    }
+}
+
+/// Aborts the node's long-running tasks on drop. [`Node::shut_down`] moves the task handles out
+/// of the node before its first await, so if its future is dropped mid-execution (e.g. due to an
+/// enclosing timeout), this guard is what prevents them from being silently detached; the tasks
+/// must nonetheless outlive the disconnect fan-out in `shut_down`, which relies on the
+/// `OnDisconnect` handler, hence a guard rather than an upfront abort.
+struct NodeTaskAborter(HashMap<NodeTask, JoinHandle<()>>);
+
+impl Drop for NodeTaskAborter {
+    fn drop(&mut self) {
+        for handle in self.0.values() {
+            handle.abort();
+        }
     }
 }
 
@@ -893,6 +914,74 @@ fn create_span(node_name: &str) -> Span {
     try_span!(Level::WARN);
 
     error_span!("node", name = node_name)
+}
+
+#[cfg(test)]
+mod shutdown_tests {
+    use std::time::Instant;
+
+    use super::*;
+    use crate::{Pea2Pea, protocols::OnDisconnect};
+
+    // A `shut_down` future dropped mid-execution (e.g. due to an enclosing timeout) must not
+    // detach the node's long-running tasks: each of them holds a `Node` clone, so a leak would
+    // keep the node alive for the lifetime of the runtime, and a repeated `shut_down` call
+    // would no longer be able to abort them.
+    #[tokio::test]
+    async fn cancelled_shut_down_aborts_node_tasks() {
+        #[derive(Clone)]
+        struct SlowDisconnect(Node);
+        impl Pea2Pea for SlowDisconnect {
+            fn node(&self) -> &Node {
+                &self.0
+            }
+        }
+        impl OnDisconnect for SlowDisconnect {
+            async fn on_disconnect(&self, _: SocketAddr, _: DisconnectOrigin) {
+                sleep(Duration::from_millis(300)).await;
+            }
+        }
+
+        let slow = SlowDisconnect(Node::new(Config {
+            listener_addr: Some("127.0.0.1:0".parse().unwrap()),
+            ..Default::default()
+        }));
+        slow.enable_on_disconnect().await;
+        let slow_addr = slow.0.toggle_listener().await.unwrap().unwrap();
+
+        let peer = Node::new(Default::default());
+        peer.connect(slow_addr).await.unwrap();
+        while slow.0.num_connected() != 1 {
+            sleep(Duration::from_millis(10)).await;
+        }
+
+        // cancel the shutdown while its disconnect fan-out is waiting on the slow hook
+        assert!(
+            timeout(Duration::from_millis(50), slow.0.shut_down())
+                .await
+                .is_err()
+        );
+
+        // the shutdown can be concluded with another call
+        timeout(Duration::from_secs(2), slow.0.shut_down())
+            .await
+            .expect("a repeated shut_down hung");
+
+        // the cancellation must not have detached the node's tasks: once the runtime reaps
+        // the aborted ones, no clone of the node may remain
+        let node = slow.0.clone();
+        drop(slow);
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while Arc::strong_count(&node.0) > 1 {
+            assert!(
+                Instant::now() < deadline,
+                "the node is still referenced, most likely by leaked tasks",
+            );
+            sleep(Duration::from_millis(10)).await;
+        }
+
+        peer.shut_down().await;
+    }
 }
 
 #[cfg(test)]
