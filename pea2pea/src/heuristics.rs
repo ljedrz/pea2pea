@@ -124,8 +124,8 @@ impl Heuristics {
         self.write_timeouts.fetch_add(1, Relaxed);
     }
 
-    /// Returns the number of connections dropped because an outbound write did not flush within
-    /// [`Writing::TIMEOUT_MS`](Writing::TIMEOUT_MS).
+    /// Returns the number of connections dropped because a batch of outbound writes did not
+    /// flush within [`Writing::TIMEOUT_MS`](Writing::TIMEOUT_MS).
     ///
     /// note: This isolates write timeouts from other causes of a writer-side disconnect (an
     /// underlying socket error or the channel closing), which all otherwise surface indistinguishably

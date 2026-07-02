@@ -54,8 +54,13 @@ where
     /// of the outbound message in order to only allocate it once.
     const INITIAL_BUFFER_SIZE: usize = 64 * 1024;
 
-    /// The maximum time (in milliseconds) allowed for a single message write to flush
-    /// to the underlying stream before the connection is considered dead.
+    /// The maximum time (in milliseconds) allowed for a batch of outbound messages (up to
+    /// [`Writing::MESSAGE_QUEUE_DEPTH`] of them) to be written and flushed to the underlying
+    /// stream before the connection is considered dead. Under sustained load, the effective
+    /// per-message allowance is therefore this value divided by the batch size.
+    ///
+    /// note: Unlike [`Reading::IDLE_TIMEOUT_MS`](crate::protocols::Reading::IDLE_TIMEOUT_MS),
+    /// a value of `0` does not disable the timeout - it fails every write (almost) instantly.
     const TIMEOUT_MS: u64 = 10_000;
 
     /// The type of the outbound messages; unless their serialization is expensive and the message
@@ -155,9 +160,19 @@ where
     /// The `side` param indicates the connection side **from the node's perspective**.
     fn codec(&self, addr: SocketAddr, side: ConnectionSide) -> Self::Codec;
 
-    /// Sends the provided message to the specified [`SocketAddr`]. Returns as soon as the message is queued to
-    /// be sent, without waiting for the actual delivery; instead, the caller is provided with a [`oneshot::Receiver`]
-    /// which can be used to determine when and whether the message has been delivered.
+    /// Sends the provided message to the specified [`SocketAddr`]. Returns as soon as the message
+    /// is queued to be sent; the caller is provided with a [`oneshot::Receiver`] which resolves
+    /// once the message's fate is known:
+    ///
+    /// - `Ok(Ok(()))`: the message was encoded and flushed into the OS socket send buffer. This
+    ///   is **not** a peer-side acknowledgement - whether the peer received or processed the
+    ///   message can only be determined via an application-level reply.
+    /// - `Ok(Err(e))`: the write batch containing the message failed, and the connection is
+    ///   going down. Since writes are batched, this does not guarantee that the message did not
+    ///   reach the socket - preceding messages of the failed batch may have been flushed along
+    ///   the way.
+    /// - `Err(RecvError)`: the connection was torn down while the message was still queued; it
+    ///   was never written.
     ///
     /// # Errors
     ///
@@ -206,8 +221,8 @@ where
     }
 
     /// Sends the provided message to the specified [`SocketAddr`], and returns as soon as the
-    /// message is queued to be sent, without waiting for the actual delivery (as opposed to
-    /// [`Writing::unicast`], which does provide delivery feedback).
+    /// message is queued to be sent, providing no feedback on the write (as opposed to
+    /// [`Writing::unicast`], which does).
     ///
     /// # Errors
     ///

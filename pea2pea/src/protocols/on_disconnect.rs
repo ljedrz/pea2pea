@@ -35,11 +35,15 @@ pub(crate) type OnDisconnectBundle = (JoinHandle<()>, oneshot::Receiver<()>);
 ///
 /// note: The node can only tell that a peer disconnected from it if it is actively trying to read
 /// from the associated connection (i.e. [`Reading`] is enabled) or if it attempts to send a message
-/// to it (i.e. one of the [`Writing`] methods is called).
+/// to it (i.e. one of the [`Writing`] methods is called). This extends to idle or vanished peers:
+/// the idle timeout is part of [`Reading`] ([`Reading::IDLE_TIMEOUT_MS`]), so without that protocol
+/// a peer that goes away without a TCP FIN/RST holds its connection slot indefinitely.
 ///
 /// note: This hook is executed before the connection is fully removed from the node's internal
 /// state. Calls to [`Node::disconnect`] will wait for it to complete, ensuring that any necessary
-/// cleanup (e.g., notifying a database) is finished before the function returns.
+/// cleanup (e.g., notifying a database) is finished before the function returns. The connection
+/// remains live while the hook runs; in particular, [`Reading::process_message`] may still be
+/// invoked for messages that arrive during it.
 ///
 /// note: [`OnDisconnect::on_disconnect`] may run before [`OnConnect::on_connect`] for the same
 /// address has finished, or even started - see [`OnConnect`] for details and recommended patterns.
@@ -50,6 +54,9 @@ where
     /// The maximum time (in milliseconds) allowed for the [`OnDisconnect::on_disconnect`] hook to execute.
     /// If the hook exceeds this time, it will be aborted to ensure the node cleans up
     /// resources promptly.
+    ///
+    /// note: Unlike [`Reading::IDLE_TIMEOUT_MS`](Reading::IDLE_TIMEOUT_MS), a value of `0` does
+    /// not disable the timeout - it aborts every hook (almost) instantly.
     const TIMEOUT_MS: u64 = 3_000;
 
     /// Attaches the behavior specified in [`OnDisconnect::on_disconnect`] to every occurrence of the
@@ -147,7 +154,9 @@ where
     /// teardown, use [`Writing::unicast`] and await the returned receiver (within
     /// [`OnDisconnect::TIMEOUT_MS`]). [`Writing::unicast_fast`] and [`Writing::broadcast`] return no
     /// delivery feedback, so a message queued through them may not reach the socket before the
-    /// writer is torn down.
+    /// writer is torn down. Sending a final message is not possible when the disconnect
+    /// originates from the writer side itself ([`DisconnectOrigin::Writing`]): the writer is
+    /// already defunct by the time the hook runs, and sends fail with `NotConnected`/`BrokenPipe`.
     fn on_disconnect(
         &self,
         addr: SocketAddr,

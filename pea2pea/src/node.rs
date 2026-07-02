@@ -165,8 +165,10 @@ impl Node {
         node
     }
 
-    /// Enables or disables listening for inbound connections; returns the actual bound address, which will
-    /// differ from the one in [`Config::listener_addr`] if that one's port was unspecified (i.e. `0`).
+    /// Enables or disables listening for inbound connections. Returns `Ok(Some(_))` with the
+    /// actual bound address when the listener was just enabled - it will differ from the one in
+    /// [`Config::listener_addr`] if that one's port was unspecified (i.e. `0`) - and `Ok(None)`
+    /// when it was just disabled.
     ///
     /// note: Disabling the listener aborts the accept loop, so no *new* inbound connections are
     /// admitted after this returns. It does **not** abort inbound connections already accepted and

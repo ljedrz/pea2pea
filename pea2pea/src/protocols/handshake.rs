@@ -25,6 +25,9 @@ where
     Self: Clone + Send + Sync + 'static,
 {
     /// The maximum time allowed for a connection to perform a handshake before it is rejected.
+    ///
+    /// note: Unlike [`Reading::IDLE_TIMEOUT_MS`](crate::protocols::Reading::IDLE_TIMEOUT_MS),
+    /// a value of `0` does not disable the timeout - it fails every handshake (almost) instantly.
     const TIMEOUT_MS: u64 = 3_000;
 
     /// Prepares the node to perform specified network handshakes.

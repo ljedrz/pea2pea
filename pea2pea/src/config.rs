@@ -116,6 +116,9 @@ pub struct Config {
     /// connections at runtime, use [`Node::toggle_listener`] instead.
     pub max_connecting: u16,
     /// The maximum time (in milliseconds) allowed to establish a raw (before the [`Handshake`] protocol) TCP connection.
+    ///
+    /// note: Unlike [`Reading::IDLE_TIMEOUT_MS`], a value of `0` does not disable the timeout -
+    /// it fails every connection attempt (almost) instantly.
     pub connection_timeout_ms: u16,
 }
 
