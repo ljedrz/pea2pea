@@ -296,16 +296,21 @@ impl ConnectionLimits {
     /// exact bucket [`ConnectionLimits::reserve`] charged.
     pub(crate) fn release_ip(&mut self, addr: SocketAddr) {
         let ip = canonical_ip(addr);
-        if let Entry::Occupied(mut e) = self.ip_counts.entry(ip) {
-            debug_assert!(
-                *e.get() >= 1,
-                "ip_count for {ip} underflowing: release with no live reservation",
-            );
-
-            if *e.get() > 1 {
-                *e.get_mut() -= 1;
-            } else {
-                e.remove();
+        match self.ip_counts.entry(ip) {
+            Entry::Occupied(mut e) => {
+                if *e.get() > 1 {
+                    *e.get_mut() -= 1;
+                } else {
+                    e.remove();
+                }
+            }
+            // buckets are removed as soon as they reach zero, so a missing one is the signature
+            // of a double release, which would let its IP exceed the per-IP connection limit
+            Entry::Vacant(_) => {
+                debug_assert!(
+                    false,
+                    "ip_count for {ip} underflowing: release with no live reservation",
+                );
             }
         }
     }
