@@ -21,6 +21,7 @@
 - a `Node::connect` future dropped mid-execution can no longer skip the `OnConnect` logic (or detach its task) for a connection that got established
 - an idle connection listener no longer holds one permit from the shared connection-setup budget
 - `Node::connect` now returns the documented `AlreadyExists` during a peer's teardown window even if the connection-setup budget is exhausted at the same time, and a "shutting down" error (instead of `BrokenPipe`) when racing node shutdown
+- a connection setup aborted at an unfortunate moment (e.g. due to node shutdown) can no longer leak a detached reader/writer task (edge case)
 
 # 0.56.2
 

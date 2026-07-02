@@ -254,9 +254,13 @@ impl<R: Reading> ReadingInternal for R {
                 return;
             }
 
-            // postpone reads until the connection is fully established; if the process fails,
-            // this task gets aborted, so there is no need for a dedicated timeout
-            let _ = rx_conn_ready.await;
+            // postpone reads until the connection is fully established; an error means the setup
+            // was interrupted (e.g. by node shutdown) before the connection could be finalized -
+            // this task may then already be unowned, so it must exit on its own rather than
+            // start reading from an unregistered connection
+            if rx_conn_ready.await.is_err() {
+                return;
+            }
 
             // disconnect automatically regardless of how this task concludes
             let _conn_cleanup =

@@ -387,19 +387,6 @@ impl<W: Writing> WritingInternal for W {
         let (outbound_message_sender, mut outbound_message_receiver) =
             mpsc::channel(Self::MESSAGE_QUEUE_DEPTH);
 
-        // register the connection's message sender with the Writing protocol handler; this happens
-        // before `Connections::add` in `adapt_stream`, so it's reachable by Writing slightly
-        // before the connection is fully finalized, which is fine and deliberate, as writing is
-        // user-initiated and safe to accept early; do not synchronize these - gating writing buys
-        // nothing, and would only add complexity or hurt performance
-        conn_senders.write().insert(
-            addr,
-            (
-                sender_id,
-                Arc::new(outbound_message_sender) as Arc<dyn Any + Send + Sync>,
-            ),
-        );
-
         // this will automatically drop the sender upon a disconnect
         let sender_cleanup = SenderCleanup {
             addr,
@@ -465,6 +452,23 @@ impl<W: Writing> WritingInternal for W {
             }
         }));
         let _ = rx_writer.await;
+
+        // register the connection's message sender with the Writing protocol handler only now
+        // that the writer task is confirmed to be running and about to be owned by the
+        // connection (below): if the sender were registered before the await above, this setup
+        // task getting aborted there (e.g. due to node shutdown) would leak a running, unowned
+        // writer task, kept alive indefinitely by the registered sender. The registration still
+        // precedes `Connections::add` in `adapt_stream`, so it's reachable by Writing slightly
+        // before the connection is fully finalized, which is fine and deliberate, as writing is
+        // user-initiated and safe to accept early; do not synchronize these - gating writing
+        // buys nothing, and would only add complexity or hurt performance
+        conn_senders.write().insert(
+            addr,
+            (
+                sender_id,
+                Arc::new(outbound_message_sender) as Arc<dyn Any + Send + Sync>,
+            ),
+        );
         conn.tasks.push(writer_task);
 
         // return the Connection to the Node, resuming Node::adapt_stream
