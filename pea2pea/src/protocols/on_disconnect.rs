@@ -124,7 +124,12 @@ where
                     });
                     // provide the node with a handle to the scheduled task,
                     // and a receiver that will notify it of its completion
-                    let _ = notifier.send((handle, done_rx)); // can't really fail
+                    if let Err((handle, _)) = notifier.send((handle, done_rx)) {
+                        // the disconnect that requested this hook was cancelled mid-await; abort
+                        // the hook rather than let it run detached, where it would outlive the
+                        // connection's removal (and potentially even the node's shutdown)
+                        handle.abort();
+                    }
                 }
             });
             let _ = rx.await;
