@@ -270,7 +270,10 @@ impl Node {
                             Err(_) => {
                                 // semaphore is never closed in practice; bail defensively
                                 error!(parent: node.span(), "inbound permit semaphore closed unexpectedly");
-                                debug_assert!(false, "acquiring an owned listening semaphore failed");
+                                debug_assert!(
+                                    false,
+                                    "acquiring an owned listening semaphore failed"
+                                );
                                 return;
                             }
                         };
