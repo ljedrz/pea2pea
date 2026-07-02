@@ -836,7 +836,10 @@ async fn cancelled_connect_keeps_on_connect_abortable() {
         // ABORTABLE: bool = true is the default
         async fn on_connect(&self, _: SocketAddr) {
             self.started.store(true, Ordering::Release);
-            sleep(Duration::from_secs(5)).await;
+            // shorter than the post-disconnect observation window below: a hook that escaped
+            // the disconnect's abort (i.e. one detached by the cancelled `connect`) completes
+            // and flips `completed` well before the final assertion samples it
+            sleep(Duration::from_millis(500)).await;
             self.completed.store(true, Ordering::Release);
         }
     }
@@ -879,9 +882,10 @@ async fn cancelled_connect_keeps_on_connect_abortable() {
     .await;
 
     // and, since it's ABORTABLE, a disconnect must still cut it short: its task must not have
-    // been detached from the connection by the cancelled `connect`
+    // been detached from the connection by the cancelled `connect`. The observation window
+    // extends past the hook's full duration, so a detached (unaborted) hook is caught red-handed
     assert!(initiator.node().disconnect(target_addr).await);
-    sleep(Duration::from_millis(300)).await;
+    sleep(Duration::from_secs(1)).await;
     assert!(
         !initiator.completed.load(Ordering::Acquire),
         "the OnConnect task was detached by a cancelled connect"
@@ -936,6 +940,9 @@ async fn cancelled_disconnect_still_tears_down() {
         }
     }
     impl OnDisconnect for SlowDisconnectNode {
+        // short enough that the final `shut_down` (which tears down the second connection and
+        // thus waits out this timeout) fits its 2s budget below
+        const TIMEOUT_MS: u64 = 1_000;
         async fn on_disconnect(&self, _: SocketAddr, _: DisconnectOrigin) {
             sleep(Duration::from_secs(10)).await;
         }

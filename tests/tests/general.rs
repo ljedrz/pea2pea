@@ -324,7 +324,12 @@ async fn conn_limit_rejects_on_both_sides() {
     wait_until(Duration::from_secs(1), || connectee.num_connected() == 1).await;
     let connector2 = Node::new(Default::default());
     connector2.connect(connectee_addr).await.unwrap();
-    sleep(Duration::from_millis(50)).await;
+    // wait for the rejection to be registered instead of sleeping a fixed time, so that the
+    // subsequent negative assertion can't false-pass on a stalled runner
+    wait_until(Duration::from_secs(1), || {
+        connectee.heuristics().inbound_connections_rejected() == 1
+    })
+    .await;
     assert_eq!(connectee.num_connected(), 1);
 }
 

@@ -1060,7 +1060,12 @@ mod shutdown_tests {
 
         let peer = Node::new(Default::default());
         peer.connect(slow_addr).await.unwrap();
+        let deadline = Instant::now() + Duration::from_secs(2);
         while slow.0.num_connected() != 1 {
+            assert!(
+                Instant::now() < deadline,
+                "the test connection was never registered",
+            );
             sleep(Duration::from_millis(10)).await;
         }
 
