@@ -818,6 +818,77 @@ async fn on_connect_abortable_is_cancelled_on_disconnect() {
 }
 
 #[tokio::test]
+async fn cancelled_connect_keeps_on_connect_abortable() {
+    use std::{future::poll_fn, task::Poll};
+
+    #[derive(Clone)]
+    struct HookNode {
+        node: Node,
+        started: Arc<AtomicBool>,
+        completed: Arc<AtomicBool>,
+    }
+    impl Pea2Pea for HookNode {
+        fn node(&self) -> &Node {
+            &self.node
+        }
+    }
+    impl OnConnect for HookNode {
+        // ABORTABLE: bool = true is the default
+        async fn on_connect(&self, _: SocketAddr) {
+            self.started.store(true, Ordering::Release);
+            sleep(Duration::from_secs(5)).await;
+            self.completed.store(true, Ordering::Release);
+        }
+    }
+
+    let initiator = HookNode {
+        node: Node::new(Default::default()),
+        started: Arc::new(AtomicBool::new(false)),
+        completed: Arc::new(AtomicBool::new(false)),
+    };
+    initiator.enable_on_connect().await;
+
+    let target = TestNode::default();
+    let target_addr = start_listening(&target).await;
+
+    {
+        // poll `connect` by hand and drop it the moment the connection registers, i.e. right in
+        // the window where the OnConnect logic is being scheduled
+        let mut connect_fut = std::pin::pin!(initiator.node().connect(target_addr));
+        poll_fn(|cx| {
+            if initiator.node().is_connected(target_addr) {
+                return Poll::Ready(());
+            }
+            match connect_fut.as_mut().poll(cx) {
+                Poll::Ready(res) => {
+                    res.unwrap();
+                    Poll::Ready(())
+                }
+                Poll::Pending => Poll::Pending,
+            }
+        })
+        .await;
+        // connect_fut is dropped here, cancelling it mid-scheduling
+    }
+
+    // the connection is established, so the hook must still fire for it
+    assert!(initiator.node().is_connected(target_addr));
+    wait_until(Duration::from_secs(1), || {
+        initiator.started.load(Ordering::Acquire)
+    })
+    .await;
+
+    // and, since it's ABORTABLE, a disconnect must still cut it short: its task must not have
+    // been detached from the connection by the cancelled `connect`
+    assert!(initiator.node().disconnect(target_addr).await);
+    sleep(Duration::from_millis(300)).await;
+    assert!(
+        !initiator.completed.load(Ordering::Acquire),
+        "the OnConnect task was detached by a cancelled connect"
+    );
+}
+
+#[tokio::test]
 async fn on_disconnect_timeout_aborts_slow_hook() {
     #[derive(Clone)]
     struct SlowDisconnectNode(Node);

@@ -16,7 +16,8 @@
 
 - the connection cleanup plumbing was made more robust against reconnection churn (edge case)
 - a `Node::disconnect` future dropped mid-execution (e.g. due to an enclosing timeout) could hang `Node::shut_down`
-- a `Node::shut_down` future dropped mid-execution will now longer leak the node's long-running tasks
+- a `Node::shut_down` future dropped mid-execution will no longer leak the node's long-running tasks
+- a `Node::connect` future dropped mid-execution can no longer skip the `OnConnect` logic (or detach its task) for a connection that got established
 
 # 0.56.2
 

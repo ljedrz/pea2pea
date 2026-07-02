@@ -420,34 +420,51 @@ impl Node {
         debug!(parent: &conn_span, "fully connected");
 
         // if enabled, enact OnConnect
-        if let Some(handler) = self.protocols.on_connect.get() {
+        if self.protocols.on_connect.get().is_some() {
             trace!(parent: &conn_span, "executing OnConnect logic...");
-            let (sender, receiver) = oneshot::channel();
-            handler.trigger(((peer_addr, conn_id), sender)).await;
 
-            // receive the handle for the running task
-            if let Ok((handle, abortable)) = receiver.await {
-                if !abortable {
-                    // leak the OnConnect task handle in order to ensure that its logic gets
-                    // executed in full
-                    drop(handle);
-                } else if let Some(conn) = self
-                    .connections
-                    .active
-                    .write()
-                    .get_mut(&peer_addr)
-                    .filter(|conn| conn.id == conn_id)
-                {
-                    // add the task to *this* connection so it gets aborted on its disconnect; the
-                    // id check ensures we don't attach it to a different connection that has since
-                    // reused the address after a rapid reconnect (mirrors DisconnectOnDrop)
-                    conn.tasks.push(handle);
-                } else {
-                    // the connection was terminated (or a newer one already replaced it at this
-                    // address); abort the OnConnect work rather than attach it to a stranger
-                    handle.abort();
+            // the scheduling runs in a dedicated task, so that it is carried through even if the
+            // future driving this method (e.g. a user-side `Node::connect` wrapped in a timeout)
+            // is dropped at this point; the connection is already live, so the hook must neither
+            // be skipped nor - if `OnConnect::ABORTABLE` - have its task escape cleanup
+            let node = self.clone();
+            let scheduling_task = tokio::spawn(async move {
+                let Some(handler) = node.protocols.on_connect.get() else {
+                    return; // unreachable: checked above, and protocols are never disabled
+                };
+                let (sender, receiver) = oneshot::channel();
+                handler.trigger(((peer_addr, conn_id), sender)).await;
+
+                // receive the handle for the running task
+                if let Ok((handle, abortable)) = receiver.await {
+                    if !abortable {
+                        // leak the OnConnect task handle in order to ensure that its logic gets
+                        // executed in full
+                        drop(handle);
+                    } else if let Some(conn) = node
+                        .connections
+                        .active
+                        .write()
+                        .get_mut(&peer_addr)
+                        .filter(|conn| conn.id == conn_id)
+                    {
+                        // add the task to *this* connection so it gets aborted on its disconnect;
+                        // the id check ensures we don't attach it to a different connection that
+                        // has since reused the address after a rapid reconnect (mirrors
+                        // DisconnectOnDrop)
+                        conn.tasks.push(handle);
+                    } else {
+                        // the connection was terminated (or a newer one already replaced it at
+                        // this address); abort the OnConnect work rather than attach it to a
+                        // stranger
+                        handle.abort();
+                    }
                 }
-            }
+            });
+
+            // preserve the completion order: the connection setup doesn't conclude until the
+            // hook has been scheduled; cancelling this await doesn't cancel the task above
+            let _ = scheduling_task.await;
         }
 
         Ok(())
@@ -520,6 +537,12 @@ impl Node {
     /// monitoring that specifically, [`Heuristics::connect_budget_rejections`] counts these rejections
     /// for rate-based detection; react by shedding inbound load (e.g. [`Node::toggle_listener`]) or
     /// filtering peers in [`Handshake`].
+    ///
+    /// note: If this future is dropped mid-call (e.g. due to an enclosing timeout) before the
+    /// connection is finalized, the attempt is cleanly rolled back; if it is dropped after
+    /// finalization, the connection remains established, and [`OnConnect`] (if enabled) still
+    /// runs for it. After a cancellation, use [`Node::is_connected`] to tell the two outcomes
+    /// apart.
     pub async fn connect(&self, addr: SocketAddr) -> io::Result<()> {
         self.connect_inner(addr, None)
             .await
