@@ -959,10 +959,16 @@ impl Drop for DisconnectFinalizer<'_> {
         }
 
         // drop the connection from the active set under the limits lock, so any concurrent
-        // `check_and_reserve` has a consistent view of connection counts
-        let mut limits = self.node.connections.limits.lock();
-        let _ = self.node.connections.remove(self.addr);
-        limits.release_ip(self.addr);
+        // `check_and_reserve` has a consistent view of connection counts; the object itself
+        // (whose destruction aborts the connection's tasks) is destroyed only after the lock
+        // is released, so that no destructor reachable from `Connection` can deadlock against it
+        let conn = {
+            let mut limits = self.node.connections.limits.lock();
+            let conn = self.node.connections.remove(self.addr);
+            limits.release_ip(self.addr);
+            conn
+        };
+        drop(conn);
     }
 }
 
