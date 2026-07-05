@@ -34,6 +34,15 @@
 //! part is machine-dependent. Set `CHAOS_GOVERNOR=0` to pin the static delay
 //! range instead.
 //!
+//! Alongside the end-of-run invariants, watchdogs run *during* the test:
+//! no action may exceed a generous age bound (that's a wedge, not
+//! congestion), the workers as a whole must keep completing actions,
+//! sampled nodes must respect their configured connection limits,
+//! `shut_down` must leave no active connections behind, and the
+//! file-descriptor and task counts must stay under generous ceilings
+//! (that's a leak, not a spike). A violation fails the run immediately.
+//! Set `CHAOS_WATCHDOG=0` to disable them.
+//!
 //! ## Tuning
 //!
 //! For multi-hour unattended runs, the following help avoid OS-level resource
@@ -57,7 +66,7 @@ use std::{
     net::{IpAddr, Ipv4Addr, SocketAddr},
     sync::{
         Arc,
-        atomic::{AtomicU32, AtomicU64, AtomicUsize, Ordering},
+        atomic::{AtomicU8, AtomicU32, AtomicU64, AtomicUsize, Ordering},
     },
     time::{Duration, Instant},
 };
@@ -74,6 +83,7 @@ use rand::{RngExt, SeedableRng, prelude::IndexedRandom, rngs::SmallRng};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpSocket,
+    sync::mpsc,
     time::{sleep, timeout},
 };
 use tokio_util::{codec::LengthDelimitedCodec, sync::CancellationToken};
@@ -109,6 +119,18 @@ const LAG_LOW_US: f64 = 2_000.0;
 const DELAY_FLOOR_US: u64 = 100;
 const DELAY_CAP_US: u64 = 100_000;
 
+// Watchdog bounds. Every action is designed to conclude within seconds (the
+// connect path is the slowest: the TCP connect timeout plus the handshake
+// timeout), so an action older than the limit is a wedge, not congestion.
+const ACTION_AGE_LIMIT: Duration = Duration::from_secs(30);
+/// Consecutive all-idle metrics windows tolerated before declaring a stall.
+const STALL_WINDOW_LIMIT: u32 = 3;
+// Resource ceilings, set at a generous multiple of the theoretical peak
+// (nodes x connections x descriptors/tasks per connection, plus the handler
+// tasks and in-flight setups); an overshoot means a leak, not a spike.
+const FD_LIMIT: usize = 4096;
+const TASK_LIMIT: usize = 10_000;
+
 // Modest spread is enough - 64 sources splits the hash contention 64-way.
 // 127.0.0.2 .. 127.0.0.65 (skip .0 and .1, commonly used).
 const SRC_IP_COUNT: u32 = 64;
@@ -140,6 +162,20 @@ const ACTIONS: [Action; 7] = [
     Action::Broadcast,
     Action::Unicast,
 ];
+
+impl Action {
+    fn name(self) -> &'static str {
+        match self {
+            Action::Spawn => "spawn",
+            Action::Shutdown => "shutdown",
+            Action::ToggleListener => "toggle_listener",
+            Action::Connect => "connect",
+            Action::Disconnect => "disconnect",
+            Action::Broadcast => "broadcast",
+            Action::Unicast => "unicast",
+        }
+    }
+}
 
 /// Action weights in parts of 10_000, in `ACTIONS` order.
 #[derive(Clone, Copy)]
@@ -227,6 +263,132 @@ struct Dials {
     weights: RwLock<Weights>,
     max_delay_us: AtomicU64,
     sched_lag_us: AtomicU64,
+    fast_timeouts: bool,
+}
+
+// =========================================================================
+// Watchdogs
+// =========================================================================
+
+/// What a worker is currently doing: `action` is 0 when idle, otherwise the
+/// action's index in `ACTIONS` plus one; `started_us` is the action's start
+/// time in microseconds since the test began.
+#[derive(Default)]
+struct ActionSlot {
+    action: AtomicU8,
+    started_us: AtomicU64,
+}
+
+/// Shared watchdog state: per-worker action slots (the age check), a global
+/// roll counter (the stall check), and the channel that reports violations
+/// to the main task, which fails the test upon receipt.
+struct Watch {
+    enabled: bool,
+    start: Instant,
+    slots: [ActionSlot; NUM_WORKERS],
+    rolls: AtomicUsize,
+    violations: mpsc::UnboundedSender<String>,
+}
+
+impl Watch {
+    fn report(&self, msg: String) {
+        if self.enabled {
+            let _ = self.violations.send(msg);
+        }
+    }
+}
+
+/// The runtime checks, invoked from the metrics task once per interval.
+async fn run_watchdogs(
+    watch: &Watch,
+    pool: &Pool,
+    tick: usize,
+    prev_rolls: &mut usize,
+    idle_windows: &mut u32,
+) {
+    // No action may outlive its designed bounds.
+    let now_us = watch.start.elapsed().as_micros() as u64;
+    for (idx, slot) in watch.slots.iter().enumerate() {
+        let tag = slot.action.load(Ordering::Acquire);
+        if tag == 0 {
+            continue;
+        }
+        let age_us = now_us.saturating_sub(slot.started_us.load(Ordering::Relaxed));
+        if age_us > ACTION_AGE_LIMIT.as_micros() as u64 {
+            let name = ACTIONS[(tag - 1) as usize].name();
+            watch.report(format!(
+                "worker {idx} has been stuck in '{name}' for {:.1}s",
+                age_us as f64 / 1_000_000.0
+            ));
+        }
+    }
+
+    // The workers as a whole must keep completing actions; the counter only
+    // stops advancing if every single worker is wedged (or the executor is).
+    let rolls = watch.rolls.load(Ordering::Relaxed);
+    if rolls == *prev_rolls {
+        *idle_windows += 1;
+        if *idle_windows >= STALL_WINDOW_LIMIT {
+            watch.report(format!(
+                "the workers haven't started a single action across \
+                 {STALL_WINDOW_LIMIT} consecutive metrics windows"
+            ));
+        }
+    } else {
+        *idle_windows = 0;
+    }
+    *prev_rolls = rolls;
+
+    // Sampled per-node limit checks. These are hard invariants, but the two
+    // reads aren't atomic with respect to each other, so re-check after a
+    // beat before declaring a violation.
+    let sampled = {
+        let p = pool.lock();
+        if p.is_empty() {
+            None
+        } else {
+            Some(p[tick % p.len()].clone())
+        }
+    };
+    if let Some(n) = sampled {
+        let limits_exceeded = |n: &StressNode| {
+            n.node().num_connected() > MAX_NODES || n.node().num_connecting() > MAX_NODES / 2
+        };
+        if limits_exceeded(&n) {
+            sleep(Duration::from_millis(250)).await;
+            if limits_exceeded(&n) {
+                watch.report(format!(
+                    "a node exceeds its connection limits: connected={}/{MAX_NODES}, \
+                     connecting={}/{}",
+                    n.node().num_connected(),
+                    n.node().num_connecting(),
+                    MAX_NODES / 2,
+                ));
+            }
+        }
+    }
+
+    // Resource ceilings.
+    if let Some(fds) = fd_count()
+        && fds > FD_LIMIT
+    {
+        watch.report(format!(
+            "the file descriptor count exceeded its ceiling: {fds} > {FD_LIMIT}"
+        ));
+    }
+    let tasks = tokio::runtime::Handle::current()
+        .metrics()
+        .num_alive_tasks();
+    if tasks > TASK_LIMIT {
+        watch.report(format!(
+            "the alive task count exceeded its ceiling: {tasks} > {TASK_LIMIT}"
+        ));
+    }
+}
+
+/// The number of open file descriptors (`None` where /proc is unavailable).
+fn fd_count() -> Option<usize> {
+    std::fs::read_dir("/proc/self/fd").ok().map(|d| d.count())
 }
 
 // =========================================================================
@@ -491,11 +653,20 @@ async fn act_spawn(pool: &Pool, stats: &Arc<Stats>, token: &CancellationToken) {
     }
 }
 
-async fn act_shutdown(pool: &Pool, stats: &Arc<Stats>, rng: &mut SmallRng) {
+async fn act_shutdown(pool: &Pool, stats: &Arc<Stats>, watch: &Watch, rng: &mut SmallRng) {
     if let Some(node) = pop_random(pool, rng) {
         let _guard = InFlightGuard::new(&stats.in_flight_shutdowns);
         node.node().shut_down().await;
         stats.nodes_shutdown.fetch_add(1, Ordering::Relaxed);
+        // the cleanup contract: once shut_down returns, the active set is
+        // drained (in-flight setups may still hold `connecting` entries, so
+        // only the active count is checked here)
+        let leftover = node.node().num_connected();
+        if leftover != 0 {
+            watch.report(format!(
+                "a node still had {leftover} active connection(s) after shut_down"
+            ));
+        }
         // dropping `node` here releases the local Arc clone; if no worker is
         // mid-action on it, the InnerNode Arc count goes to zero shortly
     }
@@ -632,23 +803,32 @@ async fn worker(
     pool: Pool,
     stats: Arc<Stats>,
     dials: Arc<Dials>,
+    watch: Arc<Watch>,
+    idx: usize,
     token: CancellationToken,
     mut rng: SmallRng,
-    fast_timeouts: bool,
 ) {
+    let slot = &watch.slots[idx];
     while !token.is_cancelled() {
+        watch.rolls.fetch_add(1, Ordering::Relaxed);
         let roll: u16 = rng.random_range(..10_000);
         // the read guard must be dropped before the action is awaited
         let action = dials.weights.read().pick(roll);
+        slot.started_us
+            .store(watch.start.elapsed().as_micros() as u64, Ordering::Relaxed);
+        slot.action.store(action as u8 + 1, Ordering::Release);
         match action {
             Action::Spawn => act_spawn(&pool, &stats, &token).await,
-            Action::Shutdown => act_shutdown(&pool, &stats, &mut rng).await,
+            Action::Shutdown => act_shutdown(&pool, &stats, &watch, &mut rng).await,
             Action::ToggleListener => act_toggle_listener(&pool, &stats, &mut rng).await,
-            Action::Connect => act_connect(&pool, &stats, &mut rng, &token, fast_timeouts).await,
+            Action::Connect => {
+                act_connect(&pool, &stats, &mut rng, &token, dials.fast_timeouts).await
+            }
             Action::Disconnect => act_disconnect(&pool, &stats, &mut rng).await,
             Action::Broadcast => act_broadcast(&pool, &stats, &mut rng).await,
             Action::Unicast => act_unicast(&pool, &stats, &mut rng).await,
         }
+        slot.action.store(0, Ordering::Release);
 
         if token.is_cancelled() {
             break;
@@ -791,6 +971,7 @@ async fn infinite_chaos_inner() {
     };
     let swarm_enabled = enabled_unless_opted_out("CHAOS_SWARM");
     let governor_enabled = enabled_unless_opted_out("CHAOS_GOVERNOR");
+    let watchdogs_enabled = enabled_unless_opted_out("CHAOS_WATCHDOG");
     let epoch_len = Duration::from_secs(
         env::var("CHAOS_EPOCH_SECS")
             .ok()
@@ -801,13 +982,14 @@ async fn infinite_chaos_inner() {
     println!(
         "pea2pea stress test - {NUM_WORKERS} workers, up to {MAX_NODES} nodes\n\
          seed: {master_seed}\n\
-         swarm mix: {} | governor: {}",
+         swarm mix: {} | governor: {} | watchdogs: {}",
         if swarm_enabled {
             format!("on, epoch {}s", epoch_len.as_secs())
         } else {
             "off (classic mix)".into()
         },
         if governor_enabled { "on" } else { "off" },
+        if watchdogs_enabled { "on" } else { "off" },
     );
 
     let mut master_rng = SmallRng::seed_from_u64(master_seed);
@@ -828,6 +1010,7 @@ async fn infinite_chaos_inner() {
         weights: RwLock::new(initial_weights),
         max_delay_us: AtomicU64::new(MAX_ACTION_DELAY_US),
         sched_lag_us: AtomicU64::new(0),
+        fast_timeouts,
     });
 
     // Rotate the action mix every epoch.
@@ -863,29 +1046,45 @@ async fn infinite_chaos_inner() {
         pool.lock().push(n);
     }
 
+    // Set up the watchdog state and the violation channel; a violation
+    // failing the main select below is what fails the test.
+    let start = Instant::now();
+    let (viol_tx, mut viol_rx) = mpsc::unbounded_channel();
+    let watch = Arc::new(Watch {
+        enabled: watchdogs_enabled,
+        start,
+        slots: std::array::from_fn(|_| ActionSlot::default()),
+        rolls: AtomicUsize::new(0),
+        violations: viol_tx,
+    });
+
     // Spawn workers, each with a derived RNG seeded from the master.
     let mut workers = Vec::with_capacity(NUM_WORKERS);
-    for _ in 0..NUM_WORKERS {
+    for idx in 0..NUM_WORKERS {
         let worker_seed: u64 = master_rng.random();
         let worker_rng = SmallRng::seed_from_u64(worker_seed);
         workers.push(tokio::spawn(worker(
             pool.clone(),
             stats.clone(),
             dials.clone(),
+            watch.clone(),
+            idx,
             token.clone(),
             worker_rng,
-            fast_timeouts,
         )));
     }
 
-    // Spawn the metrics printer.
+    // Spawn the metrics printer, which doubles as the watchdog driver.
     let m_stats = stats.clone();
     let m_pool = pool.clone();
     let m_dials = dials.clone();
+    let m_watch = watch.clone();
     let m_token = token.clone();
-    let start = Instant::now();
     let _metrics = tokio::spawn(async move {
         let mut prev = Snapshot::default();
+        let mut prev_rolls = 0;
+        let mut idle_windows = 0;
+        let mut tick = 0;
         loop {
             tokio::select! {
                 _ = sleep(METRICS_INTERVAL) => {
@@ -893,16 +1092,27 @@ async fn infinite_chaos_inner() {
                     let alive = m_pool.lock().len();
                     print_metrics(start, alive, &m_dials, &snap, &prev);
                     prev = snap;
+                    tick += 1;
+                    if m_watch.enabled {
+                        run_watchdogs(&m_watch, &m_pool, tick, &mut prev_rolls, &mut idle_windows)
+                            .await;
+                    }
                 }
                 _ = m_token.cancelled() => break,
             }
         }
     });
 
-    // Wait for the deadline to expire or for Ctrl-C.
+    // Wait for the deadline to expire, a watchdog violation, or Ctrl-C.
     tokio::select! {
         _ = sleep(runtime) => {}
         _ = tokio::signal::ctrl_c() => {}
+        viol = viol_rx.recv() => {
+            panic!(
+                "watchdog violation: {}",
+                viol.unwrap_or_else(|| "violation channel closed".into())
+            );
+        }
     }
     token.cancel();
 
@@ -917,7 +1127,8 @@ async fn infinite_chaos_inner() {
     }
     while joins.join_next().await.is_some() {}
 
-    // Shut down any remaining nodes.
+    // Shut down any remaining nodes; with the workers quiesced, the drain
+    // must be total.
     let remaining: Vec<_> = pool.lock().drain(..).collect();
     let mut joins = tokio::task::JoinSet::new();
     for node in remaining {
@@ -925,9 +1136,21 @@ async fn infinite_chaos_inner() {
         joins.spawn(async move {
             node.node().shut_down().await;
             s_stats.nodes_shutdown.fetch_add(1, Ordering::Relaxed);
+            assert_eq!(
+                node.node().num_connected(),
+                0,
+                "active connections left after the final shut_down"
+            );
+            assert_eq!(
+                node.node().num_connecting(),
+                0,
+                "pending connections left after the final shut_down"
+            );
         });
     }
-    while joins.join_next().await.is_some() {}
+    while let Some(res) = joins.join_next().await {
+        res.unwrap();
+    }
 
     // Allow a bit of time for the detached OnConnect work to conclude.
     let deadline = Instant::now() + Duration::from_secs(5);
@@ -959,6 +1182,11 @@ async fn infinite_chaos_inner() {
     assert_eq!(snap.in_flight_disconnects, 0);
     assert_eq!(snap.in_flight_spawns, 0);
     assert_eq!(snap.in_flight_shutdowns, 0);
+
+    // A watchdog violation that raced the shutdown still fails the test.
+    if let Ok(viol) = viol_rx.try_recv() {
+        panic!("watchdog violation: {viol}");
+    }
 
     println!("\nAll the invariants held");
 }
