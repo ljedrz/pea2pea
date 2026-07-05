@@ -57,7 +57,7 @@ Tests and benches use `features = ["test"]`, examples do not.
 
 ### Chaos test specifics
 - Run: `cargo test -p tests --profile chaos chaos -- --ignored --nocapture`
-- Env vars: `CHAOS_SEED=<u64>` (repro), `CHAOS_FAST_TIMEOUTS` (short timeouts), `CHAOS_RUNTIME_SECS=<int>` (default: until interrupted).
+- Env vars: `CHAOS_SEED=<u64>` (repro), `CHAOS_FAST_TIMEOUTS` (short timeouts), `CHAOS_RUNTIME_SECS=<int>` (default: until interrupted), `CHAOS_SWARM=0` (pin the classic action mix instead of per-epoch swarm sampling), `CHAOS_EPOCH_SECS=<int>` (mix re-roll interval, default 30), `CHAOS_GOVERNOR=0` (pin the static delay range instead of adaptive pacing).
 - Recommended sysctls for long runs:
   ```
   sudo sysctl -w net.ipv4.ip_local_port_range="1024 65535"

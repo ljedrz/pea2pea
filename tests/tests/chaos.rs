@@ -21,6 +21,19 @@
 //! executor starvation, which makes much lower action delays sustainable and the
 //! throughput figures more reliably reproducible.
 //!
+//! The action mix is swarm-tested: every `CHAOS_EPOCH_SECS` (default 30) the
+//! weights are re-rolled from the seed - some actions dominate, others are
+//! omitted entirely - so successive epochs explore different regimes instead
+//! of a single hand-tuned mix. The epoch weight *sequence* is deterministic
+//! given the seed; epoch boundaries are wall-clock, so which actions land in
+//! which epoch is not. Set `CHAOS_SWARM=0` to pin the classic static mix.
+//!
+//! Pacing is adaptive: a governor task measures executor lag (timer overshoot)
+//! and steers the per-action delay ceiling so the runtime stays in a
+//! contended-but-alive regime whatever the host's capacity - by design this
+//! part is machine-dependent. Set `CHAOS_GOVERNOR=0` to pin the static delay
+//! range instead.
+//!
 //! ## Tuning
 //!
 //! For multi-hour unattended runs, the following help avoid OS-level resource
@@ -31,25 +44,27 @@
 //!     sudo sysctl -w net.ipv4.tcp_tw_reuse=1
 //!     sudo cpupower frequency-set -g performance
 //!
-//! For resource-constrained CI runners, reduce MAX_NODES and NUM_WORKERS;
-//! the action-mix coverage is preserved and the test still surfaces rare
-//! races, just at proportionally lower throughput.
+//! On resource-constrained CI runners the governor throttles pacing on its
+//! own; reducing MAX_NODES and NUM_WORKERS additionally lowers the memory and
+//! file-descriptor footprint. The action-mix coverage is preserved either
+//! way, just at proportionally lower throughput.
 
 use std::{
     // alloc::System,
     env,
+    fmt,
     io,
     net::{IpAddr, Ipv4Addr, SocketAddr},
     sync::{
         Arc,
-        atomic::{AtomicU32, AtomicUsize, Ordering},
+        atomic::{AtomicU32, AtomicU64, AtomicUsize, Ordering},
     },
     time::{Duration, Instant},
 };
 
 use bytes::{Bytes, BytesMut};
 // use heapster::Heapster;
-use parking_lot::Mutex;
+use parking_lot::{Mutex, RwLock};
 use pea2pea::{
     Config, Connection, ConnectionSide, Node, Pea2Pea,
     connections::DisconnectOrigin,
@@ -74,23 +89,25 @@ const NUM_WORKERS: usize = 16;
 /// How often the metrics printer wakes up.
 const METRICS_INTERVAL: Duration = Duration::from_secs(5);
 /// Per-action sleep range. Tight enough to keep the runtime busy, slack
-/// enough to let other workers interleave between actions.
+/// enough to let other workers interleave between actions. With the governor
+/// enabled the ceiling is only the starting point.
 const MIN_ACTION_DELAY_US: u64 = 0;
 const MAX_ACTION_DELAY_US: u64 = 500;
 /// Message size bounds.
 const MIN_MSG_SIZE: usize = 1;
 const MAX_MSG_SIZE: usize = 4096;
 
-// Action mix (cumulative thresholds out of 10_000). These values were
-// compiled with tokio's survival in mind - too many spawns and shutdowns
-// bog down the executor and the OS.
-const W_SPAWN: u16 = 10; // 10 pts (0.10%)
-const W_SHUTDOWN: u16 = 12; //  2 pts (0.02%)
-const W_TOGGLE_LISTENER: u16 = 42; // 30 pts (0.30%)
-const W_CONNECT: u16 = 4030; // ~40%
-const W_DISCONNECT: u16 = 8018; // ~40%
-const W_BROADCAST: u16 = 9030; // ~10%
-// remainder: unicast (~9.7%)
+/// How often the swarm sampler re-rolls the action mix.
+const DEFAULT_EPOCH_SECS: u64 = 30;
+
+// Governor bounds and targets. Executor lag is measured as timer overshoot
+// (EWMA, in microseconds); the delay ceiling is steered multiplicatively
+// between the floor and the cap to keep the lag inside the target band.
+const LAG_PROBE: Duration = Duration::from_millis(5);
+const LAG_HIGH_US: f64 = 8_000.0;
+const LAG_LOW_US: f64 = 2_000.0;
+const DELAY_FLOOR_US: u64 = 100;
+const DELAY_CAP_US: u64 = 100_000;
 
 // Modest spread is enough - 64 sources splits the hash contention 64-way.
 // 127.0.0.2 .. 127.0.0.65 (skip .0 and .1, commonly used).
@@ -98,6 +115,119 @@ const SRC_IP_COUNT: u32 = 64;
 static SRC_IP_CURSOR: AtomicU32 = AtomicU32::new(0);
 
 static MSG_BYTES: &[u8] = &[0xAB; MAX_MSG_SIZE];
+
+// =========================================================================
+// Action mix
+// =========================================================================
+
+#[derive(Clone, Copy)]
+enum Action {
+    Spawn,
+    Shutdown,
+    ToggleListener,
+    Connect,
+    Disconnect,
+    Broadcast,
+    Unicast,
+}
+
+const ACTIONS: [Action; 7] = [
+    Action::Spawn,
+    Action::Shutdown,
+    Action::ToggleListener,
+    Action::Connect,
+    Action::Disconnect,
+    Action::Broadcast,
+    Action::Unicast,
+];
+
+/// Action weights in parts of 10_000, in `ACTIONS` order.
+#[derive(Clone, Copy)]
+struct Weights([u16; 7]);
+
+impl Weights {
+    /// The original hand-tuned mix, compiled with tokio's survival in mind -
+    /// too many spawns and shutdowns bog down the executor and the OS.
+    fn classic() -> Self {
+        Self([10, 2, 30, 3988, 3988, 1012, 970])
+    }
+
+    /// Swarm-style sampling. The structural actions get bounded random
+    /// weights (they are disproportionately expensive per action - tasks,
+    /// sockets, OS state), while the traffic actions split the remaining
+    /// mass in random proportions, each omitted entirely with 25%
+    /// probability so that some epochs explore regimes a balanced mix
+    /// never reaches.
+    fn swarm(rng: &mut SmallRng) -> Self {
+        // a small spawn floor, so that an emptied pool always recovers
+        let spawn = rng.random_range(5..=300u32);
+        let shutdown = rng.random_range(0..=300u32);
+        let toggle = rng.random_range(0..=500u32);
+
+        let mut shares = [0u32; 4];
+        while shares.iter().all(|s| *s == 0) {
+            for share in &mut shares {
+                *share = if rng.random_range(0..4u8) == 0 {
+                    0
+                } else {
+                    rng.random_range(1..=1_000)
+                };
+            }
+        }
+        let total: u32 = shares.iter().sum();
+        let remaining = 10_000 - spawn - shutdown - toggle;
+
+        let mut weights = [spawn as u16, shutdown as u16, toggle as u16, 0, 0, 0, 0];
+        let mut assigned = 0;
+        for (weight, share) in weights[3..].iter_mut().zip(shares) {
+            *weight = (share as u64 * remaining as u64 / total as u64) as u16;
+            assigned += *weight as u32;
+        }
+        // rounding leftovers go to the largest traffic share
+        let largest = shares
+            .iter()
+            .enumerate()
+            .max_by_key(|(_, share)| **share)
+            .unwrap()
+            .0;
+        weights[3 + largest] += (remaining - assigned) as u16;
+
+        Self(weights)
+    }
+
+    fn pick(&self, roll: u16) -> Action {
+        let mut acc = 0u16;
+        for (action, weight) in ACTIONS.iter().zip(self.0) {
+            acc += weight;
+            if roll < acc {
+                return *action;
+            }
+        }
+        Action::Unicast
+    }
+}
+
+impl fmt::Display for Weights {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        const NAMES: [&str; 7] = ["spawn", "shut", "toggle", "conn", "disc", "bcast", "ucast"];
+        for (i, (name, weight)) in NAMES.iter().zip(self.0).enumerate() {
+            if i > 0 {
+                write!(f, " ")?;
+            }
+            write!(f, "{name}={:.2}%", weight as f64 / 100.0)?;
+        }
+        Ok(())
+    }
+}
+
+/// Runtime-adjustable dials shared by all tasks: the swarm sampler rotates
+/// the action mix, the governor steers the delay ceiling, and the workers
+/// read both on every action.
+struct Dials {
+    weights: RwLock<Weights>,
+    max_delay_us: AtomicU64,
+    sched_lag_us: AtomicU64,
+}
 
 // =========================================================================
 // Stats
@@ -501,33 +631,31 @@ async fn act_unicast(pool: &Pool, stats: &Arc<Stats>, rng: &mut SmallRng) {
 async fn worker(
     pool: Pool,
     stats: Arc<Stats>,
+    dials: Arc<Dials>,
     token: CancellationToken,
     mut rng: SmallRng,
     fast_timeouts: bool,
 ) {
     while !token.is_cancelled() {
         let roll: u16 = rng.random_range(..10_000);
-        if roll < W_SPAWN {
-            act_spawn(&pool, &stats, &token).await;
-        } else if roll < W_SHUTDOWN {
-            act_shutdown(&pool, &stats, &mut rng).await;
-        } else if roll < W_TOGGLE_LISTENER {
-            act_toggle_listener(&pool, &stats, &mut rng).await;
-        } else if roll < W_CONNECT {
-            act_connect(&pool, &stats, &mut rng, &token, fast_timeouts).await;
-        } else if roll < W_DISCONNECT {
-            act_disconnect(&pool, &stats, &mut rng).await;
-        } else if roll < W_BROADCAST {
-            act_broadcast(&pool, &stats, &mut rng).await;
-        } else {
-            act_unicast(&pool, &stats, &mut rng).await;
+        // the read guard must be dropped before the action is awaited
+        let action = dials.weights.read().pick(roll);
+        match action {
+            Action::Spawn => act_spawn(&pool, &stats, &token).await,
+            Action::Shutdown => act_shutdown(&pool, &stats, &mut rng).await,
+            Action::ToggleListener => act_toggle_listener(&pool, &stats, &mut rng).await,
+            Action::Connect => act_connect(&pool, &stats, &mut rng, &token, fast_timeouts).await,
+            Action::Disconnect => act_disconnect(&pool, &stats, &mut rng).await,
+            Action::Broadcast => act_broadcast(&pool, &stats, &mut rng).await,
+            Action::Unicast => act_unicast(&pool, &stats, &mut rng).await,
         }
 
         if token.is_cancelled() {
             break;
         }
 
-        let sleep_us = rng.random_range(MIN_ACTION_DELAY_US..=MAX_ACTION_DELAY_US);
+        let max_delay_us = dials.max_delay_us.load(Ordering::Relaxed);
+        let sleep_us = rng.random_range(MIN_ACTION_DELAY_US..=max_delay_us);
         tokio::select! {
             _ = sleep(Duration::from_micros(sleep_us)) => {}
             _ = token.cancelled() => break,
@@ -536,10 +664,47 @@ async fn worker(
 }
 
 // =========================================================================
+// Governor
+// =========================================================================
+
+/// Measures executor lag as timer overshoot and steers the delay ceiling to
+/// keep the lag inside the target band: multiplicative increase for a fast
+/// retreat when the runtime bogs down, gentle decrease to creep back toward
+/// full pressure once it recovers.
+async fn governor(dials: Arc<Dials>, token: CancellationToken) {
+    let mut ewma_us = 0.0f64;
+    let mut probes = 0u32;
+
+    while !token.is_cancelled() {
+        let start = Instant::now();
+        tokio::select! {
+            _ = sleep(LAG_PROBE) => {}
+            _ = token.cancelled() => break,
+        }
+        let overshoot_us = start.elapsed().saturating_sub(LAG_PROBE).as_micros() as f64;
+        ewma_us = ewma_us * 0.9 + overshoot_us * 0.1;
+        dials.sched_lag_us.store(ewma_us as u64, Ordering::Relaxed);
+
+        probes += 1;
+        if probes.is_multiple_of(20) {
+            let cur = dials.max_delay_us.load(Ordering::Relaxed);
+            let next = if ewma_us > LAG_HIGH_US {
+                (cur * 2).min(DELAY_CAP_US)
+            } else if ewma_us < LAG_LOW_US {
+                (cur * 7 / 8).max(DELAY_FLOOR_US)
+            } else {
+                cur
+            };
+            dials.max_delay_us.store(next, Ordering::Relaxed);
+        }
+    }
+}
+
+// =========================================================================
 // Metrics
 // =========================================================================
 
-fn print_metrics(start: Instant, alive: usize, cur: &Snapshot, prev: &Snapshot) {
+fn print_metrics(start: Instant, alive: usize, dials: &Dials, cur: &Snapshot, prev: &Snapshot) {
     let elapsed = start.elapsed().as_secs_f64();
     let dt = METRICS_INTERVAL.as_secs_f64();
     let rate = |c: usize, p: usize| (c.saturating_sub(p)) as f64 / dt;
@@ -573,13 +738,16 @@ fn print_metrics(start: Instant, alive: usize, cur: &Snapshot, prev: &Snapshot) 
         ifsd = cur.in_flight_shutdowns,
     );
     println!(
-        "           Δ/s: conn={:.1} disc={:.1} ufast={:.1} ucast={:.1} recv={:.1} list={:.1}",
+        "           Δ/s: conn={:.1} disc={:.1} ufast={:.1} ucast={:.1} recv={:.1} list={:.1} \
+         | lag={:.1}ms delay_cap={}us",
         rate(cur.connects_succeeded, prev.connects_succeeded),
         rate(cur.disconnects, prev.disconnects),
         rate(cur.fast_send, prev.fast_send),
         rate(cur.unicasts_succeeded, prev.unicasts_succeeded),
         rate(cur.msgs_received, prev.msgs_received),
         rate(cur.listener_toggles, prev.listener_toggles),
+        dials.sched_lag_us.load(Ordering::Relaxed) as f64 / 1_000.0,
+        dials.max_delay_us.load(Ordering::Relaxed),
     );
 }
 
@@ -616,16 +784,76 @@ async fn infinite_chaos_inner() {
     let fast_timeouts = env::var("CHAOS_FAST_TIMEOUTS")
         .map(|v| matches!(v.trim(), "1" | "true" | "yes"))
         .unwrap_or(false);
+    let enabled_unless_opted_out = |var: &str| {
+        env::var(var)
+            .map(|v| !matches!(v.trim(), "0" | "false" | "no"))
+            .unwrap_or(true)
+    };
+    let swarm_enabled = enabled_unless_opted_out("CHAOS_SWARM");
+    let governor_enabled = enabled_unless_opted_out("CHAOS_GOVERNOR");
+    let epoch_len = Duration::from_secs(
+        env::var("CHAOS_EPOCH_SECS")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(DEFAULT_EPOCH_SECS),
+    );
 
     println!(
         "pea2pea stress test - {NUM_WORKERS} workers, up to {MAX_NODES} nodes\n\
-         seed: {master_seed}\n"
+         seed: {master_seed}\n\
+         swarm mix: {} | governor: {}",
+        if swarm_enabled {
+            format!("on, epoch {}s", epoch_len.as_secs())
+        } else {
+            "off (classic mix)".into()
+        },
+        if governor_enabled { "on" } else { "off" },
     );
 
     let mut master_rng = SmallRng::seed_from_u64(master_seed);
     let stats: Arc<Stats> = Default::default();
     let pool: Pool = Default::default();
     let token = CancellationToken::new();
+
+    // The swarm RNG is derived from the master seed up front, so the epoch
+    // weight sequence is reproducible regardless of anything that follows.
+    let mut swarm_rng = SmallRng::seed_from_u64(master_rng.random());
+    let initial_weights = if swarm_enabled {
+        Weights::swarm(&mut swarm_rng)
+    } else {
+        Weights::classic()
+    };
+    println!("[epoch 0] mix: {initial_weights}\n");
+    let dials = Arc::new(Dials {
+        weights: RwLock::new(initial_weights),
+        max_delay_us: AtomicU64::new(MAX_ACTION_DELAY_US),
+        sched_lag_us: AtomicU64::new(0),
+    });
+
+    // Rotate the action mix every epoch.
+    if swarm_enabled {
+        let e_dials = dials.clone();
+        let e_token = token.clone();
+        tokio::spawn(async move {
+            let mut epoch = 0u64;
+            loop {
+                tokio::select! {
+                    _ = sleep(epoch_len) => {
+                        epoch += 1;
+                        let weights = Weights::swarm(&mut swarm_rng);
+                        *e_dials.weights.write() = weights;
+                        println!("[epoch {epoch}] mix: {weights}");
+                    }
+                    _ = e_token.cancelled() => break,
+                }
+            }
+        });
+    }
+
+    // Keep the pressure adaptive.
+    if governor_enabled {
+        tokio::spawn(governor(dials.clone(), token.clone()));
+    }
 
     // Seed the pool with two nodes so workers have something to do immediately.
     for _ in 0..2 {
@@ -643,6 +871,7 @@ async fn infinite_chaos_inner() {
         workers.push(tokio::spawn(worker(
             pool.clone(),
             stats.clone(),
+            dials.clone(),
             token.clone(),
             worker_rng,
             fast_timeouts,
@@ -652,6 +881,7 @@ async fn infinite_chaos_inner() {
     // Spawn the metrics printer.
     let m_stats = stats.clone();
     let m_pool = pool.clone();
+    let m_dials = dials.clone();
     let m_token = token.clone();
     let start = Instant::now();
     let _metrics = tokio::spawn(async move {
@@ -661,7 +891,7 @@ async fn infinite_chaos_inner() {
                 _ = sleep(METRICS_INTERVAL) => {
                     let snap = Snapshot::capture(&m_stats);
                     let alive = m_pool.lock().len();
-                    print_metrics(start, alive, &snap, &prev);
+                    print_metrics(start, alive, &m_dials, &snap, &prev);
                     prev = snap;
                 }
                 _ = m_token.cancelled() => break,
@@ -717,7 +947,7 @@ async fn infinite_chaos_inner() {
 
     // Print final metrics.
     let snap = Snapshot::capture(&stats);
-    print_metrics(start, 0, &snap, &snap);
+    print_metrics(start, 0, &dials, &snap, &snap);
 
     // Show heap stats.
     // println!("\nheap stats:\n{}", GLOBAL.stats());
