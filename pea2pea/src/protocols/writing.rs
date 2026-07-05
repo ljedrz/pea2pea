@@ -509,6 +509,13 @@ pub(crate) struct WritingHandler {
     pub(crate) senders: WritingSenders,
 }
 
+impl WritingHandler {
+    /// See [`ProtocolHandler::is_closed`].
+    pub(crate) fn is_closed(&self) -> bool {
+        self.handler.is_closed()
+    }
+}
+
 impl Protocol<Connection, io::Result<Connection>> for WritingHandler {
     async fn trigger(&self, item: ReturnableConnection) {
         self.handler.trigger(item).await;

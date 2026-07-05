@@ -1,3 +1,9 @@
+# 0.57.1
+
+### Fixed
+
+- a very rare shutdown/connect race leading to a leak under extreme churn
+
 # 0.57.0
 
 ### Added

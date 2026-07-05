@@ -9,9 +9,13 @@ use std::{
     io,
     net::SocketAddr,
     sync::{OnceLock, atomic::Ordering},
+    time::Duration,
 };
 
-use tokio::sync::{mpsc, oneshot};
+use tokio::{
+    sync::{mpsc, oneshot},
+    time::timeout,
+};
 
 use crate::{
     connections::{Connection, DisconnectOrigin},
@@ -49,6 +53,42 @@ pub(crate) type ReturnableItem<T, U> = (T, oneshot::Sender<U>);
 pub(crate) type ReturnableConnection = ReturnableItem<Connection, io::Result<Connection>>;
 
 pub(crate) struct ProtocolHandler<T, U>(mpsc::Sender<ReturnableItem<T, U>>);
+
+impl<T, U> ProtocolHandler<T, U> {
+    /// Indicates whether the handler's channel has been closed, i.e. its task is gone.
+    pub(crate) fn is_closed(&self) -> bool {
+        self.0.is_closed()
+    }
+}
+
+/// Awaits a response from a protocol handler task, guarding against a rare race in which
+/// the handler task is aborted (during node shutdown) while the triggering message is
+/// still being written into its bounded channel: dropping the channel's receiver drains
+/// the values queued up to that point, but a value whose write completes just after that
+/// drain is stranded in the closed channel, where the response sender within it is never
+/// used nor dropped. Polling the channel's closed flag converts what would otherwise be
+/// a permanently wedged await into a bounded one.
+///
+/// Returns `None` when the handler is gone (i.e. the node is shutting down); note that
+/// the message - along with anything it owns - may remain queued in the closed channel
+/// until the node is fully dropped.
+pub(crate) async fn await_handler_response<U>(
+    mut receiver: oneshot::Receiver<U>,
+    handler_is_closed: impl Fn() -> bool,
+) -> Option<U> {
+    loop {
+        match timeout(Duration::from_millis(500), &mut receiver).await {
+            // the handler responded
+            Ok(Ok(response)) => return Some(response),
+            // the message (and the response sender within it) was dropped cleanly
+            Ok(Err(_)) => return None,
+            // no response yet; if the handler's channel is closed, the message is stranded
+            Err(_) if handler_is_closed() => return None,
+            // still legitimately in flight (e.g. an ongoing handshake); keep waiting
+            Err(_) => {}
+        }
+    }
+}
 
 pub(crate) trait Protocol<T, U> {
     async fn trigger(&self, item: ReturnableItem<T, U>);

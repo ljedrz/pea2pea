@@ -40,13 +40,16 @@ macro_rules! enable_protocol {
 
             handler.trigger(($conn, conn_returner)).await;
 
-            match conn_retriever.await {
-                Ok(Ok(conn)) => conn,
-                // the handler (and the channel with the connection's returner) is gone, which
-                // only happens when its task was aborted, i.e. the node is shutting down; match
-                // the error used by the other shutdown-race paths
-                Err(_) => return Err(io::Error::other("shutting down")),
-                Ok(e) => return e,
+            match crate::protocols::await_handler_response(conn_retriever, || handler.is_closed())
+                .await
+            {
+                Some(Ok(conn)) => conn,
+                // the handler (and the channel with the connection's returner) is gone - or the
+                // message was stranded in its closed channel - which only happens when its task
+                // was aborted, i.e. the node is shutting down; match the error used by the other
+                // shutdown-race paths
+                None => return Err(io::Error::other("shutting down")),
+                Some(e) => return e,
             }
         } else {
             $conn
@@ -469,7 +472,9 @@ impl Node {
                 handler.trigger(((peer_addr, conn_id), sender)).await;
 
                 // receive the handle for the running task
-                if let Ok((handle, abortable)) = receiver.await {
+                if let Some((handle, abortable)) =
+                    crate::protocols::await_handler_response(receiver, || handler.is_closed()).await
+                {
                     if !abortable {
                         // leak the OnConnect task handle in order to ensure that its logic gets
                         // executed in full
@@ -712,7 +717,9 @@ impl Node {
             trace!(parent: &conn_span, "executing OnDisconnect logic...");
             let (sender, receiver) = oneshot::channel();
             handler.trigger(((addr, origin), sender)).await;
-            if let Ok((handle, waiter)) = receiver.await {
+            if let Some((handle, waiter)) =
+                crate::protocols::await_handler_response(receiver, || handler.is_closed()).await
+            {
                 // register the associated task with the connection, in case
                 // it gets terminated before its completion
                 if let Some(conn) = self.connections.active.write().get_mut(&addr) {
