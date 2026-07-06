@@ -6,6 +6,7 @@
 //! [here](https://github.com/ljedrz/pea2pea/tree/master/assets/connection_lifetime.png).
 
 use std::{
+    future::Future,
     io,
     net::SocketAddr,
     sync::{OnceLock, atomic::Ordering},
@@ -20,7 +21,7 @@ use tokio::{
 
 use crate::{
     connections::{Connection, DisconnectOrigin},
-    node::Node,
+    node::{Node, NodeTask},
     protocols::{on_connect::OnConnectBundle, on_disconnect::OnDisconnectBundle},
 };
 
@@ -56,9 +57,9 @@ pub(crate) type ReturnableConnection = ReturnableItem<Connection, io::Result<Con
 pub(crate) struct ProtocolHandler<T, U>(mpsc::Sender<ReturnableItem<T, U>>);
 
 impl<T, U> ProtocolHandler<T, U> {
-    /// Indicates whether the handler's channel has been closed, i.e. its task is gone.
-    pub(crate) fn is_closed(&self) -> bool {
-        self.0.is_closed()
+    /// Resolves once the handler's channel is closed, i.e. its task is draining or gone.
+    pub(crate) async fn closed(&self) {
+        self.0.closed().await;
     }
 }
 
@@ -70,29 +71,36 @@ impl<T, U> ProtocolHandler<T, U> {
 /// was dropped mid-execution. Dropping a channel's receiver only drains the values
 /// queued up to that point, so a value whose write completes just after that drain is
 /// stranded in the closed channel, where the response sender within it is never used
-/// nor dropped; polling the channel's closed flag converts what would otherwise be a
-/// permanently wedged await into a bounded one.
+/// nor dropped; watching the channel's closure converts what would otherwise be a
+/// permanently wedged await into a bounded one, at no cost on the common path.
 ///
 /// Returns `None` when the handler is gone (i.e. the node is shutting down); note that
 /// the message - along with anything it owns - may remain queued in the closed channel
 /// until the node is fully dropped.
 pub(crate) async fn await_handler_response<U>(
     mut receiver: oneshot::Receiver<U>,
-    handler_is_closed: impl Fn() -> bool,
+    handler_closed: impl Future<Output = ()>,
 ) -> Option<U> {
-    loop {
-        match timeout(Duration::from_millis(500), &mut receiver).await {
-            // the handler responded
-            Ok(Ok(response)) => return Some(response),
-            // the message (and the response sender within it) was dropped cleanly
-            Ok(Err(_)) => return None,
-            // no response yet; if the handler's channel is closed, the message is stranded
-            Err(_) if handler_is_closed() => return None,
-            // still legitimately in flight (e.g. an ongoing handshake); keep waiting
-            Err(_) => {}
+    tokio::select! {
+        biased;
+        // the handler responded, or dropped the message (and the response sender
+        // within it) cleanly
+        res = &mut receiver => res.ok(),
+        _ = handler_closed => {
+            // the handler is winding down, but its drain may still serve the request
+            // (the hook handlers run their queued triggers); only when the grace
+            // period passes without a response is the message declared stranded
+            timeout(HANDLER_DRAIN_GRACE, &mut receiver)
+                .await
+                .ok()
+                .and_then(|res| res.ok())
         }
     }
 }
+
+/// How long past its channel's closure a protocol handler is given to still respond;
+/// the drains conclude in microseconds, so this only expires on the hard-abort paths.
+const HANDLER_DRAIN_GRACE: Duration = Duration::from_secs(1);
 
 pub(crate) trait Protocol<T, U> {
     async fn trigger(&self, item: ReturnableItem<T, U>);
@@ -169,6 +177,55 @@ pub(crate) fn log_setup_join(
     }
 }
 
+/// Installs a protocol: spawns its long-running handler task (which runs `handler_loop`
+/// once it has signaled readiness), registers the task with the node under `kind`, and
+/// publishes `handler` in the `Protocols` slot selected by `slot`.
+///
+/// # Panics
+///
+/// Panics if the protocol was already enabled.
+pub(crate) async fn install_protocol_handler<H, F>(
+    node: &Node,
+    kind: NodeTask,
+    protocol: &'static str,
+    slot: impl Fn(&Protocols) -> &OnceLock<H>,
+    handler: H,
+    handler_loop: F,
+) where
+    F: Future<Output = ()> + Send + 'static,
+{
+    assert!(
+        slot(&node.protocols).get().is_none(),
+        "the {protocol} protocol was enabled more than once!"
+    );
+
+    // use a channel to know when the handler task is ready
+    let (tx, rx) = oneshot::channel();
+
+    let node_clone = node.clone();
+    let task = tokio::spawn(async move {
+        tracing::trace!(parent: node_clone.span(), "spawned the {protocol} handler task");
+        if tx.send(()).is_err() {
+            tracing::error!(parent: node_clone.span(), "{protocol} handler creation interrupted! shutting down the node");
+            node_clone.shut_down().await;
+            return;
+        }
+
+        handler_loop.await;
+    });
+    let _ = rx.await;
+    if node.register_task(kind, task).is_err() {
+        tracing::trace!("the node shut down before the {protocol} protocol could be enabled");
+        return;
+    }
+
+    // publish the handler, making the protocol reachable
+    assert!(
+        slot(&node.protocols).set(handler).is_ok(),
+        "the {protocol} protocol was enabled more than once!"
+    );
+}
+
 /// Runs a protocol handler's main loop for the setup-oriented protocols
 /// (`Handshake`/`Reading`/`Writing`): every received request is spawned as a
 /// tracked setup task via `spawn_setup`. On the node's shutdown signal the
@@ -185,7 +242,7 @@ pub(crate) async fn run_setup_handler_loop<T: Send, U: Send>(
 ) {
     // tracks all in-flight setup tasks
     let mut setup_tasks = JoinSet::new();
-    let mut shutdown = node.shutdown_signal.subscribe();
+    let mut shutdown = node.shutdown.handler_signal();
     let mut draining = false;
 
     loop {
@@ -223,7 +280,7 @@ pub(crate) async fn run_hook_handler_loop<T: Send, U: Send>(
     mut receiver: mpsc::Receiver<ReturnableItem<T, U>>,
     mut process: impl FnMut(ReturnableItem<T, U>) + Send,
 ) {
-    let mut shutdown = node.shutdown_signal.subscribe();
+    let mut shutdown = node.shutdown.handler_signal();
     let mut draining = false;
 
     loop {

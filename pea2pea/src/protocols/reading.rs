@@ -24,8 +24,8 @@ use crate::{
     connections::DisconnectOrigin,
     node::NodeTask,
     protocols::{
-        DisconnectOnDrop, ProtocolHandler, ReturnableConnection, panic_message,
-        run_setup_handler_loop,
+        DisconnectOnDrop, ProtocolHandler, ReturnableConnection, install_protocol_handler,
+        panic_message, run_setup_handler_loop,
     },
 };
 
@@ -86,27 +86,12 @@ where
     /// Panics if called more than once on the same [`Node`].
     fn enable_reading(&self) -> impl Future<Output = ()> {
         async {
-            assert!(
-                self.node().protocols.reading.get().is_none(),
-                "the Reading protocol was enabled more than once!"
-            );
-
             let (conn_sender, conn_receiver) =
                 mpsc::channel(self.node().config().max_connecting as usize);
 
-            // use a channel to know when the reading task is ready
-            let (tx_reading, rx_reading) = oneshot::channel();
-
             // the main task spawning per-connection tasks reading messages from their streams
             let self_clone = self.clone();
-            let reading_task = tokio::spawn(async move {
-                trace!(parent: self_clone.node().span(), "spawned the Reading handler task");
-                if tx_reading.send(()).is_err() {
-                    error!(parent: self_clone.node().span(), "Reading handler creation interrupted! shutting down the node");
-                    self_clone.node().shut_down().await;
-                    return;
-                }
-
+            let handler_loop = async move {
                 let node = self_clone.node().clone();
                 run_setup_handler_loop(node, "Reading", conn_receiver, |conn, setup_tasks| {
                     let self_clone = self_clone.clone();
@@ -115,23 +100,17 @@ where
                     });
                 })
                 .await;
-            });
-            let _ = rx_reading.await;
-            if self
-                .node()
-                .register_task(NodeTask::Reading, reading_task)
-                .is_err()
-            {
-                trace!("the node shut down before the Reading protocol could be enabled");
-                return;
-            }
+            };
 
-            // register the Reading handler with the Node
-            let hdl = ProtocolHandler(conn_sender);
-            assert!(
-                self.node().protocols.reading.set(hdl).is_ok(),
-                "the Reading protocol was enabled more than once!"
-            );
+            install_protocol_handler(
+                self.node(),
+                NodeTask::Reading,
+                "Reading",
+                |protocols| &protocols.reading,
+                ProtocolHandler(conn_sender),
+                handler_loop,
+            )
+            .await;
         }
     }
 

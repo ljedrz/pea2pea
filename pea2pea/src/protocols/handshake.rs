@@ -3,7 +3,7 @@ use std::{future::Future, io, time::Duration};
 use tokio::{
     io::{AsyncRead, AsyncWrite, split},
     net::TcpStream,
-    sync::{mpsc, oneshot},
+    sync::mpsc,
     time::timeout,
 };
 use tracing::*;
@@ -13,7 +13,9 @@ use crate::Node;
 use crate::{
     Connection, Pea2Pea,
     node::NodeTask,
-    protocols::{ProtocolHandler, ReturnableConnection, run_setup_handler_loop},
+    protocols::{
+        ProtocolHandler, ReturnableConnection, install_protocol_handler, run_setup_handler_loop,
+    },
 };
 
 /// Can be used to specify and enable network handshakes, and to configure the sockets. Upon establishing
@@ -36,27 +38,12 @@ where
     /// Panics if called more than once on the same [`Node`].
     fn enable_handshake(&self) -> impl Future<Output = ()> + Send {
         async {
-            assert!(
-                self.node().protocols.handshake.get().is_none(),
-                "the Handshake protocol was enabled more than once!"
-            );
-
             let (conn_sender, conn_receiver) =
                 mpsc::channel::<ReturnableConnection>(self.node().config().max_connecting as usize);
 
-            // use a channel to know when the handshake task is ready
-            let (tx, rx) = oneshot::channel();
-
             // spawn a background task dedicated to handling the handshakes
             let self_clone = self.clone();
-            let handshake_task = tokio::spawn(async move {
-                trace!(parent: self_clone.node().span(), "spawned the Handshake handler task");
-                if tx.send(()).is_err() {
-                    error!(parent: self_clone.node().span(), "Handshake handler creation interrupted! shutting down the node");
-                    self_clone.node().shut_down().await;
-                    return;
-                }
-
+            let handler_loop = async move {
                 let node = self_clone.node().clone();
                 run_setup_handler_loop(node, "Handshake", conn_receiver, |conn, setup_tasks| {
                     let self_clone = self_clone.clone();
@@ -65,23 +52,17 @@ where
                     });
                 })
                 .await;
-            });
-            let _ = rx.await;
-            if self
-                .node()
-                .register_task(NodeTask::Handshake, handshake_task)
-                .is_err()
-            {
-                trace!("the node shut down before the Handshake protocol could be enabled");
-                return;
-            }
+            };
 
-            // register the Handshake handler with the Node
-            let hdl = ProtocolHandler(conn_sender);
-            assert!(
-                self.node().protocols.handshake.set(hdl).is_ok(),
-                "the Handshake protocol was enabled more than once!"
-            );
+            install_protocol_handler(
+                self.node(),
+                NodeTask::Handshake,
+                "Handshake",
+                |protocols| &protocols.handshake,
+                ProtocolHandler(conn_sender),
+                handler_loop,
+            )
+            .await;
         }
     }
 

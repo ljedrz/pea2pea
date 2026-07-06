@@ -7,7 +7,7 @@ use std::{
         Arc,
         atomic::{AtomicBool, AtomicUsize, Ordering::*},
     },
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use futures_util::stream::{FuturesUnordered, StreamExt};
@@ -40,9 +40,7 @@ macro_rules! enable_protocol {
 
             handler.trigger(($conn, conn_returner)).await;
 
-            match crate::protocols::await_handler_response(conn_retriever, || handler.is_closed())
-                .await
-            {
+            match crate::protocols::await_handler_response(conn_retriever, handler.closed()).await {
                 Some(Ok(conn)) => conn,
                 // the request was dropped by the handler's shutdown drain, the handler is
                 // gone, or the message was stranded in its closed channel after an abort -
@@ -132,11 +130,21 @@ pub struct InnerNode {
     heuristics: Heuristics,
     /// The node's tasks.
     pub(crate) tasks: Mutex<HashMap<NodeTask, JoinHandle<()>>>,
+    /// The node's shutdown lifecycle state.
+    pub(crate) shutdown: ShutdownState,
+}
+
+/// The node's shutdown lifecycle state. The shutdown is two-phase: `begin` (a
+/// synchronous flag, checked inside lock-held sections, which stops new work
+/// from being admitted) fires first; `signal_handlers` (an asynchronous watch,
+/// which makes the protocol handler tasks drain their queues and exit) fires
+/// later, once `shut_down` has drained the active connections and the
+/// in-flight `OnConnect` scheduling.
+pub(crate) struct ShutdownState {
     /// Indicates whether the shutdown sequence has begun.
-    shutting_down: AtomicBool,
-    /// Tells the protocol handler tasks to wind down gracefully: stop
-    /// accepting new work, drain their queues, and exit.
-    pub(crate) shutdown_signal: watch::Sender<bool>,
+    flag: AtomicBool,
+    /// Tells the protocol handler tasks to wind down gracefully.
+    handler_signal: watch::Sender<bool>,
     /// The number of in-flight `OnConnect` scheduling tasks; `shut_down`
     /// waits for it to reach zero before signaling the handlers, so that a
     /// scheduling task delayed by executor lag cannot fire its trigger into
@@ -144,6 +152,57 @@ pub struct InnerNode {
     sched_in_flight: AtomicUsize,
     /// Notifies `shut_down` when `sched_in_flight` reaches zero.
     sched_drained: Notify,
+}
+
+impl Default for ShutdownState {
+    fn default() -> Self {
+        Self {
+            flag: Default::default(),
+            handler_signal: watch::Sender::new(false),
+            sched_in_flight: Default::default(),
+            sched_drained: Notify::new(),
+        }
+    }
+}
+
+impl ShutdownState {
+    /// Indicates whether the shutdown sequence has begun; no new work may be
+    /// admitted once it returns `true`.
+    pub(crate) fn is_underway(&self) -> bool {
+        self.flag.load(Acquire)
+    }
+
+    /// Marks the beginning of the shutdown sequence (phase one).
+    fn begin(&self) {
+        self.flag.store(true, Release);
+    }
+
+    /// Tells the protocol handler tasks to drain and exit (phase two).
+    fn signal_handlers(&self) {
+        let _ = self.handler_signal.send(true);
+    }
+
+    /// Subscribes to the phase-two signal.
+    pub(crate) fn handler_signal(&self) -> watch::Receiver<bool> {
+        self.handler_signal.subscribe()
+    }
+
+    fn sched_started(&self) {
+        self.sched_in_flight.fetch_add(1, AcqRel);
+    }
+
+    fn sched_finished(&self) {
+        if self.sched_in_flight.fetch_sub(1, AcqRel) == 1 {
+            self.sched_drained.notify_waiters();
+        }
+    }
+
+    async fn wait_sched_drained(&self) {
+        wait_for_drain(&self.sched_drained, || {
+            self.sched_in_flight.load(Acquire) == 0
+        })
+        .await;
+    }
 }
 
 impl Node {
@@ -185,16 +244,13 @@ impl Node {
             span,
             config,
             listening_addr: Default::default(),
-            shutdown_signal: watch::Sender::new(false),
-            sched_in_flight: AtomicUsize::new(0),
-            sched_drained: Notify::new(),
+            shutdown: Default::default(),
             protocols: Default::default(),
             connections: Default::default(),
             connecting_permits,
             stats: Default::default(),
             heuristics: Default::default(),
             tasks: Default::default(),
-            shutting_down: Default::default(),
         }));
 
         debug!(parent: node.span(), "the node is ready");
@@ -359,7 +415,7 @@ impl Node {
         addr: SocketAddr,
     ) -> io::Result<()> {
         // immediately reject if shutting down
-        if self.shutting_down.load(Acquire) {
+        if self.shutdown.is_underway() {
             return Err(shutting_down_error());
         }
 
@@ -485,8 +541,7 @@ impl Node {
             .get()
             .is_some()
             .then(|| SchedulingGuard::new(self.clone()));
-        self.connections
-            .add(connection, guard, &self.shutting_down)?;
+        self.connections.add(connection, guard, &self.shutdown)?;
 
         // send the aforementioned notification so that reading from the socket can commence
         if let Some(tx) = conn_ready_tx {
@@ -515,7 +570,7 @@ impl Node {
 
                 // receive the handle for the running task
                 if let Some((handle, abortable)) =
-                    crate::protocols::await_handler_response(receiver, || handler.is_closed()).await
+                    crate::protocols::await_handler_response(receiver, handler.closed()).await
                 {
                     if !abortable {
                         // leak the OnConnect task handle in order to ensure that its logic gets
@@ -643,7 +698,7 @@ impl Node {
     /// Connects to the provided `SocketAddr` using an optional `TcpSocket`.
     async fn connect_inner(&self, addr: SocketAddr, socket: Option<TcpSocket>) -> io::Result<()> {
         // immediately abort if shutting down
-        if self.shutting_down.load(Acquire) {
+        if self.shutdown.is_underway() {
             return Err(shutting_down_error());
         }
 
@@ -760,7 +815,7 @@ impl Node {
             let (sender, receiver) = oneshot::channel();
             handler.trigger(((addr, origin), sender)).await;
             if let Some((handle, waiter)) =
-                crate::protocols::await_handler_response(receiver, || handler.is_closed()).await
+                crate::protocols::await_handler_response(receiver, handler.closed()).await
             {
                 // register the associated task with the connection, in case
                 // it gets terminated before its completion
@@ -903,7 +958,7 @@ impl Node {
     /// be cut short - and the shutdown can be concluded with another `shut_down` call.
     pub async fn shut_down(&self) {
         // immediately mark the node as shutting down
-        self.shutting_down.store(true, Release);
+        self.shutdown.begin();
 
         debug!(parent: self.span(), "shutting down");
 
@@ -945,10 +1000,7 @@ impl Node {
         // no longer be added, so the count can only fall from here. Without
         // this, a scheduling task delayed by executor lag could fire its
         // trigger into the closed channel below and silently skip the hook
-        wait_for_drain(&self.sched_drained, || {
-            self.sched_in_flight.load(Acquire) == 0
-        })
-        .await;
+        self.shutdown.wait_sched_drained().await;
 
         // signal the protocol handler tasks to wind down gracefully: each one
         // stops accepting new work and then drains its queue - the setup
@@ -957,7 +1009,11 @@ impl Node {
         // queued hooks, preserving the pairing guarantees. Draining via `recv`
         // (as opposed to dropping the receiver) also waits out any message
         // that is still mid-send, so nothing gets stranded in the channels.
-        let _ = self.shutdown_signal.send(true);
+        self.shutdown.signal_handlers();
+        // all five handlers share a single drain deadline (the drains are
+        // near-instant; the deadline only matters on pathological paths)
+        const DRAIN_DEADLINE: Duration = Duration::from_secs(3);
+        let deadline = Instant::now() + DRAIN_DEADLINE;
         for kind in [
             NodeTask::Handshake,
             NodeTask::Reading,
@@ -969,7 +1025,8 @@ impl Node {
                 // the handles stay inside the aborter, so if this future is
                 // dropped mid-await, they still get aborted; aborting an
                 // already-completed handle is a no-op
-                let _ = timeout(Duration::from_secs(3), handle).await;
+                let remaining = deadline.saturating_duration_since(Instant::now());
+                let _ = timeout(remaining, handle).await;
             }
         }
 
@@ -982,10 +1039,10 @@ impl Node {
 
     /// Registers a long-running node task, unless the node is shutting down, in which case the
     /// task is aborted and an error is returned. The flag check under the `tasks` lock pairs with
-    /// the Release store + `mem::take` in `shut_down`.
+    /// `ShutdownState::begin` + the `mem::take` in `shut_down`.
     pub(crate) fn register_task(&self, kind: NodeTask, handle: JoinHandle<()>) -> io::Result<()> {
         let mut tasks = self.tasks.lock();
-        if self.shutting_down.load(Acquire) {
+        if self.shutdown.is_underway() {
             handle.abort();
             return Err(shutting_down_error());
         }
@@ -1014,16 +1071,14 @@ struct SchedulingGuard(Node);
 
 impl SchedulingGuard {
     fn new(node: Node) -> Self {
-        node.sched_in_flight.fetch_add(1, AcqRel);
+        node.shutdown.sched_started();
         Self(node)
     }
 }
 
 impl Drop for SchedulingGuard {
     fn drop(&mut self) {
-        if self.0.sched_in_flight.fetch_sub(1, AcqRel) == 1 {
-            self.0.sched_drained.notify_waiters();
-        }
+        self.0.shutdown.sched_finished();
     }
 }
 

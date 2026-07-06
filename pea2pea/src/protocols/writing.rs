@@ -28,11 +28,13 @@ use crate::{
     connections::{DisconnectOrigin, create_connection_span},
     node::NodeTask,
     protocols::{
-        DisconnectOnDrop, Protocol, ProtocolHandler, ReturnableConnection, panic_message,
-        run_setup_handler_loop,
+        DisconnectOnDrop, Protocol, ProtocolHandler, ReturnableConnection,
+        install_protocol_handler, panic_message, run_setup_handler_loop,
     },
 };
 
+/// The per-address message senders; each entry is tagged with its connection's unique
+/// instance id (`Connection::id`), so that stale cleanups can recognize address reuse.
 type WritingSenders = Arc<RwLock<HashMap<SocketAddr, (u64, Arc<dyn Any + Send + Sync>)>>>;
 
 /// Can be used to specify and enable writing, i.e. sending outbound messages. If the [`Handshake`]
@@ -74,11 +76,6 @@ where
     /// Panics if called more than once on the same [`Node`].
     fn enable_writing(&self) -> impl Future<Output = ()> {
         async {
-            assert!(
-                self.node().protocols.writing.get().is_none(),
-                "the Writing protocol was enabled more than once!"
-            );
-
             let (conn_sender, conn_receiver) =
                 mpsc::channel(self.node().config().max_connecting as usize);
 
@@ -87,54 +84,32 @@ where
             // procure a clone to create the WritingHandler with
             let senders = conn_senders.clone();
 
-            // use a channel to know when the writing task is ready
-            let (tx_writing, rx_writing) = oneshot::channel();
-
             // the task spawning tasks sending messages to all the streams
             let self_clone = self.clone();
-            let writing_task = tokio::spawn(async move {
-                trace!(parent: self_clone.node().span(), "spawned the Writing handler task");
-                if tx_writing.send(()).is_err() {
-                    error!(parent: self_clone.node().span(), "Writing handler creation interrupted! shutting down the node");
-                    self_clone.node().shut_down().await;
-                    return;
-                }
-
-                // a monotonic unique Sender ID generator
-                let mut next_sender_id: u64 = 0;
+            let handler_loop = async move {
                 let node = self_clone.node().clone();
                 run_setup_handler_loop(node, "Writing", conn_receiver, |conn, setup_tasks| {
                     let self_clone = self_clone.clone();
                     let senders = conn_senders.clone();
-                    let sender_id = next_sender_id;
-                    next_sender_id += 1;
                     setup_tasks.spawn(async move {
-                        self_clone
-                            .handle_new_connection(conn, &senders, sender_id)
-                            .await;
+                        self_clone.handle_new_connection(conn, &senders).await;
                     });
                 })
                 .await;
-            });
-            let _ = rx_writing.await;
-            if self
-                .node()
-                .register_task(NodeTask::Writing, writing_task)
-                .is_err()
-            {
-                trace!("the node shut down before the Writing protocol could be enabled");
-                return;
-            }
-
-            // register the WritingHandler with the Node
-            let hdl = WritingHandler {
-                handler: ProtocolHandler(conn_sender),
-                senders,
             };
-            assert!(
-                self.node().protocols.writing.set(hdl).is_ok(),
-                "the Writing protocol was enabled more than once!"
-            );
+
+            install_protocol_handler(
+                self.node(),
+                NodeTask::Writing,
+                "Writing",
+                |protocols| &protocols.writing,
+                WritingHandler {
+                    handler: ProtocolHandler(conn_sender),
+                    senders,
+                },
+                handler_loop,
+            )
+            .await;
         }
     }
 
@@ -261,7 +236,6 @@ trait WritingInternal: Writing {
         &self,
         conn_with_returner: ReturnableConnection,
         conn_senders: &WritingSenders,
-        sender_id: u64,
     );
 }
 
@@ -340,7 +314,6 @@ impl<W: Writing> WritingInternal for W {
         &self,
         (mut conn, conn_returner): ReturnableConnection,
         conn_senders: &WritingSenders,
-        sender_id: u64,
     ) {
         let addr = conn.addr();
         let conn_id = conn.id;
@@ -363,7 +336,7 @@ impl<W: Writing> WritingInternal for W {
         // this will automatically drop the sender upon a disconnect
         let sender_cleanup = SenderCleanup {
             addr,
-            sender_id,
+            conn_id,
             senders: Arc::clone(conn_senders),
         };
 
@@ -438,7 +411,7 @@ impl<W: Writing> WritingInternal for W {
         conn_senders.write().insert(
             addr,
             (
-                sender_id,
+                conn_id,
                 Arc::new(outbound_message_sender) as Arc<dyn Any + Send + Sync>,
             ),
         );
@@ -483,9 +456,9 @@ pub(crate) struct WritingHandler {
 }
 
 impl WritingHandler {
-    /// See [`ProtocolHandler::is_closed`].
-    pub(crate) fn is_closed(&self) -> bool {
-        self.handler.is_closed()
+    /// See [`ProtocolHandler::closed`].
+    pub(crate) async fn closed(&self) {
+        self.handler.closed().await;
     }
 }
 
@@ -498,7 +471,8 @@ impl Protocol<Connection, io::Result<Connection>> for WritingHandler {
 struct SenderCleanup {
     addr: SocketAddr,
     senders: WritingSenders,
-    sender_id: u64,
+    /// The owning connection's instance id (`Connection::id`).
+    conn_id: u64,
 }
 
 impl Drop for SenderCleanup {
@@ -507,7 +481,7 @@ impl Drop for SenderCleanup {
         if let Entry::Occupied(e) = map.entry(self.addr) {
             // only remove if this is still *our* sender; otherwise a newer
             // connection has reused the addr and we must not touch it
-            if e.get().0 == self.sender_id {
+            if e.get().0 == self.conn_id {
                 e.remove();
             }
         }

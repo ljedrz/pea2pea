@@ -3,6 +3,7 @@
 ### Changed
 
 - the protocol handler tasks now wind down gracefully during `Node::shut_down` - they stop accepting new work and drain their queues, instead of being aborted
+- the graceful handler wind-down during `Node::shut_down` shares a single deadline across all the protocol handlers, bounding the worst-case shutdown time
 
 ### Fixed
 

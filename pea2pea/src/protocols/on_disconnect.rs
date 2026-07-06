@@ -22,7 +22,7 @@ use crate::{
     Pea2Pea,
     connections::{DisconnectOrigin, create_connection_span},
     node::NodeTask,
-    protocols::{ProtocolHandler, panic_message, run_hook_handler_loop},
+    protocols::{ProtocolHandler, install_protocol_handler, panic_message, run_hook_handler_loop},
 };
 
 // The value returned to the node is a bit complex, so use an alias to break it down.
@@ -71,30 +71,15 @@ where
     /// Panics if called more than once on the same [`Node`].
     fn enable_on_disconnect(&self) -> impl Future<Output = ()> {
         async {
-            assert!(
-                self.node().protocols.on_disconnect.get().is_none(),
-                "the OnDisconnect protocol was enabled more than once!"
-            );
-
             let (from_node_sender, from_node_receiver) =
                 mpsc::channel::<(
                     (SocketAddr, DisconnectOrigin),
                     oneshot::Sender<OnDisconnectBundle>,
                 )>(self.node().config().max_connections as usize);
 
-            // use a channel to know when the disconnect task is ready
-            let (tx, rx) = oneshot::channel::<()>();
-
             // spawn a background task dedicated to handling disconnect events
             let self_clone = self.clone();
-            let on_disconnect_task = tokio::spawn(async move {
-                trace!(parent: self_clone.node().span(), "spawned the OnDisconnect handler task");
-                if tx.send(()).is_err() {
-                    error!(parent: self_clone.node().span(), "OnDisconnect handler creation interrupted! shutting down the node");
-                    self_clone.node().shut_down().await;
-                    return;
-                }
-
+            let handler_loop = async move {
                 let node = self_clone.node().clone();
                 run_hook_handler_loop(node, from_node_receiver, |((addr, origin), notifier)| {
                     let self_clone = self_clone.clone();
@@ -133,23 +118,17 @@ where
                     }
                 })
                 .await;
-            });
-            let _ = rx.await;
-            if self
-                .node()
-                .register_task(NodeTask::OnDisconnect, on_disconnect_task)
-                .is_err()
-            {
-                trace!("the node shut down before the OnDisconnect protocol could be enabled");
-                return;
-            }
+            };
 
-            // register the OnDisconnect handler with the Node
-            let hdl = ProtocolHandler(from_node_sender);
-            assert!(
-                self.node().protocols.on_disconnect.set(hdl).is_ok(),
-                "the OnDisconnect protocol was enabled more than once!"
-            );
+            install_protocol_handler(
+                self.node(),
+                NodeTask::OnDisconnect,
+                "OnDisconnect",
+                |protocols| &protocols.on_disconnect,
+                ProtocolHandler(from_node_sender),
+                handler_loop,
+            )
+            .await;
         }
     }
 

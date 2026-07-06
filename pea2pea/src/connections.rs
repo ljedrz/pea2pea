@@ -46,12 +46,12 @@ impl Connections {
         &self,
         conn: Connection,
         mut guard: ConnectionGuard<'_>,
-        shutting_down: &AtomicBool,
+        shutdown: &crate::node::ShutdownState,
     ) -> io::Result<()> {
         // lock discipline is `limits` -> `active` everywhere; the guard's Drop (which locks
         // `limits` to clear `connecting`) runs after the `active` guard is released at scope end
         let mut active = self.active.write();
-        if shutting_down.load(Ordering::Acquire) {
+        if shutdown.is_underway() {
             return Err(crate::node::shutting_down_error());
         }
         active.insert(conn.addr(), conn);

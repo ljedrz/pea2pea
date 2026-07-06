@@ -20,7 +20,10 @@ use crate::{
     Pea2Pea,
     connections::{DisconnectOrigin, create_connection_span},
     node::NodeTask,
-    protocols::{DisconnectOnDrop, ProtocolHandler, panic_message, run_hook_handler_loop},
+    protocols::{
+        DisconnectOnDrop, ProtocolHandler, install_protocol_handler, panic_message,
+        run_hook_handler_loop,
+    },
 };
 
 // The value returned to the node is a bit complex, so use an alias to break it down.
@@ -80,29 +83,14 @@ where
     /// Panics if called more than once on the same [`Node`].
     fn enable_on_connect(&self) -> impl Future<Output = ()> {
         async {
-            assert!(
-                self.node().protocols.on_connect.get().is_none(),
-                "the OnConnect protocol was enabled more than once!"
-            );
-
             let (from_node_sender, from_node_receiver) =
                 mpsc::channel::<((SocketAddr, u64), oneshot::Sender<OnConnectBundle>)>(
                     self.node().config().max_connections as usize,
                 );
 
-            // use a channel to know when the on_connect task is ready
-            let (tx, rx) = oneshot::channel::<()>();
-
             // spawn a background task dedicated to executing the desired post-handshake actions
             let self_clone = self.clone();
-            let on_connect_task = tokio::spawn(async move {
-                trace!(parent: self_clone.node().span(), "spawned the OnConnect handler task");
-                if tx.send(()).is_err() {
-                    error!(parent: self_clone.node().span(), "OnConnect handler creation interrupted! shutting down the node");
-                    self_clone.node().shut_down().await;
-                    return;
-                }
-
+            let handler_loop = async move {
                 let node = self_clone.node().clone();
                 run_hook_handler_loop(node, from_node_receiver, |((addr, conn_id), notifier)| {
                     let self_clone = self_clone.clone();
@@ -135,23 +123,17 @@ where
                     let _ = notifier.send((handle, Self::ABORTABLE)); // can't really fail
                 })
                 .await;
-            });
-            let _ = rx.await;
-            if self
-                .node()
-                .register_task(NodeTask::OnConnect, on_connect_task)
-                .is_err()
-            {
-                trace!("the node shut down before the OnConnect protocol could be enabled");
-                return;
-            }
+            };
 
-            // register the OnConnect handler with the Node
-            let hdl = ProtocolHandler(from_node_sender);
-            assert!(
-                self.node().protocols.on_connect.set(hdl).is_ok(),
-                "the OnConnect protocol was enabled more than once!"
-            );
+            install_protocol_handler(
+                self.node(),
+                NodeTask::OnConnect,
+                "OnConnect",
+                |protocols| &protocols.on_connect,
+                ProtocolHandler(from_node_sender),
+                handler_loop,
+            )
+            .await;
         }
     }
 
