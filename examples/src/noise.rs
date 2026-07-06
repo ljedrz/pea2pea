@@ -37,22 +37,13 @@ pub enum State {
 impl Clone for State {
     fn clone(&self) -> Self {
         match self {
-            Self::Handshake(..) => panic!("unsupported"),
+            Self::Handshake(..) => panic!("only the post-handshake state can be cloned"),
             Self::PostHandshake(ph) => Self::PostHandshake(ph.clone()),
         }
     }
 }
 
 impl State {
-    // obtain the handshake noise state
-    fn handshake(&mut self) -> Option<&mut snow::HandshakeState> {
-        if let Self::Handshake(state) = self {
-            Some(&mut state.0)
-        } else {
-            None
-        }
-    }
-
     // transform the noise state into post-handshake
     pub fn into_post_handshake(self) -> Self {
         if let Self::Handshake(state) = self {
@@ -64,7 +55,7 @@ impl State {
                 tx_nonce: 0,
             })
         } else {
-            panic!();
+            panic!("the handshake has already concluded");
         }
     }
 
@@ -91,6 +82,12 @@ pub struct Codec {
 }
 
 impl Codec {
+    /// Creates a codec with the standard noise framing: a 2-byte length prefix and
+    /// the maximum message size the protocol permits.
+    pub fn standard(noise: State, span: Span) -> Self {
+        Self::new(2, MAX_MESSAGE_LEN, noise, span)
+    }
+
     pub fn new(prefix_len: usize, max_frame_len: usize, noise: State, span: Span) -> Self {
         Codec {
             codec: LengthDelimitedCodec::builder()
@@ -140,13 +137,15 @@ impl Decoder for Codec {
                 Ok(Some(self.buffer[..msg_len].into()))
             }
             State::PostHandshake(ref mut noise) => {
-                let mut decrypted_msg = BytesMut::new();
+                // the plaintext is always smaller than the ciphertext
+                let mut decrypted_msg = BytesMut::with_capacity(bytes.len());
 
                 for encrypted_chunk in bytes.chunks(MAX_MESSAGE_LEN) {
                     let msg_len = noise
                         .state
                         .read_message(noise.rx_nonce, encrypted_chunk, &mut self.buffer)
                         .map_err(|e| {
+                            // cloned to sidestep a borrow conflict with the noise state
                             let span = self.span.clone();
                             error!(parent: &span, "noise error: {e}; raw chunk: {encrypted_chunk:?}");
                             io::ErrorKind::InvalidData
@@ -174,7 +173,9 @@ impl Encoder<Bytes> for Codec {
                     .encode(Bytes::from(self.buffer[..msg_len].to_vec()), dst)
             }
             State::PostHandshake(ref mut noise) => {
-                let mut encrypted_msg = BytesMut::new();
+                // each encrypted chunk carries a 16-byte authentication tag
+                let num_chunks = msg.len().div_ceil(MAX_MESSAGE_LEN - 16).max(1);
+                let mut encrypted_msg = BytesMut::with_capacity(msg.len() + 16 * num_chunks);
 
                 for msg_chunk in msg.chunks(MAX_MESSAGE_LEN - 16) {
                     let msg_len = noise
@@ -202,19 +203,24 @@ pub async fn handshake_xx<T: Handshake>(
     let node_conn_side = !conn.side();
     let stream = node.borrow_stream(conn);
 
-    let (noise_state, secure_payload) = match node_conn_side {
-        ConnectionSide::Initiator => {
-            let noise = Box::new(noise_builder.build_initiator().unwrap());
-            let mut framed = Framed::new(
-                stream,
-                Codec::new(
-                    2,
-                    u16::MAX as usize,
-                    State::Handshake(HandshakeState(noise)),
-                    node.node().span().clone(),
-                ),
-            );
+    let noise = Box::new(
+        match node_conn_side {
+            ConnectionSide::Initiator => noise_builder.build_initiator(),
+            ConnectionSide::Responder => noise_builder.build_responder(),
+        }
+        .unwrap(),
+    );
+    let mut framed = Framed::new(
+        stream,
+        Codec::standard(
+            State::Handshake(HandshakeState(noise)),
+            node.node().span().clone(),
+        ),
+    );
 
+    // only the message ordering differs between the two sides
+    let secure_payload = match node_conn_side {
+        ConnectionSide::Initiator => {
             // -> e
             framed.send("".into()).await?;
             debug!(parent: node.node().span(), "sent e (XX handshake part 1/3)");
@@ -227,23 +233,9 @@ pub async fn handshake_xx<T: Handshake>(
             framed.send(payload).await?;
             debug!(parent: node.node().span(), "sent s, se, psk (XX handshake part 3/3)");
 
-            let FramedParts { codec, .. } = framed.into_parts();
-            let Codec { noise, .. } = codec;
-
-            (noise.into_post_handshake(), secure_payload)
+            secure_payload
         }
         ConnectionSide::Responder => {
-            let noise = Box::new(noise_builder.build_responder().unwrap());
-            let mut framed = Framed::new(
-                stream,
-                Codec::new(
-                    2,
-                    u16::MAX as usize,
-                    State::Handshake(HandshakeState(noise)),
-                    node.node().span().clone(),
-                ),
-            );
-
             // <- e
             framed.try_next().await?;
             debug!(parent: node.node().span(), "received e (XX handshake part 1/3)");
@@ -256,12 +248,13 @@ pub async fn handshake_xx<T: Handshake>(
             let secure_payload = framed.try_next().await?.unwrap_or_default();
             debug!(parent: node.node().span(), "received s, se, psk (XX handshake part 3/3)");
 
-            let FramedParts { codec, .. } = framed.into_parts();
-            let Codec { noise, .. } = codec;
-
-            (noise.into_post_handshake(), secure_payload)
+            secure_payload
         }
     };
+
+    let FramedParts { codec, .. } = framed.into_parts();
+    let Codec { noise, .. } = codec;
+    let noise_state = noise.into_post_handshake();
 
     debug!(parent: node.node().span(), "XX handshake complete");
 

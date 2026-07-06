@@ -4,7 +4,7 @@
 //! - [`Handshake`]: exchange 64-bit node IDs over the raw TCP stream
 //! - [`Reading`] + [`Writing`]: `postcard`-serialized RPC messages over `LengthDelimitedCodec`
 //! - [`OnConnect`] / [`OnDisconnect`]: routing-table maintenance as peers come and go
-//! - [`Writing::unicast`]: request/response RPCs with correlation IDs (cf. `simple_rpc`)
+//! - [`Writing::unicast_fast`]: request/response RPCs with correlation IDs (cf. `simple_rpc`)
 //! - The iterative lookup: discover peers by XOR-closeness without knowing everyone
 //!
 //! A real Kademlia uses PING for k-bucket freshness; this demo relies on
@@ -22,7 +22,6 @@ use std::{
     time::Duration,
 };
 
-use bytes::BytesMut;
 use parking_lot::Mutex;
 use pea2pea::{
     Config, Connection, ConnectionSide, DisconnectOrigin, Node, Pea2Pea,
@@ -34,7 +33,6 @@ use tokio::{
     sync::oneshot,
     time::timeout,
 };
-use tokio_util::codec::{Decoder, Encoder, LengthDelimitedCodec};
 use tracing::*;
 use tracing_subscriber::filter::LevelFilter;
 
@@ -125,41 +123,6 @@ impl KademliaRequest {
             Self::Store { key, value } => KademliaMessage::Store { rpc_id, key, value },
             Self::FindValue { key } => KademliaMessage::FindValue { rpc_id, key },
         }
-    }
-}
-
-struct KademliaCodec(LengthDelimitedCodec);
-
-impl Default for KademliaCodec {
-    fn default() -> Self {
-        let inner = LengthDelimitedCodec::builder()
-            .length_field_length(2)
-            .new_codec();
-        Self(inner)
-    }
-}
-
-impl Decoder for KademliaCodec {
-    type Item = KademliaMessage;
-    type Error = io::Error;
-
-    fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
-        self.0
-            .decode(src)?
-            .map(|b| {
-                postcard::from_bytes::<Self::Item>(&b)
-                    .map_err(|_| io::ErrorKind::InvalidData.into())
-            })
-            .transpose()
-    }
-}
-
-impl Encoder<KademliaMessage> for KademliaCodec {
-    type Error = io::Error;
-
-    fn encode(&mut self, item: KademliaMessage, dst: &mut BytesMut) -> Result<(), Self::Error> {
-        let bytes = postcard::to_stdvec(&item).map_err(|_| io::ErrorKind::InvalidData)?;
-        self.0.encode(bytes.into(), dst)
     }
 }
 
@@ -291,9 +254,8 @@ impl DhtNode {
             shortlist.sort_by_key(|c| Self::distance(c.id, target));
 
             // Pick the closest un-queried contact.
-            let contact = match shortlist.iter().find(|c| !queried.contains(&c.id)) {
-                Some(c) => c.clone(),
-                None => break, // all queried
+            let Some(contact) = shortlist.iter().find(|c| !queried.contains(&c.id)).cloned() else {
+                break; // all queried
             };
             queried.insert(contact.id);
 
@@ -349,9 +311,8 @@ impl DhtNode {
         loop {
             shortlist.sort_by_key(|c| Self::distance(c.id, key));
 
-            let contact = match shortlist.iter().find(|c| !queried.contains(&c.id)) {
-                Some(c) => c.clone(),
-                None => break,
+            let Some(contact) = shortlist.iter().find(|c| !queried.contains(&c.id)).cloned() else {
+                break;
             };
             queried.insert(contact.id);
 
@@ -464,7 +425,7 @@ impl OnDisconnect for DhtNode {
 
 impl Reading for DhtNode {
     type Message = KademliaMessage;
-    type Codec = KademliaCodec;
+    type Codec = examples::PostcardCodec<KademliaMessage>;
 
     fn codec(&self, _addr: SocketAddr, _side: ConnectionSide) -> Self::Codec {
         Default::default()
@@ -477,7 +438,6 @@ impl Reading for DhtNode {
                 rpc_id,
                 sender_id,
                 target,
-                ..
             } => {
                 // Learn about the sender; use its listening address (from the
                 // handshake) rather than the connection source address.
@@ -536,7 +496,7 @@ impl Reading for DhtNode {
 
 impl Writing for DhtNode {
     type Message = KademliaMessage;
-    type Codec = KademliaCodec;
+    type Codec = examples::PostcardCodec<KademliaMessage>;
 
     fn codec(&self, _addr: SocketAddr, _side: ConnectionSide) -> Self::Codec {
         Default::default()
@@ -556,11 +516,13 @@ async fn main() {
     for _ in 0..NUM_NODES {
         let id: u64 = rand::rng().random();
         let node = DhtNode::new(id);
-        node.enable_handshake().await;
-        node.enable_reading().await;
-        node.enable_writing().await;
-        node.enable_on_connect().await;
-        node.enable_on_disconnect().await;
+        tokio::join!(
+            node.enable_handshake(),
+            node.enable_reading(),
+            node.enable_writing(),
+            node.enable_on_connect(),
+            node.enable_on_disconnect(),
+        );
         node.node().toggle_listener().await.unwrap();
         nodes.push(node);
     }

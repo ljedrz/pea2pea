@@ -89,7 +89,8 @@ impl Libp2pNode {
 
         if let Some(reply_msg) = reply {
             info!(parent: self.node().span(), " sending a {:?}", &reply_msg);
-            let _ = self.unicast(source, reply_msg)?.await;
+            // fire-and-forget: a reply path shouldn't stall on delivery confirmation
+            self.unicast_fast(source, reply_msg)?;
         }
 
         Ok(())
@@ -134,9 +135,7 @@ impl Decoder for Codec {
 
     fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
         // decrypt raw bytes using noise
-        let mut bytes = if let Some(bytes) = self.noise.decode(src)? {
-            bytes
-        } else {
+        let Some(mut bytes) = self.noise.decode(src)? else {
             return Ok(None);
         };
 
@@ -270,12 +269,7 @@ impl Handshake for Libp2pNode {
         // reconstruct the Framed with the post-handshake noise state
         let mut framed = Framed::new(
             self.borrow_stream(&mut conn),
-            noise::Codec::new(
-                2,
-                u16::MAX as usize,
-                noise_state,
-                self.node().span().clone(),
-            ),
+            noise::Codec::standard(noise_state, self.node().span().clone()),
         );
 
         // exchange further protocol params
@@ -349,16 +343,13 @@ impl Reading for Libp2pNode {
     type Codec = Codec;
 
     fn codec(&self, addr: SocketAddr, side: ConnectionSide) -> Self::Codec {
+        // Reading's codec is created first, so it clones the noise state; the
+        // Writing codec (created last) removes it and takes final ownership
         let noise_state = self.noise_states.lock().get(&addr).cloned().unwrap();
 
         Self::Codec::new(
-            noise::Codec::new(
-                2,
-                u16::MAX as usize,
-                noise_state,
-                self.node().span().clone(),
-            ),
-            yamux::Codec::new(side, self.node().span().clone()),
+            noise::Codec::standard(noise_state, self.node().span().clone()),
+            yamux::Codec::new(side),
         )
     }
 
@@ -398,7 +389,9 @@ impl Reading for Libp2pNode {
                 }
             }
             &[yamux::Flag::Ack] => {
-                todo!(); // TODO: only matters when starting own streams
+                // only relevant when initiating own streams, which this example
+                // doesn't do; a peer-initiated ACK is logged and ignored
+                debug!(parent: self.node().span(), "ignoring an ACK for yamux stream {stream_id}");
             }
             &[yamux::Flag::Fin] => {
                 // a stream is being half-closed
@@ -452,16 +445,13 @@ impl Writing for Libp2pNode {
     type Codec = Codec;
 
     fn codec(&self, addr: SocketAddr, side: ConnectionSide) -> Self::Codec {
+        // created after Reading's codec (which cloned the state), so it can
+        // remove the entry and take final ownership
         let noise_state = self.noise_states.lock().remove(&addr).unwrap();
 
         Self::Codec::new(
-            noise::Codec::new(
-                2,
-                u16::MAX as usize,
-                noise_state,
-                self.node().span().clone(),
-            ),
-            yamux::Codec::new(side, self.node().span().clone()),
+            noise::Codec::standard(noise_state, self.node().span().clone()),
+            yamux::Codec::new(side),
         )
     }
 }
@@ -472,7 +462,7 @@ impl OnDisconnect for Libp2pNode {
     }
 }
 
-#[tokio::main(flavor = "multi_thread")]
+#[tokio::main]
 async fn main() {
     examples::start_logger(LevelFilter::DEBUG);
 
@@ -529,4 +519,7 @@ async fn main() {
 
     // allow a few messages to be exchanged
     sleep(Duration::from_secs(60)).await;
+
+    // nodes are never dropped implicitly; always shut them down once done
+    pea2pea_node.node().shut_down().await;
 }

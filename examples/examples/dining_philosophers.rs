@@ -1,20 +1,17 @@
 //! A P2P rendition of the dining philosophers problem.
 
 use std::{
-    io, mem,
     net::SocketAddr,
     sync::{Arc, LazyLock, OnceLock},
     time::Duration,
 };
 
-use bytes::BytesMut;
 use pea2pea::{
     Config, ConnectionSide, Node, Pea2Pea, Topology, connect_nodes,
     protocols::{Reading, Writing},
 };
 use rand::{RngExt, SeedableRng, rngs::SmallRng};
 use tokio::{sync::RwLock, time::sleep};
-use tokio_util::codec::{Decoder, Encoder, LengthDelimitedCodec};
 use tracing::*;
 use tracing_subscriber::filter::LevelFilter;
 
@@ -93,19 +90,16 @@ impl Philosopher {
                         *node.state.write().await = State::Hungry(false);
                         info!(parent: node.node().span(), "I'm hungry");
                     }
-                    State::Hungry(false) => {
-                        let left_neighbor = node.left_neighbor.get().unwrap();
-                        debug!(parent: node.node().span(), "asking {} for the fork", left_neighbor.1);
+                    State::Hungry(has_left_fork) => {
+                        // ask for the left fork first, then the right one
+                        let neighbor = if has_left_fork {
+                            node.right_neighbor.get().unwrap()
+                        } else {
+                            node.left_neighbor.get().unwrap()
+                        };
+                        debug!(parent: node.node().span(), "asking {} for the fork", neighbor.1);
                         drop(state);
-                        node.unicast_fast(left_neighbor.0, Message::AreYouUsingTheSharedFork)
-                            .unwrap();
-                        sleep(Duration::from_millis(250)).await;
-                    }
-                    State::Hungry(true) => {
-                        let right_neighbor = node.right_neighbor.get().unwrap();
-                        debug!(parent: node.node().span(), "asking {} for the fork", right_neighbor.1);
-                        drop(state);
-                        node.unicast_fast(right_neighbor.0, Message::AreYouUsingTheSharedFork)
+                        node.unicast_fast(neighbor.0, Message::AreYouUsingTheSharedFork)
                             .unwrap();
                         sleep(Duration::from_millis(250)).await;
                     }
@@ -122,49 +116,13 @@ impl Philosopher {
     }
 }
 
-struct Codec(LengthDelimitedCodec);
-
-impl Default for Codec {
-    fn default() -> Self {
-        let inner = LengthDelimitedCodec::builder()
-            .length_field_length(1)
-            .new_codec();
-        Self(inner)
-    }
-}
-
-impl Decoder for Codec {
-    type Item = Message;
-    type Error = io::Error;
-
-    fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
-        let bytes = self.0.decode(src)?;
-        if bytes.is_none() {
-            return Ok(None);
-        }
-
-        let message = postcard::from_bytes::<Self::Item>(&bytes.unwrap())
-            .map_err(|_| io::ErrorKind::InvalidData)?;
-
-        Ok(Some(message))
-    }
-}
-
-impl Encoder<Message> for Codec {
-    type Error = io::Error;
-
-    fn encode(&mut self, item: Message, dst: &mut BytesMut) -> Result<(), Self::Error> {
-        let bytes = postcard::to_stdvec(&item).unwrap().into();
-        self.0.encode(bytes, dst)
-    }
-}
-
 impl Reading for Philosopher {
     type Message = Message;
-    type Codec = Codec;
+    type Codec = examples::PostcardCodec<Message>;
 
     fn codec(&self, _addr: SocketAddr, _side: ConnectionSide) -> Self::Codec {
-        Default::default()
+        // a single-byte length prefix suffices for these tiny messages
+        examples::PostcardCodec::new(1)
     }
 
     async fn process_message(&self, source: SocketAddr, message: Self::Message) {
@@ -185,6 +143,7 @@ impl Reading for Philosopher {
                     Message::Yes(None)
                 };
 
+                // deliberately assert on every layer: queueing, sending, and delivery
                 self.unicast(source, answer)
                     .unwrap()
                     .await
@@ -221,14 +180,15 @@ impl Reading for Philosopher {
 
 impl Writing for Philosopher {
     type Message = Message;
-    type Codec = Codec;
+    type Codec = examples::PostcardCodec<Message>;
 
     fn codec(&self, _addr: SocketAddr, _side: ConnectionSide) -> Self::Codec {
-        Default::default()
+        // a single-byte length prefix suffices for these tiny messages
+        examples::PostcardCodec::new(1)
     }
 }
 
-#[tokio::main(flavor = "multi_thread")]
+#[tokio::main]
 async fn main() {
     examples::start_logger(LevelFilter::INFO);
 
@@ -243,31 +203,29 @@ async fn main() {
     connect_nodes(&philosophers, Topology::Ring).await.unwrap();
     sleep(Duration::from_millis(100)).await;
 
-    let mut previous_node_name = philosophers.last().unwrap().node().name().to_owned();
-    for (p1, p2) in philosophers.iter().zip(
-        philosophers
-            .iter()
-            .skip(1)
-            .chain(philosophers.iter().next()),
-    ) {
-        let right_neighbor_addr = p2.node().listening_addr().await.unwrap();
-        let right_neighbor_name = p2.node().name().to_owned();
+    let count = philosophers.len();
+    for (i, philosopher) in philosophers.iter().enumerate() {
+        let right = &philosophers[(i + 1) % count];
+        let left = &philosophers[(i + count - 1) % count];
 
-        let both_neighbors = p1.node().connected_addrs();
-
+        // the ring is directional: we connected *to* the right neighbor (at its
+        // listening address), while the left one connected to us (so it is only
+        // reachable via its ephemeral connection address)
+        let right_neighbor_addr = right.node().listening_addr().await.unwrap();
+        let both_neighbors = philosopher.node().connected_addrs();
         assert_eq!(both_neighbors.len(), 2);
-
         let left_neighbor_addr = both_neighbors
             .into_iter()
             .find(|addr| *addr != right_neighbor_addr)
             .unwrap();
-        let left_neighbor_name = mem::replace(&mut previous_node_name, p1.node().name().to_owned());
 
-        p1.right_neighbor
-            .set((right_neighbor_addr, right_neighbor_name))
+        philosopher
+            .right_neighbor
+            .set((right_neighbor_addr, right.node().name().to_owned()))
             .unwrap();
-        p1.left_neighbor
-            .set((left_neighbor_addr, left_neighbor_name))
+        philosopher
+            .left_neighbor
+            .set((left_neighbor_addr, left.node().name().to_owned()))
             .unwrap();
     }
 
@@ -276,4 +234,9 @@ async fn main() {
     }
 
     sleep(Duration::from_secs(60)).await;
+
+    // nodes are never dropped implicitly; always shut them down once done
+    for philosopher in &philosophers {
+        philosopher.node().shut_down().await;
+    }
 }

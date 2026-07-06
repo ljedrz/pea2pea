@@ -3,13 +3,15 @@
 use std::{net::SocketAddr, time::Duration};
 
 use pea2pea::{
-    ConnectionSide, Node, Pea2Pea, Topology, connect_nodes,
+    Config, ConnectionSide, Node, Pea2Pea, Topology, connect_nodes,
     protocols::{Reading, Writing},
 };
 use rand::RngExt;
 use tokio::time::sleep;
 use tracing::*;
 use tracing_subscriber::filter::LevelFilter;
+
+const NUM_PLAYERS: usize = 20;
 
 #[derive(Clone)]
 struct Player(Node);
@@ -20,17 +22,16 @@ impl Pea2Pea for Player {
     }
 }
 
-const NUM_PLAYERS: usize = 20;
-
 impl Reading for Player {
     type Message = String;
-    type Codec = examples::TestCodec<Self::Message>;
+    type Codec = examples::SimpleCodec<Self::Message>;
 
     fn codec(&self, _addr: SocketAddr, _side: ConnectionSide) -> Self::Codec {
         Default::default()
     }
 
     async fn process_message(&self, source: SocketAddr, mut message: String) {
+        // the player's position is encoded in its (explicitly assigned) name
         let own_id = self.node().name().parse::<usize>().unwrap();
 
         // "bork" the message with a 50% probability
@@ -54,6 +55,7 @@ impl Reading for Player {
 
         // there are just a maximum of 2 connections, so this is sufficient
         if let Some(addr) = connected_addrs.into_iter().find(|addr| *addr != source) {
+            // queue -> send -> delivery confirmation; asserting on all three layers
             self.unicast(addr, message).unwrap().await.unwrap().unwrap();
         }
     }
@@ -61,7 +63,7 @@ impl Reading for Player {
 
 impl Writing for Player {
     type Message = String;
-    type Codec = examples::TestCodec<Self::Message>;
+    type Codec = examples::SimpleCodec<Self::Message>;
 
     fn codec(&self, _addr: SocketAddr, _side: ConnectionSide) -> Self::Codec {
         Default::default()
@@ -72,11 +74,15 @@ impl Writing for Player {
 async fn main() {
     examples::start_logger(LevelFilter::INFO);
 
-    let mut players = Vec::with_capacity(NUM_PLAYERS);
-    for _ in 0..NUM_PLAYERS {
-        let player = Player(Node::new(Default::default()));
-        players.push(player);
-    }
+    let players = (0..NUM_PLAYERS)
+        .map(|id| {
+            let config = Config {
+                name: Some(id.to_string()),
+                ..Default::default()
+            };
+            Player(Node::new(config))
+        })
+        .collect::<Vec<_>>();
 
     // technically the first node doesn't need `Reading` and the last one doesn't need `Writing`
     for player in &players {
@@ -97,7 +103,14 @@ async fn main() {
         .unwrap()
         .await;
 
+    // wait for the message to make it to the last player (demo-only polling; see
+    // the c10k example for the Notify-based completion idiom)
     while players.last().unwrap().node().stats().received().0 != 1 {
         sleep(Duration::from_millis(10)).await;
+    }
+
+    // nodes are never dropped implicitly; always shut them down once done
+    for player in &players {
+        player.node().shut_down().await;
     }
 }

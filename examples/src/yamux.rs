@@ -1,11 +1,11 @@
-//! A simple implementation of the Yamux multiplexer.
+//! A simple implementation of the Yamux multiplexer, scoped to what the `libp2p`
+//! example needs (it only ever runs beneath the noise codec, whole frames at a time).
 
 use std::{fmt, io};
 
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use pea2pea::ConnectionSide;
-use tokio_util::codec::{BytesCodec, Decoder, Encoder};
-use tracing::*;
+use tokio_util::codec::{Decoder, Encoder};
 
 // the version used in Yamux message headers
 pub const VERSION: u8 = 0;
@@ -75,27 +75,21 @@ impl Frame {
 
 // a codec used to (de/en)code Yamux frames
 pub struct Codec {
-    codec: BytesCodec,
-    // client or server
+    // client or server; kept for documentation purposes (the client side
+    // should use odd stream IDs, the server side even ones)
     #[allow(dead_code)]
     mode: Side,
-    // the node's tracing span
-    span: Span,
 }
 
 impl Codec {
-    pub fn new(conn_side: ConnectionSide, span: Span) -> Self {
+    pub fn new(conn_side: ConnectionSide) -> Self {
         let mode = if conn_side == ConnectionSide::Initiator {
             Side::Client
         } else {
             Side::Server
         };
 
-        Self {
-            codec: BytesCodec::new(),
-            mode,
-            span,
-        }
+        Self { mode }
     }
 }
 
@@ -195,16 +189,14 @@ impl TryFrom<u8> for Flag {
 
 // interpret the flags encoded in a Yamux message
 fn decode_flags(flags: u16) -> io::Result<Vec<Flag>> {
-    let mut ret = Vec::new();
-
-    for n in 0..15 {
-        let bit = 1 << n;
-        if flags & bit != 0 {
-            ret.push(Flag::try_from(bit as u8)?);
-        }
+    if flags & !0xf != 0 {
+        return Err(io::ErrorKind::InvalidData.into());
     }
 
-    Ok(ret)
+    Ok([Flag::Syn, Flag::Ack, Flag::Fin, Flag::Rst]
+        .into_iter()
+        .filter(|flag| flags & (*flag as u16) != 0)
+        .collect())
 }
 
 // encode the given flags in a Yamux message
@@ -240,11 +232,12 @@ impl Decoder for Codec {
         let length = src.get_u32();
 
         let payload = match ty {
-            Ty::Data => src.clone(),
-            Ty::Ping => length.to_be_bytes().as_slice().into(),
-            _ => unimplemented!(),
-        }
-        .freeze();
+            // zero-copy: everything left in the buffer is the payload
+            Ty::Data => src.split().freeze(),
+            Ty::Ping => Bytes::copy_from_slice(&length.to_be_bytes()),
+            // header-only frames; the length field carries their semantic value
+            Ty::WindowUpdate | Ty::GoAway => Bytes::new(),
+        };
 
         Ok(Some(Frame {
             header: Header {

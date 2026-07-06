@@ -4,7 +4,7 @@ use std::{net::SocketAddr, time::Duration};
 
 use bytes::{Bytes, BytesMut};
 use pea2pea::{
-    ConnectionSide, Node, Pea2Pea,
+    Config, ConnectionSide, Node, Pea2Pea,
     protocols::{Reading, Writing},
 };
 use rand::RngExt;
@@ -23,7 +23,7 @@ impl Pea2Pea for GenericNode {
 
 impl Reading for GenericNode {
     type Message = BytesMut;
-    type Codec = examples::TestCodec<Self::Message>;
+    type Codec = examples::SimpleCodec<Self::Message>;
 
     fn codec(&self, _addr: SocketAddr, _side: ConnectionSide) -> Self::Codec {
         Default::default()
@@ -35,7 +35,7 @@ impl Reading for GenericNode {
 
 impl Writing for GenericNode {
     type Message = Bytes;
-    type Codec = examples::TestCodec<Self::Message>;
+    type Codec = examples::SimpleCodec<Self::Message>;
 
     fn codec(&self, _addr: SocketAddr, _side: ConnectionSide) -> Self::Codec {
         Default::default()
@@ -54,7 +54,13 @@ async fn main() {
     // start several nodes
     let mut nodes = Vec::with_capacity(NUM_PEERS);
     for i in 0..NUM_PEERS {
-        let node = GenericNode(Node::new(Default::default()));
+        // the first node talks to all the (loopback) peers, so it needs per-IP
+        // connection headroom (the default limit is 1)
+        let config = Config {
+            max_connections_per_ip: NUM_PEERS as u16,
+            ..Default::default()
+        };
+        let node = GenericNode(Node::new(config));
         node.enable_reading().await;
         node.enable_writing().await;
 
@@ -106,15 +112,8 @@ async fn main() {
                 .collect();
 
             // calculate average msg/s and bytes/s based on all the connections
-            let (sum_msg_rate, sum_byte_rate) = conn_rates.iter().fold(
-                (0.0, 0.0),
-                |(mut sum_msg_rate, mut sum_byte_rate), (msg_rate, byte_rate)| {
-                    sum_msg_rate += msg_rate;
-                    sum_byte_rate += byte_rate;
-
-                    (sum_msg_rate, sum_byte_rate)
-                },
-            );
+            let sum_msg_rate: f64 = conn_rates.iter().map(|(msg_rate, _)| msg_rate).sum();
+            let sum_byte_rate: f64 = conn_rates.iter().map(|(_, byte_rate)| byte_rate).sum();
             let avg_msg_rate = sum_msg_rate / conn_infos.len() as f64;
             let avg_byte_rate = sum_byte_rate / conn_infos.len() as f64;
 
@@ -152,9 +151,10 @@ async fn main() {
         let node = node.clone();
         let msg = msg.clone();
         tokio::spawn(async move {
-            let recipient_addr = node.node().connected_addrs()[0];
+            let recipient_addr = examples::await_connection(node.node()).await;
 
             loop {
+                // deliberately assert on every layer: queueing, sending, and delivery
                 node.unicast(recipient_addr, msg.clone())
                     .unwrap()
                     .await
@@ -174,14 +174,13 @@ async fn main() {
     let spammer = nodes[nodes.len() - 1].clone();
     tokio::spawn(async move {
         loop {
-            let recipient_addr = spammer.node().connected_addrs().first().copied();
-            if recipient_addr.is_none() {
+            let Some(recipient_addr) = spammer.node().connected_addrs().first().copied() else {
                 warn!(parent: spammer.node().span(), "blast! I've been found!");
                 break;
-            }
+            };
 
             spammer
-                .unicast(recipient_addr.unwrap(), msg.clone())
+                .unicast(recipient_addr, msg.clone())
                 .unwrap()
                 .await
                 .unwrap()
@@ -193,4 +192,9 @@ async fn main() {
 
     // run for a short while
     sleep(Duration::from_secs(5)).await;
+
+    // nodes are never dropped implicitly; always shut them down once done
+    for node in &nodes {
+        node.node().shut_down().await;
+    }
 }

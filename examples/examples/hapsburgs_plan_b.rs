@@ -45,7 +45,7 @@ impl Handshake for NakedNode {
 
 impl Reading for NakedNode {
     type Message = String;
-    type Codec = examples::TestCodec<Self::Message>;
+    type Codec = examples::SimpleCodec<Self::Message>;
 
     fn codec(&self, _addr: SocketAddr, _side: ConnectionSide) -> Self::Codec {
         Default::default()
@@ -72,7 +72,7 @@ impl Reading for NakedNode {
 
 impl Writing for NakedNode {
     type Message = String;
-    type Codec = examples::TestCodec<Self::Message>;
+    type Codec = examples::SimpleCodec<Self::Message>;
 
     fn codec(&self, _addr: SocketAddr, _side: ConnectionSide) -> Self::Codec {
         Default::default()
@@ -114,8 +114,7 @@ async fn main() {
 
         // Habsburg's thugs alert Drebin of their presence
         hapsburgs_thug.node().connect(drebin_addr).await.unwrap();
-        sleep(Duration::from_millis(50)).await;
-        let thug_addr = drebin.node().connected_addrs()[0];
+        let thug_addr = examples::await_connection(drebin.node()).await;
 
         let _ = drebin
             .unicast(thug_addr, "Talk!".to_string())
@@ -127,4 +126,7 @@ async fn main() {
         // the thug dies before revealing the location of Hapsburg's Plan B
         hapsburgs_thug.node().shut_down().await;
     }
+
+    // nodes are never dropped implicitly; always shut them down once done
+    drebin.node().shut_down().await;
 }

@@ -1,8 +1,8 @@
 //! NAT traversal via **true TCP simultaneous open** (a.k.a. TCP hole punching).
 //!
-//! This is the genuine-hole-punching counterpart to the `nat_traversal`
-//! example. Where that one elects a single initiator and has the other peer
-//! simply listen (which only works when the listener is already reachable),
+//! Unlike the simpler NAT-traversal schemes, which elect a single initiator
+//! and have the other peer simply listen (which only works when the listener
+//! is already reachable),
 //! here **both peers dial each other at once** from a socket pre-bound to the
 //! same local port they advertised. Each peer's outbound SYN opens its own
 //! NAT mapping; the crossing SYN then finds that mapping in place and the two
@@ -24,8 +24,8 @@
 //! a SYN that arrived a hair before the local `connect()` would be accepted by
 //! the listener as an ordinary inbound connection, and the subsequent dial
 //! would create a *second* connection - exactly the duplicate-connection
-//! problem the `nat_traversal` example tie-breaks around. Dropping the listener
-//! removes the race: a mistimed SYN simply gets a RST and the sender retries
+//! problem that listener-based schemes have to tie-break around. Dropping the
+//! listener removes the race: a mistimed SYN simply gets a RST and the sender retries
 //! until the two genuinely cross.
 //!
 //! ## Flow
@@ -193,11 +193,13 @@ impl Rendezvous {
                 other.name, other.punch_addr, peer.name, peer.punch_addr,
             );
             // each peer gets the other's punch address to dial
-            if let Err(e) = self.unicast(other.conn_addr, encode_peer(&peer.name, peer.punch_addr))
+            if let Err(e) =
+                self.unicast_fast(other.conn_addr, encode_peer(&peer.name, peer.punch_addr))
             {
                 warn!(parent: self.node.span(), "couldn't notify {}: {e}", other.name);
             }
-            if let Err(e) = self.unicast(peer.conn_addr, encode_peer(&other.name, other.punch_addr))
+            if let Err(e) =
+                self.unicast_fast(peer.conn_addr, encode_peer(&other.name, other.punch_addr))
             {
                 warn!(parent: self.node.span(), "couldn't notify {}: {e}", peer.name);
             }
@@ -320,7 +322,7 @@ impl Peer {
                         "P2P connection to {peer_addr} established on attempt {attempt}",
                     );
                     let greeting = format!("hello from {}", self.name);
-                    let _ = self.unicast(peer_addr, Bytes::from(greeting));
+                    let _ = self.unicast_fast(peer_addr, Bytes::from(greeting));
                     return;
                 }
                 Err(e) => {
@@ -402,27 +404,19 @@ async fn main() -> io::Result<()> {
     let args: Vec<String> = env::args().collect();
     let program = args.first().map(String::as_str).unwrap_or("hole_punching");
 
+    // the optional 2nd argument is an address (of the rendezvous server)
+    let addr_arg = |args: &[String]| -> SocketAddr {
+        args.get(2)
+            .map(|s| {
+                s.parse()
+                    .unwrap_or_else(|_| panic!("invalid address: {s:?}"))
+            })
+            .unwrap_or_else(|| DEFAULT_RENDEZVOUS.parse().unwrap())
+    };
+
     match args.get(1).map(String::as_str) {
-        Some("rendezvous") => {
-            let bind: SocketAddr = args
-                .get(2)
-                .map(|s| {
-                    s.parse()
-                        .unwrap_or_else(|_| panic!("invalid address: {s:?}"))
-                })
-                .unwrap_or_else(|| DEFAULT_RENDEZVOUS.parse().unwrap());
-            run_rendezvous(bind).await
-        }
-        Some(name @ ("alice" | "bob")) => {
-            let rendezvous: SocketAddr = args
-                .get(2)
-                .map(|s| {
-                    s.parse()
-                        .unwrap_or_else(|_| panic!("invalid address: {s:?}"))
-                })
-                .unwrap_or_else(|| DEFAULT_RENDEZVOUS.parse().unwrap());
-            run_peer(name.to_string(), rendezvous).await
-        }
+        Some("rendezvous") => run_rendezvous(addr_arg(&args)).await,
+        Some(name @ ("alice" | "bob")) => run_peer(name.to_string(), addr_arg(&args)).await,
         _ => {
             eprintln!("Usage:");
             eprintln!(
@@ -474,7 +468,7 @@ async fn run_peer(name: String, rendezvous_addr: SocketAddr) -> io::Result<()> {
     sleep(POST_CONNECT_SETTLE).await;
 
     // announce our punch address (in a real deployment: the STUN-learned one)
-    peer.unicast(rendezvous_addr, encode_register(&name, punch_addr))
+    peer.unicast_fast(rendezvous_addr, encode_register(&name, punch_addr))
         .map_err(|e| io::Error::other(format!("couldn't register with rendezvous: {e}")))?;
     info!(parent: peer.node().span(), "registered with the rendezvous; waiting to be paired");
 

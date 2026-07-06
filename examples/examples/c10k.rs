@@ -20,7 +20,7 @@ use tokio::{
     time::{sleep, timeout},
 };
 
-static TARGET_CONNS: usize = 10_000;
+const TARGET_CONNS: usize = 10_000;
 
 #[derive(Clone)]
 struct Server {
@@ -42,7 +42,7 @@ impl OnConnect for Server {
     }
 }
 
-#[tokio::main(flavor = "multi_thread")]
+#[tokio::main]
 async fn main() {
     // Create the server with a little headroom over the target. The connection
     // limits are `u16`, so saturate at the ceiling rather than silently
@@ -76,11 +76,8 @@ async fn main() {
         client_set.spawn(async move {
             loop {
                 match TcpStream::connect(server_addr).await {
-                    Ok(stream) => {
-                        // keep the socket active and counting towards the limit
-                        let _ = stream;
-                        std::future::pending::<()>().await;
-                    }
+                    // the binding keeps the socket open and counting towards the limit
+                    Ok(_stream) => std::future::pending::<()>().await,
                     Err(_) => {
                         // simulates "backpressure" being handled by the client
                         let jitter = rand::random::<u64>() % 200;

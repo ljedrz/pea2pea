@@ -1,3 +1,4 @@
+//! A stress test of rapid connection churn.
 //!
 //! Measures how many complete connection cycles (Connect -> Ping -> Pong -> Disconnect)
 //! the system can handle per second.
@@ -45,7 +46,7 @@ impl Pea2Pea for Server {
 
 impl Writing for Server {
     type Message = Bytes;
-    type Codec = examples::TestCodec<Self::Message>;
+    type Codec = examples::SimpleCodec<Self::Message>;
 
     fn codec(&self, _addr: SocketAddr, _side: ConnectionSide) -> Self::Codec {
         Default::default()
@@ -54,7 +55,7 @@ impl Writing for Server {
 
 impl Reading for Server {
     type Message = BytesMut;
-    type Codec = examples::TestCodec<Self::Message>;
+    type Codec = examples::SimpleCodec<Self::Message>;
 
     fn codec(&self, _addr: SocketAddr, _side: ConnectionSide) -> Self::Codec {
         Default::default()
@@ -83,7 +84,7 @@ impl Pea2Pea for Client {
 
 impl Writing for Client {
     type Message = Bytes;
-    type Codec = examples::TestCodec<Self::Message>;
+    type Codec = examples::SimpleCodec<Self::Message>;
 
     fn codec(&self, _addr: SocketAddr, _side: ConnectionSide) -> Self::Codec {
         Default::default()
@@ -92,7 +93,7 @@ impl Writing for Client {
 
 impl Reading for Client {
     type Message = BytesMut;
-    type Codec = examples::TestCodec<Self::Message>;
+    type Codec = examples::SimpleCodec<Self::Message>;
 
     fn codec(&self, _addr: SocketAddr, _side: ConnectionSide) -> Self::Codec {
         Default::default()
@@ -121,8 +122,7 @@ async fn main() {
     let server = Server {
         node: Node::new(server_config),
     };
-    server.enable_reading().await;
-    server.enable_writing().await;
+    tokio::join!(server.enable_reading(), server.enable_writing());
     let server_addr = server.node().toggle_listener().await.unwrap().unwrap();
 
     // objects shared between the clients
@@ -144,8 +144,7 @@ async fn main() {
                 reply_received: Default::default(),
                 global_cycles: cycles,
             };
-            client.enable_reading().await;
-            client.enable_writing().await;
+            tokio::join!(client.enable_reading(), client.enable_writing());
 
             let msg = Bytes::from_static(b"ping");
 
@@ -155,22 +154,14 @@ async fn main() {
                 if client.node.connect(server_addr).await.is_ok() {
                     // send a ping
                     if client.unicast_fast(server_addr, msg.clone()).is_ok() {
-                        // wait for pong, but timeout if packet is dropped or we are
-                        // shutting down; this prevents the client from hanging forever
-                        // if the OS drops a packet during high load
-                        match timeout(Duration::from_millis(200), client.reply_received.notified())
-                            .await
-                        {
-                            Ok(_) => {
-                                // happy path: received pong, disconnect
-                                let _ = client.node.disconnect(server_addr).await;
-                            }
-                            Err(_) => {
-                                // timeout path: packet lost (or shutdown requested);
-                                // disconnect to reset state and retry
-                                let _ = client.node.disconnect(server_addr).await;
-                            }
-                        }
+                        // wait for the pong, but time out if the packet is dropped or a
+                        // shutdown was requested - this prevents the client from hanging
+                        // forever if the OS drops a packet during high load; either way,
+                        // the cycle concludes with a disconnect
+                        let _ =
+                            timeout(Duration::from_millis(200), client.reply_received.notified())
+                                .await;
+                        let _ = client.node.disconnect(server_addr).await;
                     }
                 } else {
                     // if connect fails (e.g. OS ephemeral ports exhausted), back off slightly

@@ -11,10 +11,9 @@ use std::{
     time::Duration,
 };
 
-use bytes::BytesMut;
 use parking_lot::Mutex;
 use pea2pea::{
-    Connection, ConnectionSide, Node, Pea2Pea, Topology, connect_nodes,
+    Config, Connection, ConnectionSide, Node, Pea2Pea, Topology, connect_nodes,
     protocols::{Handshake, Reading, Writing},
 };
 use rand::{RngExt, SeedableRng, rngs::SmallRng, seq::IteratorRandom};
@@ -22,14 +21,23 @@ use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     time::sleep,
 };
-use tokio_util::codec::{Decoder, Encoder, LengthDelimitedCodec};
 use tracing::*;
 use tracing_subscriber::filter::LevelFilter;
 
 static RNG: LazyLock<Mutex<SmallRng>> =
     LazyLock::new(|| Mutex::new(SmallRng::from_rng(&mut rand::rng())));
 
+const NUM_PLAYERS: usize = 10;
+
 type PlayerName = String;
+
+// unset the previous potato carrier (if there was one)
+fn clear_carrier(other_players: &mut HashMap<PlayerName, PlayerInfo>) {
+    if let Some(old_carrier) = other_players.values_mut().find(|p| p.is_carrier) {
+        old_carrier.is_carrier = false;
+    }
+    assert!(other_players.values().all(|p| !p.is_carrier));
+}
 
 #[derive(Debug)]
 struct PlayerInfo {
@@ -46,8 +54,15 @@ struct Player {
 
 impl Player {
     fn new() -> Self {
+        // a full mesh of loopback nodes needs per-IP connection headroom
+        // (the default limit is 1)
+        let config = Config {
+            max_connections_per_ip: NUM_PLAYERS as u16,
+            ..Default::default()
+        };
+
         Self {
-            node: Node::new(Default::default()),
+            node: Node::new(config),
             other_players: Default::default(),
             potato_count: Default::default(),
         }
@@ -93,8 +108,7 @@ impl Handshake for Player {
         let peer_name = match node_conn_side {
             ConnectionSide::Initiator => {
                 // send own PlayerName
-                let own_name = self.node().name().as_bytes().to_vec();
-                stream.write_all(&own_name).await?;
+                stream.write_all(self.node().name().as_bytes()).await?;
 
                 // receive the peer's PlayerName
                 let len = stream.read(&mut buffer).await?;
@@ -107,8 +121,7 @@ impl Handshake for Player {
                 let peer_name = String::from_utf8_lossy(&buffer[..len]).into_owned();
 
                 // send own PlayerName
-                let own_name = self.node().name().as_bytes().to_vec();
-                stream.write_all(&own_name).await?;
+                stream.write_all(self.node().name().as_bytes()).await?;
 
                 peer_name
             }
@@ -130,60 +143,20 @@ enum Message {
     IHaveThePotato(PlayerName),
 }
 
-struct PotatoCodec(LengthDelimitedCodec);
-
-impl Default for PotatoCodec {
-    fn default() -> Self {
-        let inner = LengthDelimitedCodec::builder()
-            .length_field_length(1)
-            .new_codec();
-        Self(inner)
-    }
-}
-
-impl Decoder for PotatoCodec {
-    type Item = Message;
-    type Error = io::Error;
-
-    fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
-        self.0
-            .decode(src)?
-            .map(|b| {
-                postcard::from_bytes::<Self::Item>(&b)
-                    .map_err(|_| io::ErrorKind::InvalidData.into())
-            })
-            .transpose()
-    }
-}
-
-impl Encoder<Message> for PotatoCodec {
-    type Error = io::Error;
-
-    fn encode(&mut self, item: Message, dst: &mut BytesMut) -> Result<(), Self::Error> {
-        let bytes = postcard::to_stdvec(&item).unwrap().into();
-        self.0.encode(bytes, dst)
-    }
-}
-
 impl Reading for Player {
     type Message = Message;
-    type Codec = PotatoCodec;
+    type Codec = examples::PostcardCodec<Message>;
 
     fn codec(&self, _addr: SocketAddr, _side: ConnectionSide) -> Self::Codec {
-        Default::default()
+        // a single-byte length prefix suffices for these tiny messages
+        examples::PostcardCodec::new(1)
     }
 
     async fn process_message(&self, _source: SocketAddr, message: Self::Message) {
         match message {
             Message::HotPotato => {
                 info!(parent: self.node().span(), "I have the potato!");
-                {
-                    let mut other_players = self.other_players.lock();
-                    if let Some(old_carrier) = other_players.values_mut().find(|p| p.is_carrier) {
-                        old_carrier.is_carrier = false;
-                    }
-                    assert!(other_players.values().all(|p| !p.is_carrier));
-                }
+                clear_carrier(&mut self.other_players.lock());
 
                 self.potato_count.fetch_add(1, Relaxed);
                 self.throw_potato().await;
@@ -191,10 +164,7 @@ impl Reading for Player {
             Message::IHaveThePotato(carrier) => {
                 let mut other_players = self.other_players.lock();
 
-                if let Some(old_carrier) = other_players.values_mut().find(|p| p.is_carrier) {
-                    old_carrier.is_carrier = false;
-                }
-                assert!(other_players.values().all(|p| !p.is_carrier));
+                clear_carrier(&mut other_players);
                 if let Some(new_carrier) = other_players.get_mut(&carrier) {
                     new_carrier.is_carrier = true;
                 }
@@ -205,26 +175,24 @@ impl Reading for Player {
 
 impl Writing for Player {
     type Message = Message;
-    type Codec = PotatoCodec;
+    type Codec = examples::PostcardCodec<Message>;
 
     fn codec(&self, _addr: SocketAddr, _side: ConnectionSide) -> Self::Codec {
-        Default::default()
+        // a single-byte length prefix suffices for these tiny messages
+        examples::PostcardCodec::new(1)
     }
 }
 
 #[tokio::main]
 async fn main() {
+    // the game is very fast-paced; run with RUST_LOG=info to watch it live
     examples::start_logger(LevelFilter::OFF);
 
     const GAME_TIME_SECS: u64 = 5;
-    const NUM_PLAYERS: usize = 10;
 
     println!("hot potato! players: {NUM_PLAYERS}, play time: {GAME_TIME_SECS}s");
 
-    let mut players = Vec::with_capacity(NUM_PLAYERS);
-    for _ in 0..NUM_PLAYERS {
-        players.push(Player::new());
-    }
+    let players = (0..NUM_PLAYERS).map(|_| Player::new()).collect::<Vec<_>>();
 
     for player in &players {
         player.enable_handshake().await;
@@ -247,5 +215,10 @@ async fn main() {
             player.node().name(),
             player.potato_count.load(Relaxed)
         );
+    }
+
+    // nodes are never dropped implicitly; always shut them down once done
+    for player in &players {
+        player.node().shut_down().await;
     }
 }

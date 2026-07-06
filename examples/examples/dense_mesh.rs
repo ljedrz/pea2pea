@@ -50,7 +50,7 @@ impl Pea2Pea for MeshNode {
 
 impl Reading for MeshNode {
     type Message = BytesMut;
-    type Codec = examples::TestCodec<Self::Message>;
+    type Codec = examples::SimpleCodec<Self::Message>;
 
     // optimization: reduce buffer from default 64kB to 4kB to minimize footprint
     const INITIAL_BUFFER_SIZE: usize = 4 * 1024;
@@ -69,7 +69,7 @@ impl Reading for MeshNode {
 
 impl Writing for MeshNode {
     type Message = Bytes;
-    type Codec = examples::TestCodec<Self::Message>;
+    type Codec = examples::SimpleCodec<Self::Message>;
 
     // optimization: reduce buffer from default 64kB to 4kB to minimize footprint
     const INITIAL_BUFFER_SIZE: usize = 4 * 1024;
@@ -85,8 +85,8 @@ async fn main() {
     println!("--- Dense Mesh Benchmark (RAM & Throughput) ---");
     println!("Initial Heap Usage: {:.2} MB", to_mb(initial_mem));
 
+    // every node messages each of its peers exactly once
     let expected_connections = NUM_NODES * (NUM_NODES - 1);
-    let total_expected_msgs = expected_connections;
     let total_received = Arc::new(AtomicUsize::new(0));
     let completion_signal = Arc::new(Notify::new());
 
@@ -109,11 +109,10 @@ async fn main() {
             node: Node::new(config),
             total_received: total_received.clone(),
             completion_signal: completion_signal.clone(),
-            target_count: total_expected_msgs,
+            target_count: expected_connections,
         };
 
-        node.enable_reading().await;
-        node.enable_writing().await;
+        tokio::join!(node.enable_reading(), node.enable_writing());
         node.node()
             .toggle_listener()
             .await

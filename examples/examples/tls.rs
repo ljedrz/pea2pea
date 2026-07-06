@@ -114,7 +114,8 @@ impl Writing for TlsNode {
 
 #[tokio::main]
 async fn main() {
-    examples::start_logger(LevelFilter::TRACE);
+    // DEBUG exposes the individual handshake steps
+    examples::start_logger(LevelFilter::DEBUG);
 
     // start the TLS-capable nodes; note: both can initiate and accept connections
     let connector = TlsNode::new("connector");
@@ -131,12 +132,11 @@ async fn main() {
     // connect the connector to the acceptor
     connector.node().connect(acceptor_addr).await.unwrap();
 
-    // determine the connector's address first
-    sleep(Duration::from_millis(10)).await;
-    let connector_addr = acceptor.node().connected_addrs()[0];
+    // determine the connector's (ephemeral) address first
+    let connector_addr = examples::await_connection(acceptor.node()).await;
 
     // prepare a generic message
-    let msg = Bytes::from(b"herp derp".to_vec());
+    let msg = Bytes::from_static(b"herp derp");
 
     // send a message from connector to acceptor
     let _ = connector.unicast(acceptor_addr, msg.clone()).unwrap().await;
@@ -146,4 +146,9 @@ async fn main() {
 
     // a small delay to ensure all messages were processed
     sleep(Duration::from_millis(10)).await;
+
+    // nodes are never dropped implicitly; always shut them down once done
+    for node in [connector, acceptor] {
+        node.node().shut_down().await;
+    }
 }

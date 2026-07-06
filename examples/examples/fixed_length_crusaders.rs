@@ -51,12 +51,15 @@ enum BattleCry {
     Muda,
 }
 
-impl From<u8> for BattleCry {
-    fn from(byte: u8) -> Self {
+impl TryFrom<u8> for BattleCry {
+    type Error = io::Error;
+
+    // the byte comes from the network, so it must not be trusted blindly
+    fn try_from(byte: u8) -> io::Result<Self> {
         match byte {
-            0 => BattleCry::Ora,
-            1 => BattleCry::Muda,
-            _ => unreachable!(),
+            0 => Ok(BattleCry::Ora),
+            1 => Ok(BattleCry::Muda),
+            _ => Err(io::ErrorKind::InvalidData.into()),
         }
     }
 }
@@ -71,7 +74,7 @@ impl Decoder for SingleByteCodec {
         if src.is_empty() {
             return Ok(None);
         }
-        Ok(Some(src.get_u8().into()))
+        BattleCry::try_from(src.get_u8()).map(Some)
     }
 }
 
@@ -104,7 +107,9 @@ impl Reading for JoJoNode {
             warn!(parent: self.node().span(), "{:?}!", reply);
         };
 
-        let _ = self.unicast(source, reply).unwrap().await;
+        if let Ok(rx) = self.unicast(source, reply) {
+            let _ = rx.await;
+        }
     }
 }
 
@@ -147,4 +152,9 @@ async fn main() {
     let _ = jotaro.unicast(dio_addr, BattleCry::Ora).unwrap().await;
 
     sleep(Duration::from_secs(3)).await;
+
+    // nodes are never dropped implicitly; always shut them down once done
+    for node in [jotaro, dio] {
+        node.node().shut_down().await;
+    }
 }

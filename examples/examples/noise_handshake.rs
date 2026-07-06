@@ -70,8 +70,10 @@ impl Reading for SecureNode {
     type Codec = noise::Codec;
 
     fn codec(&self, addr: SocketAddr, _side: ConnectionSide) -> Self::Codec {
+        // Reading's codec is created first, so it clones the noise state; the
+        // Writing codec (created last) removes it and takes final ownership
         let state = self.noise_states.read().get(&addr).cloned().unwrap();
-        noise::Codec::new(2, u16::MAX as usize, state, self.node().span().clone())
+        noise::Codec::standard(state, self.node().span().clone())
     }
 
     async fn process_message(&self, source: SocketAddr, message: Self::Message) {
@@ -84,14 +86,17 @@ impl Writing for SecureNode {
     type Codec = noise::Codec;
 
     fn codec(&self, addr: SocketAddr, _side: ConnectionSide) -> Self::Codec {
+        // created after Reading's codec (which cloned the state), so it can
+        // remove the entry and take final ownership
         let state = self.noise_states.write().remove(&addr).unwrap();
-        noise::Codec::new(2, u16::MAX as usize, state, self.node().span().clone())
+        noise::Codec::standard(state, self.node().span().clone())
     }
 }
 
 #[tokio::main]
 async fn main() {
-    examples::start_logger(LevelFilter::TRACE);
+    // DEBUG exposes the individual handshake steps
+    examples::start_logger(LevelFilter::DEBUG);
 
     let initiator = SecureNode::new("initiator");
     let responder = SecureNode::new("responder");
@@ -107,19 +112,15 @@ async fn main() {
     // connect the initiator to the responder
     initiator.node().connect(responder_addr).await.unwrap();
 
-    // determine the initiator's address first
-    sleep(Duration::from_millis(10)).await;
-    let initiator_addr = responder.node().connected_addrs()[0];
+    // determine the initiator's (ephemeral) address first
+    let initiator_addr = examples::await_connection(responder.node()).await;
 
     // send multiple messages to double-check nonce handling
     for _ in 0..3 {
         // send a message from initiator to responder
         let msg = b"why hello there, fellow noise protocol user; I'm the initiator";
         let _ = initiator
-            .unicast(
-                responder.node().listening_addr().await.unwrap(),
-                Bytes::from(&msg[..]),
-            )
+            .unicast(responder_addr, Bytes::from(&msg[..]))
             .unwrap()
             .await;
 
@@ -133,4 +134,9 @@ async fn main() {
 
     // a small delay to ensure all messages were processed
     sleep(Duration::from_millis(10)).await;
+
+    // nodes are never dropped implicitly; always shut them down once done
+    for node in [initiator, responder] {
+        node.node().shut_down().await;
+    }
 }

@@ -42,7 +42,7 @@ impl Pea2Pea for DiscoveryNode {
 
 impl Reading for DiscoveryNode {
     type Message = String;
-    type Codec = examples::TestCodec<Self::Message>;
+    type Codec = examples::SimpleCodec<Self::Message>;
 
     fn codec(&self, _addr: SocketAddr, _side: ConnectionSide) -> Self::Codec {
         Default::default()
@@ -55,7 +55,7 @@ impl Reading for DiscoveryNode {
 
 impl Writing for DiscoveryNode {
     type Message = String;
-    type Codec = examples::TestCodec<Self::Message>;
+    type Codec = examples::SimpleCodec<Self::Message>;
 
     fn codec(&self, _addr: SocketAddr, _side: ConnectionSide) -> Self::Codec {
         Default::default()
@@ -152,7 +152,7 @@ impl DiscoveryNode {
 
                             match node.node().connect(peer_tcp_addr).await {
                                 Ok(_) => {
-                                    let _ = node.unicast(peer_tcp_addr, "I see you!".into());
+                                    let _ = node.unicast_fast(peer_tcp_addr, "I see you!".into());
                                 }
                                 Err(e) => {
                                     error!("Couldn't connect to {peer_tcp_addr}: {e}");

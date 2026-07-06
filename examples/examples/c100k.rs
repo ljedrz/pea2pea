@@ -106,7 +106,7 @@ fn shard_config(addr: SocketAddr, idx: usize) -> Config {
     }
 }
 
-#[tokio::main(flavor = "multi_thread")]
+#[tokio::main]
 async fn main() {
     let total = Arc::new(AtomicUsize::new(0));
     let done = Arc::new(Notify::new());
@@ -156,11 +156,8 @@ async fn main() {
                     continue;
                 }
                 match sock.connect(bound).await {
-                    Ok(stream) => {
-                        // keep the socket active and counting towards the limit
-                        let _ = stream;
-                        std::future::pending::<()>().await;
-                    }
+                    // the binding keeps the socket open and counting towards the limit
+                    Ok(_stream) => std::future::pending::<()>().await,
                     Err(_) => backoff().await,
                 }
             }
