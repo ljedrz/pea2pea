@@ -33,7 +33,7 @@
 * **Minimal Dependency Tree:** `pea2pea` only has **6** of the most scrutinized, native dependencies, which restricts supply chain attack surface, and grants lightning-fast compile times.
 * **Uncompromising Performance:** Designed as a minimal abstraction layer, the library imposes negligible overhead, allowing your application to saturate the underlying network hardware or loopback interface limits.
 * **Tiny Footprint:** The core node structure occupies just **~16kB of RAM**; per-connection memory usage starts at **~14kB** and scales directly with your configured buffer sizes.
-* **Meticulously Tested:** A comprehensive collection of tests and examples ensures correctness, not to mention a host of punishing stress tests targeting heisenbugs; there is no `unsafe` code involved.
+* **Meticulously Tested:** A comprehensive collection of tests and examples ensures correctness, not to mention a host of punishing stress tests targeting heisenbugs; there is no `unsafe` code involved, and the concurrency contract is spelled out in [INVARIANTS.md](INVARIANTS.md).
 * **Complete Control:** You dictate the application logic, and control **every** byte sent and received. Use slightly altered nodes to quickly set up chaos/fuzz/stress tests for your production nodes.
 
 ---
@@ -132,7 +132,10 @@ For full details, refer to the **[protocols documentation](https://docs.rs/pea2p
 
 You could call the design philosophy "healthily paranoid." `pea2pea` treats the outside world - and even custom protocol layers - with systematic skepticism. Rather than assuming perfect execution, it wraps user-defined hooks and network events in rigid guardrails, isolating failures so that a single misbehaving peer or implementation oversight won't bring down the node.
 
-For the security policy, see [SECURITY.md](SECURITY.md).
+For the security policy, see [SECURITY.md](SECURITY.md). For a catalog of the runtime
+invariants the implementation upholds - each with its enforcement mechanism and failure
+mode, along with the properties it deliberately does *not* promise - see
+[INVARIANTS.md](INVARIANTS.md).
 
 > **Challenge:** We invite you to try and break a `pea2pea`-powered node. Point your favorite stress-testing tool (like `hping3` or a custom fuzzer) at it; the node will hold its ground.
 
@@ -167,7 +170,8 @@ exceeds its configured connection limits or retains active connections past
 its shutdown, or the file-descriptor and task counts creep beyond their
 ceilings. At the end of a run, every counter must reconcile exactly: nodes
 spawned equals nodes shut down, every `on_connect` is paired with an
-`on_disconnect`, and nothing whatsoever remains in flight.
+`on_disconnect`, and nothing whatsoever remains in flight. The properties
+being defended are the ones catalogued in [INVARIANTS.md](INVARIANTS.md).
 
 This is no ceremonial test suite: its regimes have repeatedly caught real
 bugs living in race windows so narrow that they required tens of millions of
