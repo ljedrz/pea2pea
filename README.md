@@ -141,33 +141,42 @@ For the security policy, see [SECURITY.md](SECURITY.md).
 ### 🌀 Chaos Testing
 
 `pea2pea` is [routinely](https://github.com/ljedrz/pea2pea/actions/workflows/nightly-chaos.yml)
-subjected to extensive adversarial stress testing: long runs of maximally hostile concurrent churn,
-designed to surface synchronization bugs, leaks, and lifecycle inconsistencies that simpler tests
-can't reach.
+subjected to a genuinely brutal adversarial gauntlet: long runs of maximally hostile, fully
+randomized concurrent churn, designed to surface synchronization bugs, leaks, and lifecycle
+inconsistencies that no scripted test can reach.
 
-A representative session: 16 worker tasks driving fully randomized operations against a pool of up
-to 32 concurrent nodes, with action delays of **0–500µs**, completing ~32 million connect/disconnect
-lifecycles out of ~35 million attempts - `on_connect`/`on_disconnect` balanced across ~65 million
-callbacks - and ~44 million messages delivered, over a single 2-hour run. Every operation - node
-spawning, shutdown, connection establishment, disconnection, broadcast, unicast - is selected at
-random, without any coordination. Workers actively race each other on every shared structure the
-library exposes.
+The test maintains a pool of up to 32 live nodes and unleashes 16 uncoordinated workers on it,
+each rolling dice on every action - node spawns and shutdowns, connects and disconnects, listener
+flapping, broadcasts and unicasts - racing one another on every shared structure the library
+exposes. And the pressure is never allowed to settle into a comfortable rhythm:
 
-Across the run the library:
+- **Swarm-sampled action mixes.** Every epoch, the action weights are randomly
+  re-rolled from the run's seed - some actions dominate, others vanish
+  entirely - so successive epochs explore wildly different regimes (all-out
+  churn, connection hoarding, drain-only, ...) instead of one hand-tuned mix.
+- **An adaptive governor.** A feedback loop measures executor lag and steers
+  the action pacing to keep the runtime contended-but-alive on any host: the
+  test automatically finds each machine's breaking point and camps next to it.
+- **Burst storms.** Every so often, dozens of extra workers flood the pool at
+  zero delay, deliberately shoving the executor into the overloaded, lagging
+  regime - and then release the pressure, exercising recovery from it.
 
-- **Held all lifecycle invariants.** `on_connect` and `on_disconnect`
-  callback counts paired to within the live-connection count at any
-  observation moment - no dropped callbacks across millions of events.
-- **Maintained a bounded working set.** Peak heap usage stayed well under
-  20 MiB regardless of run duration; the heap returns to baseline as
-  connections close, with no growth proportional to total events processed.
-- **Recovered cleanly from every shutdown.** Node teardown leaves no
-  detectable residue - no leaked tasks, no leaked sockets, no leaked
-  allocations.
+While the storm rages, watchdogs fail the run on the spot if any operation
+wedges past its designed time bounds, the workers stall as a whole, a node
+exceeds its configured connection limits or retains active connections past
+its shutdown, or the file-descriptor and task counts creep beyond their
+ceilings. At the end of a run, every counter must reconcile exactly: nodes
+spawned equals nodes shut down, every `on_connect` is paired with an
+`on_disconnect`, and nothing whatsoever remains in flight.
+
+This is no ceremonial test suite: its regimes have repeatedly caught real
+bugs living in race windows so narrow that they required tens of millions of
+operations to trigger even once.
 
 The chaos test is included in the repository as
-[`tests/chaos.rs`](tests/tests/chaos.rs) and is fully reproducible; set
-`CHAOS_RUNTIME_SECS` for a fixed deadline or run until interrupted.
+[`tests/chaos.rs`](tests/tests/chaos.rs); it runs until interrupted (or for
+`CHAOS_RUNTIME_SECS`), and the printed seed allows best-effort reproduction
+of a given run's action sequences.
 
 ---
 
