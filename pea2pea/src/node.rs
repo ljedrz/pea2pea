@@ -15,7 +15,7 @@ use parking_lot::Mutex;
 use tokio::{
     io::split,
     net::{TcpListener, TcpSocket, TcpStream},
-    sync::{RwLock, Semaphore, oneshot},
+    sync::{Notify, RwLock, Semaphore, oneshot, watch},
     task::JoinHandle,
     time::{sleep, timeout},
 };
@@ -114,6 +114,16 @@ pub struct InnerNode {
     pub(crate) tasks: Mutex<HashMap<NodeTask, JoinHandle<()>>>,
     /// Indicates whether the shutdown sequence has begun.
     shutting_down: Arc<AtomicBool>,
+    /// Tells the protocol handler tasks to wind down gracefully: stop
+    /// accepting new work, drain their queues, and exit.
+    pub(crate) shutdown_signal: watch::Sender<bool>,
+    /// The number of in-flight `OnConnect` scheduling tasks; `shut_down`
+    /// waits for it to reach zero before signaling the handlers, so that a
+    /// scheduling task delayed by executor lag cannot fire its trigger into
+    /// an already-closed channel and silently skip the hook.
+    sched_in_flight: AtomicUsize,
+    /// Notifies `shut_down` when `sched_in_flight` reaches zero.
+    sched_drained: Notify,
 }
 
 impl Node {
@@ -158,6 +168,9 @@ impl Node {
             span,
             config,
             listening_addr: Default::default(),
+            shutdown_signal: watch::Sender::new(false),
+            sched_in_flight: AtomicUsize::new(0),
+            sched_drained: Notify::new(),
             protocols: Default::default(),
             connections: Connections::new(shutting_down.clone()),
             connecting_permits,
@@ -445,7 +458,10 @@ impl Node {
         // cleanup guard can be scoped to this exact connection (see DisconnectOnDrop)
         let conn_id = connection.id;
 
-        // connecting -> connected
+        // account for the upcoming OnConnect scheduling before the connection
+        // becomes visible in `active`, so that `shut_down` - which drains
+        // `active` first - can never miss it
+        let sched_guard = SchedulingGuard::new(self.clone());
         self.connections.add(connection, guard)?;
 
         // send the aforementioned notification so that reading from the socket can commence
@@ -465,6 +481,7 @@ impl Node {
             // be skipped nor - if `OnConnect::ABORTABLE` - have its task escape cleanup
             let node = self.clone();
             let scheduling_task = tokio::spawn(async move {
+                let _sched_guard = sched_guard;
                 let Some(handler) = node.protocols.on_connect.get() else {
                     return; // unreachable: checked above, and protocols are never disabled
                 };
@@ -906,6 +923,44 @@ impl Node {
             notified.await;
         }
 
+        // wait out any in-flight OnConnect scheduling tasks; every connection
+        // that reached `active` was preceded by its guard, and new ones can
+        // no longer be added, so the count can only fall from here. Without
+        // this, a scheduling task delayed by executor lag could fire its
+        // trigger into the closed channel below and silently skip the hook
+        loop {
+            let notified = self.sched_drained.notified();
+            tokio::pin!(notified);
+            notified.as_mut().enable(); // register the waiter
+            if self.sched_in_flight.load(Acquire) == 0 {
+                break;
+            }
+            notified.await;
+        }
+
+        // signal the protocol handler tasks to wind down gracefully: each one
+        // stops accepting new work and then drains its queue - the setup
+        // handlers (Handshake/Reading/Writing) by failing the queued requests,
+        // the hook handlers (OnConnect/OnDisconnect) by still running the
+        // queued hooks, preserving the pairing guarantees. Draining via `recv`
+        // (as opposed to dropping the receiver) also waits out any message
+        // that is still mid-send, so nothing gets stranded in the channels.
+        let _ = self.shutdown_signal.send(true);
+        for kind in [
+            NodeTask::Handshake,
+            NodeTask::Reading,
+            NodeTask::Writing,
+            NodeTask::OnConnect,
+            NodeTask::OnDisconnect,
+        ] {
+            if let Some(handle) = tasks.0.get_mut(&kind) {
+                // the handles stay inside the aborter, so if this future is
+                // dropped mid-await, they still get aborted; aborting an
+                // already-completed handle is a no-op
+                let _ = timeout(Duration::from_secs(3), handle).await;
+            }
+        }
+
         // abort the remaining tasks, which should now be inert
         drop(tasks);
 
@@ -938,6 +993,27 @@ impl Node {
 /// must nonetheless outlive the disconnect fan-out in `shut_down`, which relies on the
 /// `OnDisconnect` handler, hence a guard rather than an upfront abort.
 struct NodeTaskAborter(HashMap<NodeTask, JoinHandle<()>>);
+
+/// Tracks one in-flight `OnConnect` scheduling task (or the decision not to
+/// spawn one); the count is incremented at creation - crucially *before* the
+/// connection enters `active` - and decremented on drop, waking `shut_down`
+/// once no scheduling work remains.
+struct SchedulingGuard(Node);
+
+impl SchedulingGuard {
+    fn new(node: Node) -> Self {
+        node.sched_in_flight.fetch_add(1, AcqRel);
+        Self(node)
+    }
+}
+
+impl Drop for SchedulingGuard {
+    fn drop(&mut self) {
+        if self.0.sched_in_flight.fetch_sub(1, AcqRel) == 1 {
+            self.0.sched_drained.notify_waiters();
+        }
+    }
+}
 
 impl Drop for NodeTaskAborter {
     fn drop(&mut self) {

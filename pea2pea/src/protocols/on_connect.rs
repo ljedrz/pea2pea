@@ -103,7 +103,15 @@ where
                     return;
                 }
 
-                while let Some(((addr, conn_id), notifier)) = from_node_receiver.recv().await {
+                let mut shutdown = self_clone.node().shutdown_signal.subscribe();
+                let mut draining = false;
+                loop {
+                    tokio::select! {
+                        biased;
+                        maybe_item = from_node_receiver.recv() => {
+                            let Some(((addr, conn_id), notifier)) = maybe_item else {
+                                break; // channel closed and drained
+                            };
                     let self_clone2 = self_clone.clone();
                     let handle = tokio::spawn(async move {
                         // disconnect automatically if the OnConnect impl panics
@@ -132,6 +140,18 @@ where
                     });
                     // notify the node that the initial actions have been scheduled
                     let _ = notifier.send((handle, Self::ABORTABLE)); // can't really fail
+                        }
+                        res = shutdown.wait_for(|sig| *sig), if !draining => {
+                            let _ = res;
+                            // stop accepting new triggers, but keep running the
+                            // queued hooks - they belong to connections that made
+                            // it into the active set, so skipping them would break
+                            // the OnConnect/OnDisconnect pairing; draining via
+                            // `recv` also waits out any trigger still mid-send
+                            from_node_receiver.close();
+                            draining = true;
+                        }
+                    }
                 }
             });
             let _ = rx.await;

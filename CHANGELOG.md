@@ -1,8 +1,13 @@
 # 0.57.1
 
+### Changed
+
+- the protocol handler tasks now wind down gracefully during `Node::shut_down` - they stop accepting new work and drain their queues, instead of being aborted
+
 ### Fixed
 
 - a very rare shutdown/connect race leading to a leak under extreme churn
+- `OnConnect` hooks with `ABORTABLE = false` could be silently skipped for established connections when a node shutdown raced the connection setup, breaking the `OnConnect`/`OnDisconnect` pairing guarantee (edge case)
 
 # 0.57.0
 

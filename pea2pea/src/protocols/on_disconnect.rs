@@ -95,7 +95,15 @@ where
                     return;
                 }
 
-                while let Some(((addr, origin), notifier)) = from_node_receiver.recv().await {
+                let mut shutdown = self_clone.node().shutdown_signal.subscribe();
+                let mut draining = false;
+                loop {
+                    tokio::select! {
+                        biased;
+                        maybe_item = from_node_receiver.recv() => {
+                            let Some(((addr, origin), notifier)) = maybe_item else {
+                                break; // channel closed and drained
+                            };
                     let self_clone2 = self_clone.clone();
 
                     // create a channel for waiting on completion
@@ -129,6 +137,18 @@ where
                         // the hook rather than let it run detached, where it would outlive the
                         // connection's removal (and potentially even the node's shutdown)
                         handle.abort();
+                    }
+                        }
+                        res = shutdown.wait_for(|sig| *sig), if !draining => {
+                            let _ = res;
+                            // stop accepting new triggers, but keep running the
+                            // queued hooks - they belong to connections that made
+                            // it into the active set, so skipping them would break
+                            // the OnConnect/OnDisconnect pairing; draining via
+                            // `recv` also waits out any trigger still mid-send
+                            from_node_receiver.close();
+                            draining = true;
+                        }
                     }
                 }
             });

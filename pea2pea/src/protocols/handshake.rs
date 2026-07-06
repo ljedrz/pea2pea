@@ -61,6 +61,8 @@ where
                     return;
                 }
 
+                let mut shutdown = self_clone.node().shutdown_signal.subscribe();
+                let mut draining = false;
                 loop {
                     tokio::select! {
                         biased;
@@ -70,14 +72,28 @@ where
                         }
                         maybe_conn = conn_receiver.recv() => {
                             match maybe_conn {
+                                // during the shutdown drain, fail the queued
+                                // setups instead of spawning them; dropping an
+                                // item drops the returner within, which the
+                                // caller observes as a clean "shutting down"
+                                Some(_returnable_conn) if draining => {}
                                 Some(returnable_conn) => {
                                     let self_clone2 = self_clone.clone();
                                     setup_tasks.spawn(async move {
                                         self_clone2.handle_new_connection(returnable_conn).await;
                                     });
                                 }
-                                None => break, // channel closed
+                                None => break, // channel closed and drained
                             }
+                        }
+                        res = shutdown.wait_for(|sig| *sig), if !draining => {
+                            let _ = res;
+                            // stop accepting new setups and drain the queue via
+                            // `recv`, which - unlike dropping the receiver -
+                            // waits out any send that is still mid-write, so no
+                            // message can be stranded in the channel
+                            conn_receiver.close();
+                            draining = true;
                         }
                     }
                 }
