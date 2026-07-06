@@ -34,6 +34,13 @@
 //! part is machine-dependent. Set `CHAOS_GOVERNOR=0` to pin the static delay
 //! range instead.
 //!
+//! Every so often the test runs a burst: a swarm of short-lived extra
+//! workers floods the pool with zero-delay actions, deliberately pushing the
+//! executor into the lagging, overloaded regime the governor otherwise
+//! steers away from - and then releases the pressure, exercising recovery.
+//! The governor pauses its steering while a burst is active. Set
+//! `CHAOS_BURST=0` to disable bursts.
+//!
 //! Alongside the end-of-run invariants, watchdogs run *during* the test:
 //! no action may exceed a generous age bound (that's a wedge, not
 //! congestion), the workers as a whole must keep completing actions,
@@ -66,7 +73,7 @@ use std::{
     net::{IpAddr, Ipv4Addr, SocketAddr},
     sync::{
         Arc,
-        atomic::{AtomicU8, AtomicU32, AtomicU64, AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicU8, AtomicU32, AtomicU64, AtomicUsize, Ordering},
     },
     time::{Duration, Instant},
 };
@@ -114,10 +121,21 @@ const DEFAULT_EPOCH_SECS: u64 = 30;
 // (EWMA, in microseconds); the delay ceiling is steered multiplicatively
 // between the floor and the cap to keep the lag inside the target band.
 const LAG_PROBE: Duration = Duration::from_millis(5);
+/// The governor adjusts the delay ceiling once per this many lag probes.
+const GOVERNOR_STEER_EVERY: u32 = 20;
 const LAG_HIGH_US: f64 = 8_000.0;
 const LAG_LOW_US: f64 = 2_000.0;
 const DELAY_FLOOR_US: u64 = 100;
 const DELAY_CAP_US: u64 = 100_000;
+
+// Burst bounds. A burst adds `NUM_WORKERS..=BURST_WORKERS_MAX` extra
+// workers and suspends all action delays for its duration; the gaps between
+// bursts leave enough room to observe a full recovery.
+const BURST_WORKERS_MAX: usize = 64;
+const BURST_MIN_MS: u64 = 1_000;
+const BURST_MAX_MS: u64 = 5_000;
+const BURST_GAP_MIN_MS: u64 = 10_000;
+const BURST_GAP_MAX_MS: u64 = 40_000;
 
 // Watchdog bounds. Every action is designed to conclude within seconds (the
 // connect path is the slowest: the TCP connect timeout plus the handshake
@@ -153,29 +171,17 @@ enum Action {
     Unicast,
 }
 
-const ACTIONS: [Action; 7] = [
-    Action::Spawn,
-    Action::Shutdown,
-    Action::ToggleListener,
-    Action::Connect,
-    Action::Disconnect,
-    Action::Broadcast,
-    Action::Unicast,
+/// The actions and their names, in `Action` discriminant order (relied
+/// upon by the watchdog's slot tags).
+const ACTIONS: [(Action, &str); 7] = [
+    (Action::Spawn, "spawn"),
+    (Action::Shutdown, "shutdown"),
+    (Action::ToggleListener, "toggle_listener"),
+    (Action::Connect, "connect"),
+    (Action::Disconnect, "disconnect"),
+    (Action::Broadcast, "broadcast"),
+    (Action::Unicast, "unicast"),
 ];
-
-impl Action {
-    fn name(self) -> &'static str {
-        match self {
-            Action::Spawn => "spawn",
-            Action::Shutdown => "shutdown",
-            Action::ToggleListener => "toggle_listener",
-            Action::Connect => "connect",
-            Action::Disconnect => "disconnect",
-            Action::Broadcast => "broadcast",
-            Action::Unicast => "unicast",
-        }
-    }
-}
 
 /// Action weights in parts of 10_000, in `ACTIONS` order.
 #[derive(Clone, Copy)]
@@ -233,7 +239,7 @@ impl Weights {
 
     fn pick(&self, roll: u16) -> Action {
         let mut acc = 0u16;
-        for (action, weight) in ACTIONS.iter().zip(self.0) {
+        for ((action, _), weight) in ACTIONS.iter().zip(self.0) {
             acc += weight;
             if roll < acc {
                 return *action;
@@ -256,13 +262,16 @@ impl fmt::Display for Weights {
     }
 }
 
-/// Runtime-adjustable dials shared by all tasks: the swarm sampler rotates
-/// the action mix, the governor steers the delay ceiling, and the workers
-/// read both on every action.
+/// Runtime-adjustable dials and shared knobs: the swarm sampler rotates the
+/// action mix, the governor steers the delay ceiling (and reports the lag it
+/// measures), and the workers read them on every action.
 struct Dials {
     weights: RwLock<Weights>,
     max_delay_us: AtomicU64,
     sched_lag_us: AtomicU64,
+    /// Set while an external actor (the burst director) holds the delay
+    /// ceiling; the governor doesn't steer while it's up.
+    steering_paused: AtomicBool,
     fast_timeouts: bool,
 }
 
@@ -272,21 +281,27 @@ struct Dials {
 
 /// What a worker is currently doing: `action` is 0 when idle, otherwise the
 /// action's index in `ACTIONS` plus one; `started_us` is the action's start
-/// time in microseconds since the test began.
+/// time in microseconds since the test began. Padded to a cache line so the
+/// per-iteration stores of neighboring workers don't false-share.
 #[derive(Default)]
+#[repr(align(64))]
 struct ActionSlot {
     action: AtomicU8,
     started_us: AtomicU64,
+    /// The worker's loop-iteration count, sharded here to avoid a single
+    /// contended counter; the stall watchdog sums the slots.
+    rolls: AtomicUsize,
 }
 
-/// Shared watchdog state: per-worker action slots (the age check), a global
-/// roll counter (the stall check), and the channel that reports violations
-/// to the main task, which fails the test upon receipt.
+/// Shared watchdog state: per-worker action slots (the age and stall
+/// checks) and the channel that reports violations to the main task, which
+/// fails the test upon receipt.
 struct Watch {
     enabled: bool,
     start: Instant,
-    slots: [ActionSlot; NUM_WORKERS],
-    rolls: AtomicUsize,
+    /// One slot per regular worker plus one per potential burst worker
+    /// (burst workers index with `NUM_WORKERS + idx`).
+    slots: [ActionSlot; NUM_WORKERS + BURST_WORKERS_MAX],
     violations: mpsc::UnboundedSender<String>,
 }
 
@@ -298,91 +313,105 @@ impl Watch {
     }
 }
 
-/// The runtime checks, invoked from the metrics task once per interval.
-async fn run_watchdogs(
-    watch: &Watch,
-    pool: &Pool,
+/// The watchdog driver's iteration state, owned by the metrics task.
+#[derive(Default)]
+struct WatchdogCursor {
     tick: usize,
-    prev_rolls: &mut usize,
-    idle_windows: &mut u32,
-) {
-    // No action may outlive its designed bounds.
-    let now_us = watch.start.elapsed().as_micros() as u64;
-    for (idx, slot) in watch.slots.iter().enumerate() {
-        let tag = slot.action.load(Ordering::Acquire);
-        if tag == 0 {
-            continue;
-        }
-        let age_us = now_us.saturating_sub(slot.started_us.load(Ordering::Relaxed));
-        if age_us > ACTION_AGE_LIMIT.as_micros() as u64 {
-            let name = ACTIONS[(tag - 1) as usize].name();
-            watch.report(format!(
-                "worker {idx} has been stuck in '{name}' for {:.1}s",
-                age_us as f64 / 1_000_000.0
-            ));
-        }
-    }
+    prev_rolls: usize,
+    idle_windows: u32,
+}
 
-    // The workers as a whole must keep completing actions; the counter only
-    // stops advancing if every single worker is wedged (or the executor is).
-    let rolls = watch.rolls.load(Ordering::Relaxed);
-    if rolls == *prev_rolls {
-        *idle_windows += 1;
-        if *idle_windows >= STALL_WINDOW_LIMIT {
-            watch.report(format!(
-                "the workers haven't started a single action across \
-                 {STALL_WINDOW_LIMIT} consecutive metrics windows"
-            ));
+impl WatchdogCursor {
+    /// The runtime checks, invoked once per metrics interval.
+    async fn check(&mut self, watch: &Watch, pool: &Pool) {
+        if !watch.enabled {
+            return;
         }
-    } else {
-        *idle_windows = 0;
-    }
-    *prev_rolls = rolls;
+        self.tick += 1;
 
-    // Sampled per-node limit checks. These are hard invariants, but the two
-    // reads aren't atomic with respect to each other, so re-check after a
-    // beat before declaring a violation.
-    let sampled = {
-        let p = pool.lock();
-        if p.is_empty() {
-            None
-        } else {
-            Some(p[tick % p.len()].clone())
-        }
-    };
-    if let Some(n) = sampled {
-        let limits_exceeded = |n: &StressNode| {
-            n.node().num_connected() > MAX_NODES || n.node().num_connecting() > MAX_NODES / 2
-        };
-        if limits_exceeded(&n) {
-            sleep(Duration::from_millis(250)).await;
-            if limits_exceeded(&n) {
+        // No action may outlive its designed bounds.
+        let now_us = watch.start.elapsed().as_micros() as u64;
+        let limit_us = ACTION_AGE_LIMIT.as_micros() as u64;
+        for (idx, slot) in watch.slots.iter().enumerate() {
+            let tag = slot.action.load(Ordering::Acquire);
+            if tag == 0 {
+                continue;
+            }
+            let age_us = now_us.saturating_sub(slot.started_us.load(Ordering::Relaxed));
+            if age_us > limit_us {
+                let name = ACTIONS[(tag - 1) as usize].1;
                 watch.report(format!(
-                    "a node exceeds its connection limits: connected={}/{MAX_NODES}, \
-                     connecting={}/{}",
-                    n.node().num_connected(),
-                    n.node().num_connecting(),
-                    MAX_NODES / 2,
+                    "worker {idx} has been stuck in '{name}' for {:.1}s",
+                    age_us as f64 / 1_000_000.0
                 ));
             }
         }
-    }
 
-    // Resource ceilings.
-    if let Some(fds) = fd_count()
-        && fds > FD_LIMIT
-    {
-        watch.report(format!(
-            "the file descriptor count exceeded its ceiling: {fds} > {FD_LIMIT}"
-        ));
-    }
-    let tasks = tokio::runtime::Handle::current()
-        .metrics()
-        .num_alive_tasks();
-    if tasks > TASK_LIMIT {
-        watch.report(format!(
-            "the alive task count exceeded its ceiling: {tasks} > {TASK_LIMIT}"
-        ));
+        // The workers as a whole must keep completing actions; the count only
+        // stops advancing if every single worker is wedged (or the executor is).
+        let rolls: usize = watch
+            .slots
+            .iter()
+            .map(|slot| slot.rolls.load(Ordering::Relaxed))
+            .sum();
+        if rolls == self.prev_rolls {
+            self.idle_windows += 1;
+            if self.idle_windows >= STALL_WINDOW_LIMIT {
+                watch.report(format!(
+                    "the workers haven't started a single action across \
+                     {STALL_WINDOW_LIMIT} consecutive metrics windows"
+                ));
+            }
+        } else {
+            self.idle_windows = 0;
+        }
+        self.prev_rolls = rolls;
+
+        // Sampled per-node limit checks. These are hard invariants, but the two
+        // reads aren't atomic with respect to each other, so re-check after a
+        // beat before declaring a violation.
+        let sampled = {
+            let p = pool.lock();
+            if p.is_empty() {
+                None
+            } else {
+                Some(p[self.tick % p.len()].clone())
+            }
+        };
+        if let Some(n) = sampled {
+            let limits_exceeded = |n: &StressNode| {
+                n.node().num_connected() > MAX_NODES || n.node().num_connecting() > MAX_NODES / 2
+            };
+            if limits_exceeded(&n) {
+                sleep(Duration::from_millis(250)).await;
+                if limits_exceeded(&n) {
+                    watch.report(format!(
+                        "a node exceeds its connection limits: connected={}/{MAX_NODES}, \
+                         connecting={}/{}",
+                        n.node().num_connected(),
+                        n.node().num_connecting(),
+                        MAX_NODES / 2,
+                    ));
+                }
+            }
+        }
+
+        // Resource ceilings.
+        if let Some(fds) = fd_count()
+            && fds > FD_LIMIT
+        {
+            watch.report(format!(
+                "the file descriptor count exceeded its ceiling: {fds} > {FD_LIMIT}"
+            ));
+        }
+        let tasks = tokio::runtime::Handle::current()
+            .metrics()
+            .num_alive_tasks();
+        if tasks > TASK_LIMIT {
+            watch.report(format!(
+                "the alive task count exceeded its ceiling: {tasks} > {TASK_LIMIT}"
+            ));
+        }
     }
 }
 
@@ -431,14 +460,14 @@ struct Stats {
     in_flight_shutdowns: AtomicUsize,
 }
 
-#[derive(Default, Clone, Copy)]
+#[derive(Default)]
 struct Snapshot {
     nodes_spawned: usize,
     nodes_shutdown: usize,
     connects_succeeded: usize,
     disconnects: usize,
-    fast_send: usize,
     listener_toggles: usize,
+    fast_send: usize,
     unicasts_attempted: usize,
     unicasts_succeeded: usize,
     msgs_received: usize,
@@ -509,15 +538,18 @@ impl StressNode {
     }
 
     async fn install(&self) -> io::Result<()> {
-        let (.., listener) = tokio::join!(
+        // enable all the protocols before the listener goes live: an inbound
+        // connection accepted mid-install would otherwise skip the hooks that
+        // aren't armed yet and skew the on_connect/on_disconnect accounting
+        // (reachable via a recycled listener port, under heavy churn)
+        tokio::join!(
             self.enable_handshake(),
             self.enable_reading(),
             self.enable_writing(),
             self.enable_on_connect(),
             self.enable_on_disconnect(),
-            self.node().toggle_listener(),
         );
-        let _ = listener?;
+        self.node().toggle_listener().await?;
         Ok(())
     }
 }
@@ -547,6 +579,12 @@ impl Handshake for StressNode {
     }
 }
 
+fn msg_codec() -> LengthDelimitedCodec {
+    LengthDelimitedCodec::builder()
+        .max_frame_length(MAX_MSG_SIZE)
+        .new_codec()
+}
+
 impl Reading for StressNode {
     type Message = BytesMut;
     type Codec = LengthDelimitedCodec;
@@ -554,9 +592,7 @@ impl Reading for StressNode {
     const INITIAL_BUFFER_SIZE: usize = 4 * 1024;
 
     fn codec(&self, _addr: SocketAddr, _side: ConnectionSide) -> Self::Codec {
-        LengthDelimitedCodec::builder()
-            .max_frame_length(MAX_MSG_SIZE)
-            .new_codec()
+        msg_codec()
     }
 
     async fn process_message(&self, _src: SocketAddr, _msg: Self::Message) {
@@ -571,9 +607,7 @@ impl Writing for StressNode {
     const INITIAL_BUFFER_SIZE: usize = 4 * 1024;
 
     fn codec(&self, _addr: SocketAddr, _side: ConnectionSide) -> Self::Codec {
-        LengthDelimitedCodec::builder()
-            .max_frame_length(MAX_MSG_SIZE)
-            .new_codec()
+        msg_codec()
     }
 }
 
@@ -638,13 +672,16 @@ async fn act_spawn(pool: &Pool, stats: &Arc<Stats>, token: &CancellationToken) {
 
     let _guard = InFlightGuard::new(&stats.in_flight_spawns);
     let node = StressNode::new(stats.clone());
-    let installed = node.install().await.is_ok();
-    let pushed = installed && {
+    let pushed = if node.install().await.is_ok() {
         let mut pool = pool.lock();
-        !token.is_cancelled() && pool.len() < MAX_NODES && {
+        if !token.is_cancelled() && pool.len() < MAX_NODES {
             pool.push(node.clone());
             true
+        } else {
+            false
         }
+    } else {
+        false
     };
     if pushed {
         stats.nodes_spawned.fetch_add(1, Ordering::Relaxed);
@@ -747,7 +784,7 @@ async fn act_disconnect(pool: &Pool, stats: &Arc<Stats>, rng: &mut SmallRng) {
     if peers.is_empty() {
         return;
     }
-    let target = peers[rng.random_range(0..peers.len())];
+    let target = *peers.choose(rng).unwrap();
     let _guard = InFlightGuard::new(&stats.in_flight_disconnects);
     if a.node().disconnect(target).await {
         stats.disconnects.fetch_add(1, Ordering::Relaxed);
@@ -779,7 +816,7 @@ async fn act_unicast(pool: &Pool, stats: &Arc<Stats>, rng: &mut SmallRng) {
     if peers.is_empty() {
         return;
     }
-    let target = peers[rng.random_range(0..peers.len())];
+    let target = *peers.choose(rng).unwrap();
     let msg = random_message(rng);
     stats.unicasts_attempted.fetch_add(1, Ordering::Relaxed);
     match a.unicast(target, msg) {
@@ -810,13 +847,15 @@ async fn worker(
 ) {
     let slot = &watch.slots[idx];
     while !token.is_cancelled() {
-        watch.rolls.fetch_add(1, Ordering::Relaxed);
         let roll: u16 = rng.random_range(..10_000);
         // the read guard must be dropped before the action is awaited
         let action = dials.weights.read().pick(roll);
-        slot.started_us
-            .store(watch.start.elapsed().as_micros() as u64, Ordering::Relaxed);
-        slot.action.store(action as u8 + 1, Ordering::Release);
+        if watch.enabled {
+            slot.rolls.fetch_add(1, Ordering::Relaxed);
+            slot.started_us
+                .store(watch.start.elapsed().as_micros() as u64, Ordering::Relaxed);
+            slot.action.store(action as u8 + 1, Ordering::Release);
+        }
         match action {
             Action::Spawn => act_spawn(&pool, &stats, &token).await,
             Action::Shutdown => act_shutdown(&pool, &stats, &watch, &mut rng).await,
@@ -828,17 +867,20 @@ async fn worker(
             Action::Broadcast => act_broadcast(&pool, &stats, &mut rng).await,
             Action::Unicast => act_unicast(&pool, &stats, &mut rng).await,
         }
-        slot.action.store(0, Ordering::Release);
+        if watch.enabled {
+            slot.action.store(0, Ordering::Release);
+        }
 
         if token.is_cancelled() {
             break;
         }
 
+        // during a burst the dial is held at zero, which makes this a no-op;
+        // cancellation is picked up at the top of the next iteration
         let max_delay_us = dials.max_delay_us.load(Ordering::Relaxed);
         let sleep_us = rng.random_range(MIN_ACTION_DELAY_US..=max_delay_us);
-        tokio::select! {
-            _ = sleep(Duration::from_micros(sleep_us)) => {}
-            _ = token.cancelled() => break,
+        if sleep_us > 0 {
+            sleep(Duration::from_micros(sleep_us)).await;
         }
     }
 }
@@ -866,7 +908,10 @@ async fn governor(dials: Arc<Dials>, token: CancellationToken) {
         dials.sched_lag_us.store(ewma_us as u64, Ordering::Relaxed);
 
         probes += 1;
-        if probes.is_multiple_of(20) {
+        // during a burst the lag is expected - keep measuring, don't steer
+        if probes.is_multiple_of(GOVERNOR_STEER_EVERY)
+            && !dials.steering_paused.load(Ordering::Relaxed)
+        {
             let cur = dials.max_delay_us.load(Ordering::Relaxed);
             let next = if ewma_us > LAG_HIGH_US {
                 (cur * 2).min(DELAY_CAP_US)
@@ -881,22 +926,114 @@ async fn governor(dials: Arc<Dials>, token: CancellationToken) {
 }
 
 // =========================================================================
+// Epochs
+// =========================================================================
+
+/// Re-rolls the action mix once per epoch.
+async fn epoch_rotator(
+    dials: Arc<Dials>,
+    token: CancellationToken,
+    mut rng: SmallRng,
+    epoch_len: Duration,
+) {
+    let mut epoch = 0u64;
+    loop {
+        tokio::select! {
+            _ = sleep(epoch_len) => {
+                epoch += 1;
+                let weights = Weights::swarm(&mut rng);
+                *dials.weights.write() = weights;
+                println!("[epoch {epoch}] mix: {weights}");
+            }
+            _ = token.cancelled() => break,
+        }
+    }
+}
+
+// =========================================================================
+// Bursts
+// =========================================================================
+
+/// Periodically floods the pool with short-lived extra workers running at
+/// zero delay; the executor is expected to lag during a storm - the point
+/// is to exercise overload and, crucially, clean recovery from it.
+async fn burst_director(
+    pool: Pool,
+    stats: Arc<Stats>,
+    dials: Arc<Dials>,
+    watch: Arc<Watch>,
+    token: CancellationToken,
+    seed: u64,
+) {
+    let mut rng = SmallRng::seed_from_u64(seed);
+    loop {
+        let gap = rng.random_range(BURST_GAP_MIN_MS..=BURST_GAP_MAX_MS);
+        tokio::select! {
+            _ = sleep(Duration::from_millis(gap)) => {}
+            _ = token.cancelled() => break,
+        }
+
+        let extra = rng.random_range(NUM_WORKERS..=BURST_WORKERS_MAX);
+        let len = rng.random_range(BURST_MIN_MS..=BURST_MAX_MS);
+        println!(
+            "{} burst: +{extra} workers for {:.1}s",
+            stamp(watch.start),
+            len as f64 / 1_000.0,
+        );
+        // burst pressure flows through the regular delay dial: hold it at
+        // zero for the duration, with the governor's steering paused
+        dials.steering_paused.store(true, Ordering::Relaxed);
+        let saved_delay = dials.max_delay_us.swap(0, Ordering::Relaxed);
+
+        let storm_token = token.child_token();
+        let mut storm = tokio::task::JoinSet::new();
+        for idx in 0..extra {
+            let worker_seed: u64 = rng.random();
+            storm.spawn(worker(
+                pool.clone(),
+                stats.clone(),
+                dials.clone(),
+                watch.clone(),
+                NUM_WORKERS + idx,
+                storm_token.clone(),
+                SmallRng::seed_from_u64(worker_seed),
+            ));
+        }
+        tokio::select! {
+            _ = sleep(Duration::from_millis(len)) => {}
+            _ = token.cancelled() => {}
+        }
+        storm_token.cancel();
+        while storm.join_next().await.is_some() {}
+
+        dials.max_delay_us.store(saved_delay, Ordering::Relaxed);
+        dials.steering_paused.store(false, Ordering::Relaxed);
+        println!("{} burst over", stamp(watch.start));
+    }
+}
+
+// =========================================================================
 // Metrics
 // =========================================================================
 
+/// The `[t=...]` prefix shared by all timestamped log lines.
+fn stamp(start: Instant) -> String {
+    format!("[t={:>5.0}s]", start.elapsed().as_secs_f64())
+}
+
 fn print_metrics(start: Instant, alive: usize, dials: &Dials, cur: &Snapshot, prev: &Snapshot) {
-    let elapsed = start.elapsed().as_secs_f64();
     let dt = METRICS_INTERVAL.as_secs_f64();
     let rate = |c: usize, p: usize| (c.saturating_sub(p)) as f64 / dt;
 
     println!(
-        "[t={elapsed:>5.0}s] alive={alive:>2}/{max} | \
+        "{stamp} alive={alive:>2}/{max} | \
          nodes spawned/shut={ns}/{nd} | \
          listener toggles={lt} | \
          conn att/ok/err={ca}/{cs}/{ce} | disc={dc} | \
          ufast={fs} ucast att/ok={ua}/{us} send-err={se} | \
          recv={rv} | on_c/on_d={oc}/{od} | \
          ifc={ifc} | ifdc={ifdc} | ifsp={ifsp} | ifsd={ifsd}",
+        stamp = stamp(start),
         max = MAX_NODES,
         ns = cur.nodes_spawned,
         nd = cur.nodes_shutdown,
@@ -951,38 +1088,36 @@ fn infinite_chaos() {
     rt.block_on(infinite_chaos_inner());
 }
 
+/// Reads and parses an env var; `None` when unset or unparsable.
+fn env_parse<T: std::str::FromStr>(name: &str) -> Option<T> {
+    env::var(name).ok().and_then(|v| v.trim().parse().ok())
+}
+
+/// Reads a boolean env var ("0"/"false"/"no" disable, anything else enables).
+fn env_flag(name: &str, default: bool) -> bool {
+    env::var(name)
+        .map(|v| !matches!(v.trim(), "0" | "false" | "no"))
+        .unwrap_or(default)
+}
+
 async fn infinite_chaos_inner() {
     // Determine and log the master seed. CHAOS_SEED overrides for reruns.
-    let master_seed: u64 = env::var("CHAOS_SEED")
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or_else(rand::random);
-    let runtime: Duration = env::var("CHAOS_RUNTIME_SECS")
-        .ok()
-        .and_then(|s| s.parse().ok().map(Duration::from_secs))
+    let master_seed: u64 = env_parse("CHAOS_SEED").unwrap_or_else(rand::random);
+    let runtime = env_parse("CHAOS_RUNTIME_SECS")
+        .map(Duration::from_secs)
         .unwrap_or(Duration::MAX);
-    let fast_timeouts = env::var("CHAOS_FAST_TIMEOUTS")
-        .map(|v| matches!(v.trim(), "1" | "true" | "yes"))
-        .unwrap_or(false);
-    let enabled_unless_opted_out = |var: &str| {
-        env::var(var)
-            .map(|v| !matches!(v.trim(), "0" | "false" | "no"))
-            .unwrap_or(true)
-    };
-    let swarm_enabled = enabled_unless_opted_out("CHAOS_SWARM");
-    let governor_enabled = enabled_unless_opted_out("CHAOS_GOVERNOR");
-    let watchdogs_enabled = enabled_unless_opted_out("CHAOS_WATCHDOG");
-    let epoch_len = Duration::from_secs(
-        env::var("CHAOS_EPOCH_SECS")
-            .ok()
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(DEFAULT_EPOCH_SECS),
-    );
+    let fast_timeouts = env_flag("CHAOS_FAST_TIMEOUTS", false);
+    let swarm_enabled = env_flag("CHAOS_SWARM", true);
+    let governor_enabled = env_flag("CHAOS_GOVERNOR", true);
+    let watchdogs_enabled = env_flag("CHAOS_WATCHDOG", true);
+    let bursts_enabled = env_flag("CHAOS_BURST", true);
+    let epoch_len =
+        Duration::from_secs(env_parse("CHAOS_EPOCH_SECS").unwrap_or(DEFAULT_EPOCH_SECS));
 
     println!(
         "pea2pea stress test - {NUM_WORKERS} workers, up to {MAX_NODES} nodes\n\
          seed: {master_seed}\n\
-         swarm mix: {} | governor: {} | watchdogs: {}",
+         swarm mix: {} | governor: {} | watchdogs: {} | bursts: {}",
         if swarm_enabled {
             format!("on, epoch {}s", epoch_len.as_secs())
         } else {
@@ -990,6 +1125,7 @@ async fn infinite_chaos_inner() {
         },
         if governor_enabled { "on" } else { "off" },
         if watchdogs_enabled { "on" } else { "off" },
+        if bursts_enabled { "on" } else { "off" },
     );
 
     let mut master_rng = SmallRng::seed_from_u64(master_seed);
@@ -1000,6 +1136,7 @@ async fn infinite_chaos_inner() {
     // The swarm RNG is derived from the master seed up front, so the epoch
     // weight sequence is reproducible regardless of anything that follows.
     let mut swarm_rng = SmallRng::seed_from_u64(master_rng.random());
+    let burst_seed: u64 = master_rng.random();
     let initial_weights = if swarm_enabled {
         Weights::swarm(&mut swarm_rng)
     } else {
@@ -1010,27 +1147,18 @@ async fn infinite_chaos_inner() {
         weights: RwLock::new(initial_weights),
         max_delay_us: AtomicU64::new(MAX_ACTION_DELAY_US),
         sched_lag_us: AtomicU64::new(0),
+        steering_paused: AtomicBool::new(false),
         fast_timeouts,
     });
 
     // Rotate the action mix every epoch.
     if swarm_enabled {
-        let e_dials = dials.clone();
-        let e_token = token.clone();
-        tokio::spawn(async move {
-            let mut epoch = 0u64;
-            loop {
-                tokio::select! {
-                    _ = sleep(epoch_len) => {
-                        epoch += 1;
-                        let weights = Weights::swarm(&mut swarm_rng);
-                        *e_dials.weights.write() = weights;
-                        println!("[epoch {epoch}] mix: {weights}");
-                    }
-                    _ = e_token.cancelled() => break,
-                }
-            }
-        });
+        tokio::spawn(epoch_rotator(
+            dials.clone(),
+            token.clone(),
+            swarm_rng,
+            epoch_len,
+        ));
     }
 
     // Keep the pressure adaptive.
@@ -1054,7 +1182,6 @@ async fn infinite_chaos_inner() {
         enabled: watchdogs_enabled,
         start,
         slots: std::array::from_fn(|_| ActionSlot::default()),
-        rolls: AtomicUsize::new(0),
         violations: viol_tx,
     });
 
@@ -1074,29 +1201,35 @@ async fn infinite_chaos_inner() {
         )));
     }
 
+    // Periodically flood the pool with short-lived extra workers.
+    if bursts_enabled {
+        tokio::spawn(burst_director(
+            pool.clone(),
+            stats.clone(),
+            dials.clone(),
+            watch.clone(),
+            token.clone(),
+            burst_seed,
+        ));
+    }
+
     // Spawn the metrics printer, which doubles as the watchdog driver.
     let m_stats = stats.clone();
     let m_pool = pool.clone();
     let m_dials = dials.clone();
     let m_watch = watch.clone();
     let m_token = token.clone();
-    let _metrics = tokio::spawn(async move {
+    tokio::spawn(async move {
         let mut prev = Snapshot::default();
-        let mut prev_rolls = 0;
-        let mut idle_windows = 0;
-        let mut tick = 0;
+        let mut cursor = WatchdogCursor::default();
         loop {
             tokio::select! {
                 _ = sleep(METRICS_INTERVAL) => {
                     let snap = Snapshot::capture(&m_stats);
                     let alive = m_pool.lock().len();
-                    print_metrics(start, alive, &m_dials, &snap, &prev);
+                    print_metrics(m_watch.start, alive, &m_dials, &snap, &prev);
                     prev = snap;
-                    tick += 1;
-                    if m_watch.enabled {
-                        run_watchdogs(&m_watch, &m_pool, tick, &mut prev_rolls, &mut idle_windows)
-                            .await;
-                    }
+                    cursor.check(&m_watch, &m_pool).await;
                 }
                 _ = m_token.cancelled() => break,
             }
@@ -1118,14 +1251,11 @@ async fn infinite_chaos_inner() {
 
     println!("\nShutting down...\n");
 
-    // Shut down the workers.
-    let mut joins = tokio::task::JoinSet::new();
+    // Shut down the workers; they were all cancelled by the token, so a
+    // sequential await amounts to a concurrent join.
     for w in workers {
-        joins.spawn(async move {
-            let _ = w.await;
-        });
+        let _ = w.await;
     }
-    while joins.join_next().await.is_some() {}
 
     // Shut down any remaining nodes; with the workers quiesced, the drain
     // must be total.
@@ -1148,29 +1278,26 @@ async fn infinite_chaos_inner() {
             );
         });
     }
-    while let Some(res) = joins.join_next().await {
-        res.unwrap();
-    }
+    joins.join_all().await;
 
     // Allow a bit of time for the detached OnConnect work to conclude.
     let deadline = Instant::now() + Duration::from_secs(5);
     loop {
-        let snap = Snapshot::capture(&stats);
-        if snap.on_connect_fired == snap.on_disconnect_fired {
+        let oc = stats.on_connect_fired.load(Ordering::Relaxed);
+        let od = stats.on_disconnect_fired.load(Ordering::Relaxed);
+        if oc == od {
             break;
         }
         assert!(
             Instant::now() < deadline,
-            "OnConnect/OnDisconnect hook counters never converged: {} vs {}",
-            snap.on_connect_fired,
-            snap.on_disconnect_fired
+            "OnConnect/OnDisconnect hook counters never converged: {oc} vs {od}"
         );
         sleep(Duration::from_millis(50)).await;
     }
 
     // Print final metrics.
     let snap = Snapshot::capture(&stats);
-    print_metrics(start, 0, &dials, &snap, &snap);
+    print_metrics(watch.start, 0, &dials, &snap, &snap);
 
     // Show heap stats.
     // println!("\nheap stats:\n{}", GLOBAL.stats());
