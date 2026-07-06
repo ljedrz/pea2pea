@@ -14,6 +14,7 @@ use std::{
 
 use tokio::{
     sync::{mpsc, oneshot},
+    task::JoinSet,
     time::timeout,
 };
 
@@ -61,13 +62,16 @@ impl<T, U> ProtocolHandler<T, U> {
     }
 }
 
-/// Awaits a response from a protocol handler task, guarding against a rare race in which
-/// the handler task is aborted (during node shutdown) while the triggering message is
-/// still being written into its bounded channel: dropping the channel's receiver drains
-/// the values queued up to that point, but a value whose write completes just after that
-/// drain is stranded in the closed channel, where the response sender within it is never
-/// used nor dropped. Polling the channel's closed flag converts what would otherwise be
-/// a permanently wedged await into a bounded one.
+/// Awaits a response from a protocol handler task, with a backstop against a message
+/// being stranded in the handler's channel. The graceful shutdown drain in the handler
+/// loops normally guarantees no message is stranded (draining via `recv` waits out any
+/// mid-write send); this guard only matters when the drain is bypassed - i.e. when the
+/// handler task gets hard-aborted because its drain timed out or a `shut_down` future
+/// was dropped mid-execution. Dropping a channel's receiver only drains the values
+/// queued up to that point, so a value whose write completes just after that drain is
+/// stranded in the closed channel, where the response sender within it is never used
+/// nor dropped; polling the channel's closed flag converts what would otherwise be a
+/// permanently wedged await into a bounded one.
 ///
 /// Returns `None` when the handler is gone (i.e. the node is shutting down); note that
 /// the message - along with anything it owns - may remain queued in the closed channel
@@ -162,6 +166,80 @@ pub(crate) fn log_setup_join(
         && e.is_panic()
     {
         tracing::error!(parent: span, "a {protocol} setup task panicked: {e}");
+    }
+}
+
+/// Runs a protocol handler's main loop for the setup-oriented protocols
+/// (`Handshake`/`Reading`/`Writing`): every received request is spawned as a
+/// tracked setup task via `spawn_setup`. On the node's shutdown signal the
+/// loop stops accepting new requests and fails the queued ones instead of
+/// spawning them: dropping an item drops the returner within, which the
+/// caller observes as a clean "shutting down". Draining via `recv` (as
+/// opposed to dropping the receiver) waits out any send that is still
+/// mid-write, so no message can be stranded in the channel.
+pub(crate) async fn run_setup_handler_loop<T: Send, U: Send>(
+    node: Node,
+    protocol: &'static str,
+    mut receiver: mpsc::Receiver<ReturnableItem<T, U>>,
+    mut spawn_setup: impl FnMut(ReturnableItem<T, U>, &mut JoinSet<()>) + Send,
+) {
+    // tracks all in-flight setup tasks
+    let mut setup_tasks = JoinSet::new();
+    let mut shutdown = node.shutdown_signal.subscribe();
+    let mut draining = false;
+
+    loop {
+        tokio::select! {
+            biased;
+            // task set cleanups
+            res = setup_tasks.join_next(), if !setup_tasks.is_empty() => {
+                log_setup_join(node.span(), protocol, res);
+            }
+            maybe_item = receiver.recv() => {
+                match maybe_item {
+                    Some(_item) if draining => {} // fail the queued setups
+                    Some(item) => spawn_setup(item, &mut setup_tasks),
+                    None => break, // channel closed and drained
+                }
+            }
+            _ = shutdown.wait_for(|sig| *sig), if !draining => {
+                receiver.close();
+                draining = true;
+            }
+        }
+    }
+}
+
+/// Runs a protocol handler's main loop for the hook-oriented protocols
+/// (`OnConnect`/`OnDisconnect`): every received trigger is handled via
+/// `process`. On the node's shutdown signal the loop stops accepting new
+/// triggers, but still runs the queued ones - they belong to connections
+/// that made it into the active set, so skipping them would break the
+/// `OnConnect`/`OnDisconnect` pairing; draining via `recv` also waits out
+/// any trigger that is still mid-send, so none can be stranded in the
+/// channel.
+pub(crate) async fn run_hook_handler_loop<T: Send, U: Send>(
+    node: Node,
+    mut receiver: mpsc::Receiver<ReturnableItem<T, U>>,
+    mut process: impl FnMut(ReturnableItem<T, U>) + Send,
+) {
+    let mut shutdown = node.shutdown_signal.subscribe();
+    let mut draining = false;
+
+    loop {
+        tokio::select! {
+            biased;
+            maybe_item = receiver.recv() => {
+                match maybe_item {
+                    Some(item) => process(item),
+                    None => break, // channel closed and drained
+                }
+            }
+            _ = shutdown.wait_for(|sig| *sig), if !draining => {
+                receiver.close();
+                draining = true;
+            }
+        }
     }
 }
 

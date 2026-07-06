@@ -4,7 +4,6 @@ use tokio::{
     io::{AsyncRead, AsyncWrite, split},
     net::TcpStream,
     sync::{mpsc, oneshot},
-    task::JoinSet,
     time::timeout,
 };
 use tracing::*;
@@ -14,7 +13,7 @@ use crate::Node;
 use crate::{
     Connection, Pea2Pea,
     node::NodeTask,
-    protocols::{ProtocolHandler, ReturnableConnection, log_setup_join},
+    protocols::{ProtocolHandler, ReturnableConnection, run_setup_handler_loop},
 };
 
 /// Can be used to specify and enable network handshakes, and to configure the sockets. Upon establishing
@@ -42,10 +41,7 @@ where
                 "the Handshake protocol was enabled more than once!"
             );
 
-            // create a JoinSet to track all in-flight setup tasks
-            let mut setup_tasks = JoinSet::new();
-
-            let (conn_sender, mut conn_receiver) =
+            let (conn_sender, conn_receiver) =
                 mpsc::channel::<ReturnableConnection>(self.node().config().max_connecting as usize);
 
             // use a channel to know when the handshake task is ready
@@ -61,42 +57,14 @@ where
                     return;
                 }
 
-                let mut shutdown = self_clone.node().shutdown_signal.subscribe();
-                let mut draining = false;
-                loop {
-                    tokio::select! {
-                        biased;
-                        // task set cleanups
-                        res = setup_tasks.join_next(), if !setup_tasks.is_empty() => {
-                            log_setup_join(self_clone.node().span(), "Handshake", res);
-                        }
-                        maybe_conn = conn_receiver.recv() => {
-                            match maybe_conn {
-                                // during the shutdown drain, fail the queued
-                                // setups instead of spawning them; dropping an
-                                // item drops the returner within, which the
-                                // caller observes as a clean "shutting down"
-                                Some(_returnable_conn) if draining => {}
-                                Some(returnable_conn) => {
-                                    let self_clone2 = self_clone.clone();
-                                    setup_tasks.spawn(async move {
-                                        self_clone2.handle_new_connection(returnable_conn).await;
-                                    });
-                                }
-                                None => break, // channel closed and drained
-                            }
-                        }
-                        res = shutdown.wait_for(|sig| *sig), if !draining => {
-                            let _ = res;
-                            // stop accepting new setups and drain the queue via
-                            // `recv`, which - unlike dropping the receiver -
-                            // waits out any send that is still mid-write, so no
-                            // message can be stranded in the channel
-                            conn_receiver.close();
-                            draining = true;
-                        }
-                    }
-                }
+                let node = self_clone.node().clone();
+                run_setup_handler_loop(node, "Handshake", conn_receiver, |conn, setup_tasks| {
+                    let self_clone = self_clone.clone();
+                    setup_tasks.spawn(async move {
+                        self_clone.handle_new_connection(conn).await;
+                    });
+                })
+                .await;
             });
             let _ = rx.await;
             if self

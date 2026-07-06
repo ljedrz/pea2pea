@@ -20,7 +20,7 @@ use crate::{
     Pea2Pea,
     connections::{DisconnectOrigin, create_connection_span},
     node::NodeTask,
-    protocols::{DisconnectOnDrop, ProtocolHandler, panic_message},
+    protocols::{DisconnectOnDrop, ProtocolHandler, panic_message, run_hook_handler_loop},
 };
 
 // The value returned to the node is a bit complex, so use an alias to break it down.
@@ -85,7 +85,7 @@ where
                 "the OnConnect protocol was enabled more than once!"
             );
 
-            let (from_node_sender, mut from_node_receiver) =
+            let (from_node_sender, from_node_receiver) =
                 mpsc::channel::<((SocketAddr, u64), oneshot::Sender<OnConnectBundle>)>(
                     self.node().config().max_connections as usize,
                 );
@@ -103,26 +103,19 @@ where
                     return;
                 }
 
-                let mut shutdown = self_clone.node().shutdown_signal.subscribe();
-                let mut draining = false;
-                loop {
-                    tokio::select! {
-                        biased;
-                        maybe_item = from_node_receiver.recv() => {
-                            let Some(((addr, conn_id), notifier)) = maybe_item else {
-                                break; // channel closed and drained
-                            };
-                    let self_clone2 = self_clone.clone();
+                let node = self_clone.node().clone();
+                run_hook_handler_loop(node, from_node_receiver, |((addr, conn_id), notifier)| {
+                    let self_clone = self_clone.clone();
                     let handle = tokio::spawn(async move {
                         // disconnect automatically if the OnConnect impl panics
                         let mut conn_cleanup = DisconnectOnDrop::new(
-                            self_clone2.node().clone(),
+                            self_clone.node().clone(),
                             addr,
                             conn_id,
                             DisconnectOrigin::OnConnectAbort,
                         );
                         // perform the specified initial actions
-                        match AssertUnwindSafe(self_clone2.on_connect(addr))
+                        match AssertUnwindSafe(self_clone.on_connect(addr))
                             .catch_unwind()
                             .await
                         {
@@ -132,7 +125,7 @@ where
                             }
                             Err(payload) => {
                                 let conn_span =
-                                    create_connection_span(addr, self_clone2.node().span());
+                                    create_connection_span(addr, self_clone.node().span());
                                 error!(parent: conn_span, "OnConnect::on_connect panicked: {}", panic_message(&*payload));
                                 resume_unwind(payload); // conn_cleanup stays armed, drops on unwind → disconnect
                             }
@@ -140,19 +133,8 @@ where
                     });
                     // notify the node that the initial actions have been scheduled
                     let _ = notifier.send((handle, Self::ABORTABLE)); // can't really fail
-                        }
-                        res = shutdown.wait_for(|sig| *sig), if !draining => {
-                            let _ = res;
-                            // stop accepting new triggers, but keep running the
-                            // queued hooks - they belong to connections that made
-                            // it into the active set, so skipping them would break
-                            // the OnConnect/OnDisconnect pairing; draining via
-                            // `recv` also waits out any trigger still mid-send
-                            from_node_receiver.close();
-                            draining = true;
-                        }
-                    }
-                }
+                })
+                .await;
             });
             let _ = rx.await;
             if self

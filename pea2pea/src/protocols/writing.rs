@@ -5,10 +5,7 @@ use std::{
     io,
     net::SocketAddr,
     panic::{AssertUnwindSafe, resume_unwind},
-    sync::{
-        Arc,
-        atomic::{AtomicU64, Ordering},
-    },
+    sync::Arc,
     time::Duration,
 };
 
@@ -19,7 +16,6 @@ use parking_lot::RwLock;
 use tokio::{
     io::AsyncWrite,
     sync::{mpsc, oneshot},
-    task::JoinSet,
     time::timeout,
 };
 use tokio_util::codec::{Encoder, FramedWrite};
@@ -32,8 +28,8 @@ use crate::{
     connections::{DisconnectOrigin, create_connection_span},
     node::NodeTask,
     protocols::{
-        DisconnectOnDrop, Protocol, ProtocolHandler, ReturnableConnection, log_setup_join,
-        panic_message,
+        DisconnectOnDrop, Protocol, ProtocolHandler, ReturnableConnection, panic_message,
+        run_setup_handler_loop,
     },
 };
 
@@ -83,13 +79,7 @@ where
                 "the Writing protocol was enabled more than once!"
             );
 
-            // create a JoinSet to track all in-flight setup tasks
-            let mut setup_tasks = JoinSet::new();
-
-            // a monotonic unique Sender ID generator
-            let sender_id_generator: Arc<AtomicU64> = Arc::new(AtomicU64::new(0));
-
-            let (conn_sender, mut conn_receiver) =
+            let (conn_sender, conn_receiver) =
                 mpsc::channel(self.node().config().max_connecting as usize);
 
             // the conn_senders are used to send messages from the Node to individual connections
@@ -105,50 +95,26 @@ where
             let writing_task = tokio::spawn(async move {
                 trace!(parent: self_clone.node().span(), "spawned the Writing handler task");
                 if tx_writing.send(()).is_err() {
-                    error!(parent: self_clone.node().span(), "writing handler creation interrupted! shutting down the node");
+                    error!(parent: self_clone.node().span(), "Writing handler creation interrupted! shutting down the node");
                     self_clone.node().shut_down().await;
                     return;
                 }
 
-                let mut shutdown = self_clone.node().shutdown_signal.subscribe();
-                let mut draining = false;
-                loop {
-                    tokio::select! {
-                        biased;
-                        // task set cleanups
-                        res = setup_tasks.join_next(), if !setup_tasks.is_empty() => {
-                            log_setup_join(self_clone.node().span(), "Writing", res);
-                        }
-                        // handle new connections from `Node::adapt_stream`
-                        maybe_conn = conn_receiver.recv() => {
-                            match maybe_conn {
-                                // during the shutdown drain, fail the queued
-                                // setups instead of spawning them; dropping an
-                                // item drops the returner within, which the
-                                // caller observes as a clean "shutting down"
-                                Some(_returnable_conn) if draining => {}
-                                Some(returnable_conn) => {
-                                    let self_clone2 = self_clone.clone();
-                                    let senders = conn_senders.clone();
-                                    let sender_id = sender_id_generator.fetch_add(1, Ordering::Relaxed);
-                                    setup_tasks.spawn(async move {
-                                        self_clone2.handle_new_connection(returnable_conn, &senders, sender_id).await;
-                                    });
-                                }
-                                None => break, // channel closed and drained
-                            }
-                        }
-                        res = shutdown.wait_for(|sig| *sig), if !draining => {
-                            let _ = res;
-                            // stop accepting new setups and drain the queue via
-                            // `recv`, which - unlike dropping the receiver -
-                            // waits out any send that is still mid-write, so no
-                            // message can be stranded in the channel
-                            conn_receiver.close();
-                            draining = true;
-                        }
-                    }
-                }
+                // a monotonic unique Sender ID generator
+                let mut next_sender_id: u64 = 0;
+                let node = self_clone.node().clone();
+                run_setup_handler_loop(node, "Writing", conn_receiver, |conn, setup_tasks| {
+                    let self_clone = self_clone.clone();
+                    let senders = conn_senders.clone();
+                    let sender_id = next_sender_id;
+                    next_sender_id += 1;
+                    setup_tasks.spawn(async move {
+                        self_clone
+                            .handle_new_connection(conn, &senders, sender_id)
+                            .await;
+                    });
+                })
+                .await;
             });
             let _ = rx_writing.await;
             if self
@@ -205,37 +171,8 @@ where
         addr: SocketAddr,
         message: Self::Message,
     ) -> io::Result<oneshot::Receiver<io::Result<()>>> {
-        // access the protocol handler
-        if let Some(handler) = self.node().protocols.writing.get() {
-            // find the message sender for the given address
-            if let Some(erased) = handler.senders.read().get(&addr).map(|(_, s)| s.clone()) {
-                let sender = erased
-                    .downcast_ref::<mpsc::Sender<WrappedMessage<Self::Message>>>()
-                    // under valid API use, same Self => same Message => TypeId always matches
-                    .ok_or(io::ErrorKind::Unsupported)?;
-
-                let (msg, delivery) = WrappedMessage::new(message, true);
-                sender
-                    .try_send(msg)
-                    .map_err(|e| {
-                        let conn_span = create_connection_span(addr, self.node().span());
-                        error!(parent: conn_span, "can't send a message: {e}");
-                        match e {
-                            mpsc::error::TrySendError::Full(_) => {
-                                io::ErrorKind::QuotaExceeded.into()
-                            }
-                            mpsc::error::TrySendError::Closed(_) => {
-                                io::ErrorKind::BrokenPipe.into()
-                            }
-                        }
-                    })
-                    .map(|_| delivery.unwrap()) // infallible
-            } else {
-                Err(io::ErrorKind::NotConnected.into())
-            }
-        } else {
-            Err(io::ErrorKind::Unsupported.into())
-        }
+        self.queue_message(addr, message, true)
+            .map(|delivery| delivery.unwrap()) // always requested, so infallible
     }
 
     /// Sends the provided message to the specified [`SocketAddr`], and returns as soon as the
@@ -246,30 +183,7 @@ where
     ///
     /// See the error section for [`Writing::unicast`].
     fn unicast_fast(&self, addr: SocketAddr, message: Self::Message) -> io::Result<()> {
-        // access the protocol handler
-        if let Some(handler) = self.node().protocols.writing.get() {
-            // find the message sender for the given address
-            if let Some(erased) = handler.senders.read().get(&addr).map(|(_, s)| s.clone()) {
-                let sender = erased
-                    .downcast_ref::<mpsc::Sender<WrappedMessage<Self::Message>>>()
-                    // under valid API use, same Self => same Message => TypeId always matches
-                    .ok_or(io::ErrorKind::Unsupported)?;
-
-                let (msg, _) = WrappedMessage::new(message, false);
-                sender.try_send(msg).map_err(|e| {
-                    let conn_span = create_connection_span(addr, self.node().span());
-                    error!(parent: conn_span, "can't send a message: {e}");
-                    match e {
-                        mpsc::error::TrySendError::Full(_) => io::ErrorKind::QuotaExceeded.into(),
-                        mpsc::error::TrySendError::Closed(_) => io::ErrorKind::BrokenPipe.into(),
-                    }
-                })
-            } else {
-                Err(io::ErrorKind::NotConnected.into())
-            }
-        } else {
-            Err(io::ErrorKind::Unsupported.into())
-        }
+        self.queue_message(addr, message, false).map(|_| ())
     }
 
     /// Broadcasts the provided message to all connected peers. Returns as soon as the message
@@ -302,31 +216,38 @@ where
         Self::Message: Clone,
     {
         // access the protocol handler
-        if let Some(handler) = self.node().protocols.writing.get() {
-            let senders = handler.senders.read().clone();
-            for (addr, erased) in senders {
-                let sender = erased
-                    .1
-                    .downcast_ref::<mpsc::Sender<WrappedMessage<Self::Message>>>()
-                    // under valid API use, same Self => same Message => TypeId always matches
-                    .ok_or(io::ErrorKind::Unsupported)?;
+        let Some(handler) = self.node().protocols.writing.get() else {
+            return Err(io::ErrorKind::Unsupported.into());
+        };
 
-                let (msg, _) = WrappedMessage::new(message.clone(), false);
-                let _ = sender.try_send(msg).map_err(|e| {
-                    let conn_span = create_connection_span(addr, self.node().span());
-                    error!(parent: conn_span, "can't send a message: {e}");
-                });
+        // collect only the addresses, so the senders map isn't cloned wholesale
+        let addrs: Vec<_> = handler.senders.read().keys().copied().collect();
+        for addr in addrs {
+            if let Err(e) = self.queue_message(addr, message.clone(), false) {
+                // API misuse concerns the whole broadcast; per-peer failures are
+                // logged by `queue_message` and skipped, as documented
+                if e.kind() == io::ErrorKind::Unsupported {
+                    return Err(e);
+                }
             }
-
-            Ok(())
-        } else {
-            Err(io::ErrorKind::Unsupported.into())
         }
+
+        Ok(())
     }
 }
 
 /// This trait is used to restrict access to methods that would otherwise be public in [`Writing`].
 trait WritingInternal: Writing {
+    /// Queues a message to be sent to the given address, returning the delivery notification
+    /// receiver if one was requested. The error mapping is the contract documented on
+    /// [`Writing::unicast`].
+    fn queue_message(
+        &self,
+        addr: SocketAddr,
+        message: Self::Message,
+        confirm_delivery: bool,
+    ) -> io::Result<Option<oneshot::Receiver<io::Result<()>>>>;
+
     /// Feeds a whole batch of messages into the stream's buffer, flushes once,
     /// and returns the number of written messages and their cumulative size in bytes.
     async fn write_batch<W: AsyncWrite + Unpin + Send>(
@@ -345,6 +266,42 @@ trait WritingInternal: Writing {
 }
 
 impl<W: Writing> WritingInternal for W {
+    fn queue_message(
+        &self,
+        addr: SocketAddr,
+        message: Self::Message,
+        confirm_delivery: bool,
+    ) -> io::Result<Option<oneshot::Receiver<io::Result<()>>>> {
+        // access the protocol handler
+        let Some(handler) = self.node().protocols.writing.get() else {
+            return Err(io::ErrorKind::Unsupported.into());
+        };
+
+        // find the message sender for the given address; the guard may be held across the
+        // send, since `try_send` never blocks
+        let senders = handler.senders.read();
+        let Some((_, erased)) = senders.get(&addr) else {
+            return Err(io::ErrorKind::NotConnected.into());
+        };
+        let sender = erased
+            .downcast_ref::<mpsc::Sender<WrappedMessage<Self::Message>>>()
+            // under valid API use, same Self => same Message => TypeId always matches
+            .ok_or(io::ErrorKind::Unsupported)?;
+
+        let (msg, delivery) = WrappedMessage::new(message, confirm_delivery);
+        let result = sender.try_send(msg);
+        drop(senders);
+
+        result.map(|_| delivery).map_err(|e| {
+            let conn_span = create_connection_span(addr, self.node().span());
+            error!(parent: conn_span, "can't send a message: {e}");
+            match e {
+                mpsc::error::TrySendError::Full(_) => io::ErrorKind::QuotaExceeded.into(),
+                mpsc::error::TrySendError::Closed(_) => io::ErrorKind::BrokenPipe.into(),
+            }
+        })
+    }
+
     async fn write_batch<A: AsyncWrite + Unpin + Send>(
         &self,
         messages: &mut Vec<WrappedMessage<Self::Message>>,
@@ -425,7 +382,7 @@ impl<W: Writing> WritingInternal for W {
                 return;
             }
 
-            // move the sender cleanup into ths task
+            // move the sender cleanup into this task
             let _sender_cleanup = sender_cleanup;
 
             // disconnect automatically regardless of how this task concludes

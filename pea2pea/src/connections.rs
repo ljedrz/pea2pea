@@ -28,36 +28,31 @@ use crate::{
     protocols::{Handshake, OnConnect, OnDisconnect, Reading, Writing},
 };
 
+#[derive(Default)]
 pub(crate) struct Connections {
     /// The list of fully established connections.
     pub(crate) active: RwLock<HashMap<SocketAddr, Connection>>,
     /// Tracks the connection-related limits.
     pub(crate) limits: Mutex<ConnectionLimits>,
-    /// The node-wide shutdown flag.
-    shutting_down: Arc<AtomicBool>,
     /// Signalled each time an entry is removed from `active`. Used by
     /// `Node::shut_down` to wait for concurrent disconnects (i.e. those
-    /// initiated outside `shut_down`'s own `disconnect_tasks`) to complete
-    /// before the `OnDisconnect` handler is torn down.
+    /// initiated outside `shut_down`'s own fan-out) to complete before
+    /// the `OnDisconnect` handler is torn down.
     pub(crate) drain_notify: Notify,
 }
 
 impl Connections {
-    pub(crate) fn new(shutting_down: Arc<AtomicBool>) -> Self {
-        Self {
-            active: Default::default(),
-            limits: Default::default(),
-            shutting_down,
-            drain_notify: Notify::new(),
-        }
-    }
-
-    pub(crate) fn add(&self, conn: Connection, mut guard: ConnectionGuard<'_>) -> io::Result<()> {
+    pub(crate) fn add(
+        &self,
+        conn: Connection,
+        mut guard: ConnectionGuard<'_>,
+        shutting_down: &AtomicBool,
+    ) -> io::Result<()> {
         // lock discipline is `limits` -> `active` everywhere; the guard's Drop (which locks
         // `limits` to clear `connecting`) runs after the `active` guard is released at scope end
         let mut active = self.active.write();
-        if self.shutting_down.load(Ordering::Acquire) {
-            return Err(io::Error::other("shutting down"));
+        if shutting_down.load(Ordering::Acquire) {
+            return Err(crate::node::shutting_down_error());
         }
         active.insert(conn.addr(), conn);
         // do NOT drop the guard or otherwise touch `limits` while `active` is held - that inverts
@@ -410,10 +405,8 @@ pub enum DisconnectOrigin {
 mod ip_count_tests {
     use super::*;
 
-    use std::sync::atomic::AtomicBool;
-
     fn new_conns() -> Connections {
-        Connections::new(Arc::new(AtomicBool::new(false)))
+        Connections::default()
     }
 
     fn reserve(conns: &Connections, addr: SocketAddr) -> ConnectionGuard<'_> {

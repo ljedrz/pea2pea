@@ -44,11 +44,10 @@ macro_rules! enable_protocol {
                 .await
             {
                 Some(Ok(conn)) => conn,
-                // the handler (and the channel with the connection's returner) is gone - or the
-                // message was stranded in its closed channel - which only happens when its task
-                // was aborted, i.e. the node is shutting down; match the error used by the other
-                // shutdown-race paths
-                None => return Err(io::Error::other("shutting down")),
+                // the request was dropped by the handler's shutdown drain, the handler is
+                // gone, or the message was stranded in its closed channel after an abort -
+                // all of which mean the node is shutting down
+                None => return Err(shutting_down_error()),
                 Some(e) => return e,
             }
         } else {
@@ -57,10 +56,31 @@ macro_rules! enable_protocol {
     };
 }
 
+/// Waits until `drained` holds, (re)registering with `notify` before every check so that
+/// a notification between the check and the await cannot be missed.
+async fn wait_for_drain(notify: &Notify, drained: impl Fn() -> bool) {
+    loop {
+        let notified = notify.notified();
+        tokio::pin!(notified);
+        notified.as_mut().enable(); // register the waiter
+        if drained() {
+            break;
+        }
+        notified.await;
+    }
+}
+
+/// The error returned by every path that rejects work due to node shutdown; the message is
+/// part of the shutdown contract, so all the sites must stay in sync.
+pub(crate) fn shutting_down_error() -> io::Error {
+    io::Error::other("shutting down")
+}
+
 /// A sequential numeric identifier assigned to `Node`s that were not provided with a name.
 static SEQUENTIAL_NODE_ID: AtomicUsize = AtomicUsize::new(0);
 
-/// The types of long-running tasks supported by the Node.
+/// The types of long-running tasks supported by the Node. The declaration order is
+/// immaterial (storage is keyed); the graceful wind-down order is the array in `shut_down`.
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum NodeTask {
     Listener,
@@ -113,7 +133,7 @@ pub struct InnerNode {
     /// The node's tasks.
     pub(crate) tasks: Mutex<HashMap<NodeTask, JoinHandle<()>>>,
     /// Indicates whether the shutdown sequence has begun.
-    shutting_down: Arc<AtomicBool>,
+    shutting_down: AtomicBool,
     /// Tells the protocol handler tasks to wind down gracefully: stop
     /// accepting new work, drain their queues, and exit.
     pub(crate) shutdown_signal: watch::Sender<bool>,
@@ -161,9 +181,6 @@ impl Node {
         // shared budget for concurrent connection setups
         let connecting_permits = Arc::new(Semaphore::new(config.max_connecting as usize));
 
-        // create the shutdown flag
-        let shutting_down = Arc::new(AtomicBool::default());
-
         let node = Node(Arc::new(InnerNode {
             span,
             config,
@@ -172,12 +189,12 @@ impl Node {
             sched_in_flight: AtomicUsize::new(0),
             sched_drained: Notify::new(),
             protocols: Default::default(),
-            connections: Connections::new(shutting_down.clone()),
+            connections: Default::default(),
             connecting_permits,
             stats: Default::default(),
             heuristics: Default::default(),
             tasks: Default::default(),
-            shutting_down,
+            shutting_down: Default::default(),
         }));
 
         debug!(parent: node.span(), "the node is ready");
@@ -204,7 +221,7 @@ impl Node {
             // validate before mutating: if the listener task is gone, the node is shutting
             // down, and the address is `shut_down`'s to clear
             let Some(listener_task) = self.tasks.lock().remove(&NodeTask::Listener) else {
-                return Err(io::Error::other("shutting down"));
+                return Err(shutting_down_error());
             };
             listener_task.abort();
             trace!(parent: self.span(), "aborted the listening task");
@@ -343,7 +360,7 @@ impl Node {
     ) -> io::Result<()> {
         // immediately reject if shutting down
         if self.shutting_down.load(Acquire) {
-            return Err(io::Error::other("shutting down"));
+            return Err(shutting_down_error());
         }
 
         // check connection limits and set up a connection guard; a rejection here means admission
@@ -458,11 +475,18 @@ impl Node {
         // cleanup guard can be scoped to this exact connection (see DisconnectOnDrop)
         let conn_id = connection.id;
 
-        // account for the upcoming OnConnect scheduling before the connection
-        // becomes visible in `active`, so that `shut_down` - which drains
-        // `active` first - can never miss it
-        let sched_guard = SchedulingGuard::new(self.clone());
-        self.connections.add(connection, guard)?;
+        // account for the upcoming OnConnect scheduling (if the protocol is enabled at
+        // all; it can never be enabled retroactively) before the connection becomes
+        // visible in `active`, so that `shut_down` - which drains `active` first - can
+        // never miss it
+        let sched_guard = self
+            .protocols
+            .on_connect
+            .get()
+            .is_some()
+            .then(|| SchedulingGuard::new(self.clone()));
+        self.connections
+            .add(connection, guard, &self.shutting_down)?;
 
         // send the aforementioned notification so that reading from the socket can commence
         if let Some(tx) = conn_ready_tx {
@@ -482,6 +506,7 @@ impl Node {
             let node = self.clone();
             let scheduling_task = tokio::spawn(async move {
                 let _sched_guard = sched_guard;
+
                 let Some(handler) = node.protocols.on_connect.get() else {
                     return; // unreachable: checked above, and protocols are never disabled
                 };
@@ -619,7 +644,7 @@ impl Node {
     async fn connect_inner(&self, addr: SocketAddr, socket: Option<TcpSocket>) -> io::Result<()> {
         // immediately abort if shutting down
         if self.shutting_down.load(Acquire) {
-            return Err(io::Error::other("shutting down"));
+            return Err(shutting_down_error());
         }
 
         // a simple self-connect attempt check
@@ -805,9 +830,12 @@ impl Node {
     fn check_and_reserve(&self, addr: SocketAddr) -> io::Result<ConnectionGuard<'_>> {
         // this lock is held for the duration of the check to prevent races
         let mut limits = self.connections.limits.lock();
+        // a single read guard serves both the duplicate check and the connection count;
+        // the `limits` -> `active` acquisition order is preserved
+        let active = self.connections.active.read();
 
         // reject duplicates regardless of side (although is very niche on responder side)
-        if self.connections.is_connected(addr) {
+        if active.contains_key(&addr) {
             return Err(io::Error::new(
                 ErrorKind::AlreadyExists,
                 "already connected",
@@ -835,7 +863,7 @@ impl Node {
         }
 
         // check the global connection count limit
-        let num_connected = self.connections.num_connected();
+        let num_connected = active.len();
         let connection_limit = self.config.max_connections as usize;
         if num_connected + num_connecting >= connection_limit {
             return Err(io::Error::new(
@@ -894,49 +922,33 @@ impl Node {
         let mut disconnects: FuturesUnordered<_> = self
             .connected_addrs()
             .into_iter()
-            .map(|addr| {
-                let node = self.clone();
-                async move {
-                    node.disconnect_w_origin(addr, DisconnectOrigin::Shutdown, None)
-                        .await
-                }
-            })
+            .map(|addr| self.disconnect_w_origin(addr, DisconnectOrigin::Shutdown, None))
             .collect();
         while disconnects.next().await.is_some() {}
 
         // wait for any concurrent disconnects to finish their cleanup; a concurrent
-        // disconnect (e.g. a user-initiated may have won the `disconnecting` swap
-        // before this `shut_down` began; in that case our spawned disconnect task
-        // above returned `false` without firing `on_disconnect`, and the concurrent
-        // disconnect is still responsible for firing it
+        // disconnect (e.g. a user-initiated one) may have won the `disconnecting` swap
+        // before this `shut_down` began - the fan-out above then returned `false` for
+        // that address without firing `on_disconnect`, and the concurrent disconnect
+        // remains responsible for firing it
         //
         // the wait is bounded: `shutting_down` now blocks new entries from
         // being added (see `Connections::add`), and every remaining entry has
         // a single owner committed to removing it
-        loop {
-            let notified = self.connections.drain_notify.notified();
-            tokio::pin!(notified);
-            notified.as_mut().enable(); // register the waiter
-            if self.connections.active.read().is_empty() {
-                break;
-            }
-            notified.await;
-        }
+        wait_for_drain(&self.connections.drain_notify, || {
+            self.connections.active.read().is_empty()
+        })
+        .await;
 
         // wait out any in-flight OnConnect scheduling tasks; every connection
         // that reached `active` was preceded by its guard, and new ones can
         // no longer be added, so the count can only fall from here. Without
         // this, a scheduling task delayed by executor lag could fire its
         // trigger into the closed channel below and silently skip the hook
-        loop {
-            let notified = self.sched_drained.notified();
-            tokio::pin!(notified);
-            notified.as_mut().enable(); // register the waiter
-            if self.sched_in_flight.load(Acquire) == 0 {
-                break;
-            }
-            notified.await;
-        }
+        wait_for_drain(&self.sched_drained, || {
+            self.sched_in_flight.load(Acquire) == 0
+        })
+        .await;
 
         // signal the protocol handler tasks to wind down gracefully: each one
         // stops accepting new work and then drains its queue - the setup
@@ -975,7 +987,7 @@ impl Node {
         let mut tasks = self.tasks.lock();
         if self.shutting_down.load(Acquire) {
             handle.abort();
-            return Err(io::Error::other("shutting down"));
+            return Err(shutting_down_error());
         }
         // a duplicate registration could only result from a concurrent double-enable of a
         // protocol - API misuse that also panics in the enable itself; surface it in debug

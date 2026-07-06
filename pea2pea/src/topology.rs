@@ -83,13 +83,10 @@ pub async fn connect_nodes<T: Pea2Pea>(nodes: &[T], topology: Topology) -> io::R
             }
         }
         Topology::Mesh => {
-            let mut connected_pairs = HashSet::with_capacity(count * (count - 1));
             for i in 0..count {
-                for (j, peer) in nodes.iter().enumerate() {
-                    if i != j && connected_pairs.insert((i, j)) && connected_pairs.insert((j, i)) {
-                        let addr = peer.node().listening_addr().await?;
-                        nodes[i].node().connect(addr).await?;
-                    }
+                for j in (i + 1)..count {
+                    let addr = nodes[j].node().listening_addr().await?;
+                    nodes[i].node().connect(addr).await?;
                 }
             }
         }

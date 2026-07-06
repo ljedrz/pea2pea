@@ -22,7 +22,7 @@ use crate::{
     Pea2Pea,
     connections::{DisconnectOrigin, create_connection_span},
     node::NodeTask,
-    protocols::{ProtocolHandler, panic_message},
+    protocols::{ProtocolHandler, panic_message, run_hook_handler_loop},
 };
 
 // The value returned to the node is a bit complex, so use an alias to break it down.
@@ -76,7 +76,7 @@ where
                 "the OnDisconnect protocol was enabled more than once!"
             );
 
-            let (from_node_sender, mut from_node_receiver) =
+            let (from_node_sender, from_node_receiver) =
                 mpsc::channel::<(
                     (SocketAddr, DisconnectOrigin),
                     oneshot::Sender<OnDisconnectBundle>,
@@ -95,35 +95,28 @@ where
                     return;
                 }
 
-                let mut shutdown = self_clone.node().shutdown_signal.subscribe();
-                let mut draining = false;
-                loop {
-                    tokio::select! {
-                        biased;
-                        maybe_item = from_node_receiver.recv() => {
-                            let Some(((addr, origin), notifier)) = maybe_item else {
-                                break; // channel closed and drained
-                            };
-                    let self_clone2 = self_clone.clone();
+                let node = self_clone.node().clone();
+                run_hook_handler_loop(node, from_node_receiver, |((addr, origin), notifier)| {
+                    let self_clone = self_clone.clone();
 
                     // create a channel for waiting on completion
                     let (done_tx, done_rx) = oneshot::channel();
 
                     let handle = tokio::spawn(async move {
-                        let hook = AssertUnwindSafe(self_clone2.on_disconnect(addr, origin))
+                        let hook = AssertUnwindSafe(self_clone.on_disconnect(addr, origin))
                             .catch_unwind();
                         // perform the specified extra actions
                         match timeout(Duration::from_millis(Self::TIMEOUT_MS), hook).await {
                             Ok(Ok(())) => {}
                             Ok(Err(payload)) => {
                                 let conn_span =
-                                    create_connection_span(addr, self_clone2.node().span());
+                                    create_connection_span(addr, self_clone.node().span());
                                 error!(parent: conn_span, "OnDisconnect::on_disconnect panicked: {}", panic_message(&*payload));
                                 resume_unwind(payload);
                             }
                             Err(_) => {
                                 let conn_span =
-                                    create_connection_span(addr, self_clone2.node().span());
+                                    create_connection_span(addr, self_clone.node().span());
                                 warn!(parent: conn_span, "OnDisconnect logic timed out");
                             }
                         }
@@ -138,19 +131,8 @@ where
                         // connection's removal (and potentially even the node's shutdown)
                         handle.abort();
                     }
-                        }
-                        res = shutdown.wait_for(|sig| *sig), if !draining => {
-                            let _ = res;
-                            // stop accepting new triggers, but keep running the
-                            // queued hooks - they belong to connections that made
-                            // it into the active set, so skipping them would break
-                            // the OnConnect/OnDisconnect pairing; draining via
-                            // `recv` also waits out any trigger still mid-send
-                            from_node_receiver.close();
-                            draining = true;
-                        }
-                    }
-                }
+                })
+                .await;
             });
             let _ = rx.await;
             if self

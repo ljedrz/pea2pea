@@ -12,7 +12,6 @@ use futures_util::{FutureExt, StreamExt};
 use tokio::{
     io::AsyncRead,
     sync::{mpsc, oneshot},
-    task::JoinSet,
     time::timeout,
 };
 use tokio_util::codec::{Decoder, FramedRead};
@@ -25,7 +24,8 @@ use crate::{
     connections::DisconnectOrigin,
     node::NodeTask,
     protocols::{
-        DisconnectOnDrop, ProtocolHandler, ReturnableConnection, log_setup_join, panic_message,
+        DisconnectOnDrop, ProtocolHandler, ReturnableConnection, panic_message,
+        run_setup_handler_loop,
     },
 };
 
@@ -91,10 +91,7 @@ where
                 "the Reading protocol was enabled more than once!"
             );
 
-            // create a JoinSet to track all in-flight setup tasks
-            let mut setup_tasks = JoinSet::new();
-
-            let (conn_sender, mut conn_receiver) =
+            let (conn_sender, conn_receiver) =
                 mpsc::channel(self.node().config().max_connecting as usize);
 
             // use a channel to know when the reading task is ready
@@ -110,43 +107,14 @@ where
                     return;
                 }
 
-                let mut shutdown = self_clone.node().shutdown_signal.subscribe();
-                let mut draining = false;
-                loop {
-                    tokio::select! {
-                        biased;
-                        // task set cleanups
-                        res = setup_tasks.join_next(), if !setup_tasks.is_empty() => {
-                            log_setup_join(self_clone.node().span(), "Reading", res);
-                        }
-                        // handle new connections from `Node::adapt_stream`
-                        maybe_conn = conn_receiver.recv() => {
-                            match maybe_conn {
-                                // during the shutdown drain, fail the queued
-                                // setups instead of spawning them; dropping an
-                                // item drops the returner within, which the
-                                // caller observes as a clean "shutting down"
-                                Some(_returnable_conn) if draining => {}
-                                Some(returnable_conn) => {
-                                    let self_clone2 = self_clone.clone();
-                                    setup_tasks.spawn(async move {
-                                        self_clone2.handle_new_connection(returnable_conn).await;
-                                    });
-                                }
-                                None => break, // channel closed and drained
-                            }
-                        }
-                        res = shutdown.wait_for(|sig| *sig), if !draining => {
-                            let _ = res;
-                            // stop accepting new setups and drain the queue via
-                            // `recv`, which - unlike dropping the receiver -
-                            // waits out any send that is still mid-write, so no
-                            // message can be stranded in the channel
-                            conn_receiver.close();
-                            draining = true;
-                        }
-                    }
-                }
+                let node = self_clone.node().clone();
+                run_setup_handler_loop(node, "Reading", conn_receiver, |conn, setup_tasks| {
+                    let self_clone = self_clone.clone();
+                    setup_tasks.spawn(async move {
+                        self_clone.handle_new_connection(conn).await;
+                    });
+                })
+                .await;
             });
             let _ = rx_reading.await;
             if self
@@ -311,40 +279,36 @@ impl<R: Reading> ReadingInternal for R {
                     match read_result {
                         Some(Ok(msg)) => {
                             // send the message for further processing
-                            match Self::BACKPRESSURE {
-                                true => {
-                                    if let Err(e) = inbound_message_sender.send(msg).await {
-                                        error!(parent: &conn_span, "can't process a message: {e}");
-                                        break;
-                                    }
+                            if Self::BACKPRESSURE {
+                                if let Err(e) = inbound_message_sender.send(msg).await {
+                                    error!(parent: &conn_span, "can't process a message: {e}");
+                                    break;
                                 }
-                                false => {
-                                    if let Err(e) = inbound_message_sender.try_send(msg) {
-                                        match e {
-                                            mpsc::error::TrySendError::Full(_) => {
-                                                // avoid log flooding
-                                                dropped_count += 1;
-                                                if last_drop_log.elapsed() >= Duration::from_secs(1)
-                                                {
-                                                    warn_about_dropped_messages(
-                                                        &conn_span,
-                                                        &mut dropped_count,
-                                                        &mut last_drop_log,
-                                                    );
-                                                }
-                                            }
-                                            mpsc::error::TrySendError::Closed(_) => {
-                                                error!(parent: &conn_span, "inbound channel closed");
-                                                break;
-                                            }
-                                        }
-                                    } else if dropped_count != 0 {
+                            } else {
+                                match inbound_message_sender.try_send(msg) {
+                                    Ok(()) if dropped_count != 0 => {
                                         warn_about_dropped_messages(
                                             &conn_span,
                                             &mut dropped_count,
                                             &mut last_drop_log,
                                         );
                                         debug!(parent: &conn_span, "the inbound queue is no longer saturated");
+                                    }
+                                    Ok(()) => {}
+                                    Err(mpsc::error::TrySendError::Full(_)) => {
+                                        // avoid log flooding
+                                        dropped_count += 1;
+                                        if last_drop_log.elapsed() >= Duration::from_secs(1) {
+                                            warn_about_dropped_messages(
+                                                &conn_span,
+                                                &mut dropped_count,
+                                                &mut last_drop_log,
+                                            );
+                                        }
+                                    }
+                                    Err(mpsc::error::TrySendError::Closed(_)) => {
+                                        error!(parent: &conn_span, "inbound channel closed");
+                                        break;
                                     }
                                 }
                             }
