@@ -1,5 +1,5 @@
 use divan::Bencher;
-use pea2pea::Pea2Pea;
+use pea2pea::{Pea2Pea, protocols::Reading};
 use test_utils::FullNoopNode;
 use tokio::runtime::Runtime;
 
@@ -29,6 +29,12 @@ fn connect_disconnect(bencher: Bencher) {
     // every sample.
     let (initiator, responder, responder_addr) = rt.block_on(async {
         let responder = FullNoopNode::default();
+        // EOF detection (Reading) is what lets the responder reap each cycle's
+        // connection; without it, the initiator's disconnects would go unnoticed
+        // and the dead connections would pile up in the responder's active set
+        // until admission control (silently) rejects the inbound connections,
+        // turning the samples into measurements of connect-to-rejection cycles
+        responder.enable_reading().await;
         let responder_addr = responder.node().toggle_listener().await.unwrap().unwrap();
 
         let initiator = FullNoopNode::default();

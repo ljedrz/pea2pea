@@ -62,11 +62,12 @@ use pea2pea::{
     Config, Connection, ConnectionSide, Node, Pea2Pea,
     protocols::{Handshake, Reading, Writing},
 };
+use test_utils::wait_for_connections;
 use tokio::{
     net::{TcpListener, TcpStream},
     runtime::Runtime,
-    sync::Notify,
-    time::{sleep, timeout},
+    sync::{Notify, oneshot},
+    time::timeout,
 };
 use tokio_util::codec::{BytesCodec, FramedRead, FramedWrite};
 
@@ -172,10 +173,12 @@ fn raw(bencher: Bencher, size: usize) {
 
         let c = counter.clone();
         let d = done.clone();
+        let (ready_tx, ready_rx) = oneshot::channel();
         let server = tokio::spawn(async move {
             let (stream, _) = listener.accept().await.unwrap();
             stream.set_nodelay(true).unwrap();
             let mut frames = FramedRead::new(stream, BytesCodec::default());
+            let _ = ready_tx.send(());
             while let Some(Ok(frame)) = frames.next().await {
                 let count = c.fetch_add(frame.len(), Ordering::Relaxed) + frame.len();
                 if count.is_multiple_of(MESSAGES * size) {
@@ -187,7 +190,8 @@ fn raw(bencher: Bencher, size: usize) {
         let stream = TcpStream::connect(addr).await.unwrap();
         stream.set_nodelay(true).unwrap();
         let sink = FramedWrite::new(stream, BytesCodec::default());
-        sleep(Duration::from_millis(100)).await;
+        // wait until the server end is accepted and about to read
+        ready_rx.await.unwrap();
         (sink, server)
     });
 
@@ -228,7 +232,8 @@ fn pea2pea(bencher: Bencher, size: usize) {
         sender.enable_handshake().await;
         sender.enable_writing().await;
         sender.node().connect(addr).await.unwrap();
-        sleep(Duration::from_millis(100)).await;
+        // wait until the receiver has registered the link and is reading from it
+        wait_for_connections(receiver.node(), 1).await;
         (receiver, sender, addr)
     });
 

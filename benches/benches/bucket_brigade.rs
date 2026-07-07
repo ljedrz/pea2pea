@@ -7,7 +7,7 @@
 //! `ItemsCount` counter is set to the hop count, so the throughput column reads
 //! as hops/second - i.e. per-hop latency is its inverse (1 Mhop/s == 1 µs/hop).
 
-use std::{net::SocketAddr, sync::Arc, time::Duration};
+use std::{net::SocketAddr, sync::Arc};
 
 use bytes::{Bytes, BytesMut};
 use divan::{Bencher, counter::ItemsCount};
@@ -15,7 +15,8 @@ use pea2pea::{
     Config, ConnectionSide, Node, Pea2Pea, Topology, connect_nodes,
     protocols::{Reading, Writing},
 };
-use tokio::{runtime::Runtime, sync::Notify, time::sleep};
+use test_utils::wait_for_connections;
+use tokio::{runtime::Runtime, sync::Notify};
 use tokio_util::codec::BytesCodec;
 
 fn main() {
@@ -132,8 +133,12 @@ async fn build_chain(len: usize) -> (Vec<Brigadier>, Arc<Notify>, SocketAddr) {
         .inspect_err(check_for_emfile)
         .unwrap();
 
-    // let every connection finish establishing before the first traversal
-    sleep(Duration::from_millis(500)).await;
+    // let every connection finish establishing on both ends before the first
+    // traversal; the endpoints have a single neighbor, the middle nodes two
+    for (i, n) in nodes.iter().enumerate() {
+        let expected = if i == 0 || i == len - 1 { 1 } else { 2 };
+        wait_for_connections(n.node(), expected).await;
+    }
 
     let first_hop = nodes[0].node().connected_addrs()[0];
     (nodes, finished, first_hop)

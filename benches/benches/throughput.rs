@@ -24,8 +24,8 @@ fn main() {
 /// `sender_count * NUM_MESSAGES * MSG_SIZE`; keep that in mind before raising
 /// either this or `sample_count`, since every sample moves the full amount.
 const NUM_MESSAGES: usize = 25_000;
-/// On-wire frame size: a 2-byte length prefix plus a `MSG_SIZE - 2` payload, so
-/// each frame is exactly `MSG_SIZE` bytes on the wire.
+/// The size of a single message; `BytesCodec` adds no framing, so this is also
+/// the exact number of bytes each message puts on the wire.
 const MSG_SIZE: usize = 32 * 1024;
 /// Sender counts to sweep over (1 receiver throughout).
 const SENDER_COUNTS: &[usize] = &[1, 10, 20, 50, 100];
@@ -37,8 +37,8 @@ const QUEUE_DEPTH: usize = <FullNoopNode as Writing>::MESSAGE_QUEUE_DEPTH;
 /// wire is compressed and the receiver discards the bytes), so zeros are fine.
 static PAYLOAD: LazyLock<Bytes> = LazyLock::new(|| Bytes::from(vec![0u8; MSG_SIZE]));
 
-/// The receiver counts decoded frames and fires `done` once `expected` of them
-/// have been processed.
+/// The receiver counts inbound bytes (`BytesCodec` chunks are arbitrary) and
+/// fires `done` once `expected` of them have been processed.
 #[derive(Clone)]
 struct Receiver {
     node: Node,

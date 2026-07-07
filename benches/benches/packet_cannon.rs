@@ -21,7 +21,7 @@ use std::{
         Arc,
         atomic::{AtomicUsize, Ordering},
     },
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 use bytes::{Buf, BufMut, BytesMut};
@@ -30,7 +30,8 @@ use pea2pea::{
     Config, ConnectionSide, Node, Pea2Pea,
     protocols::{Reading, Writing},
 };
-use tokio::{runtime::Runtime, time::sleep};
+use test_utils::wait_for_connections;
+use tokio::{runtime::Runtime, sync::Notify, time::timeout};
 use tokio_util::codec::{Decoder, Encoder};
 
 fn main() {
@@ -91,11 +92,13 @@ impl Encoder<(u8, usize)> for BatchRawCodec {
 
 // --- nodes ---
 
-/// Reading-only node that counts every byte it decodes.
+/// Reading-only node that counts every byte it decodes and fires `done` once a
+/// full sample's worth (`PACKETS`) of them has been processed.
 #[derive(Clone)]
 struct Receiver {
     node: Node,
     counter: Arc<AtomicUsize>,
+    done: Arc<Notify>,
 }
 
 impl Pea2Pea for Receiver {
@@ -113,7 +116,11 @@ impl Reading for Receiver {
     }
 
     async fn process_message(&self, _source: SocketAddr, _message: Self::Message) {
-        self.counter.fetch_add(1, Ordering::Relaxed);
+        // fetch_add is the single crossing point per boundary, so exactly one
+        // message per sample trips the signal even under concurrent dispatch
+        if (self.counter.fetch_add(1, Ordering::Relaxed) + 1).is_multiple_of(PACKETS) {
+            self.done.notify_one();
+        }
     }
 }
 
@@ -170,20 +177,19 @@ impl Writing for BatchSender {
 #[divan::bench(sample_count = 100, sample_size = 1)]
 fn naive(bencher: Bencher) {
     let rt = runtime();
-    let (receiver, counter, addr) = rt.block_on(spawn_receiver());
+    let (receiver, addr) = rt.block_on(spawn_receiver());
 
     let sender = NaiveSender {
         node: Node::new(Config::default()),
     };
-    rt.block_on(connect(&sender, addr));
+    rt.block_on(connect(&sender, receiver.node(), addr));
 
     bencher.counter(ItemsCount::new(PACKETS)).bench_local(|| {
         rt.block_on(async {
-            let target = counter.load(Ordering::Relaxed) + PACKETS;
             for _ in 0..PACKETS {
                 send(|| sender.unicast_fast(addr, PAYLOAD_BYTE)).await;
             }
-            await_delivery(&counter, target).await;
+            await_batch(&receiver.done).await;
         });
     });
 
@@ -203,22 +209,21 @@ fn batch(bencher: Bencher, batch_size: usize) {
     );
 
     let rt = runtime();
-    let (receiver, counter, addr) = rt.block_on(spawn_receiver());
+    let (receiver, addr) = rt.block_on(spawn_receiver());
 
     let sender = BatchSender {
         node: Node::new(Config::default()),
     };
-    rt.block_on(connect(&sender, addr));
+    rt.block_on(connect(&sender, receiver.node(), addr));
 
     let frames = PACKETS / batch_size;
 
     bencher.counter(ItemsCount::new(PACKETS)).bench_local(|| {
         rt.block_on(async {
-            let target = counter.load(Ordering::Relaxed) + PACKETS;
             for _ in 0..frames {
                 send(|| sender.unicast_fast(addr, (PAYLOAD_BYTE, batch_size))).await;
             }
-            await_delivery(&counter, target).await;
+            await_batch(&receiver.done).await;
         });
     });
 
@@ -228,24 +233,25 @@ fn batch(bencher: Bencher, batch_size: usize) {
     });
 }
 
-/// Brings up a counting receiver and returns it alongside its shared counter and
-/// listening address. Kept off the timed path.
-async fn spawn_receiver() -> (Receiver, Arc<AtomicUsize>, SocketAddr) {
-    let counter = Arc::new(AtomicUsize::new(0));
+/// Brings up a counting receiver and returns it alongside its listening address.
+/// Kept off the timed path.
+async fn spawn_receiver() -> (Receiver, SocketAddr) {
     let receiver = Receiver {
         node: Node::new(Config::default()),
-        counter: counter.clone(),
+        counter: Default::default(),
+        done: Arc::new(Notify::new()),
     };
     receiver.enable_reading().await;
     let addr = receiver.node().toggle_listener().await.unwrap().unwrap();
-    (receiver, counter, addr)
+    (receiver, addr)
 }
 
-/// Enables writing, connects, and lets the link settle before timing starts.
-async fn connect<W: Writing>(sender: &W, addr: SocketAddr) {
+/// Enables writing, connects, and waits until the receiver has registered the
+/// link (and is thus reading from it) before timing starts.
+async fn connect<W: Writing>(sender: &W, receiver: &Node, addr: SocketAddr) {
     sender.enable_writing().await;
     sender.node().connect(addr).await.unwrap();
-    sleep(Duration::from_millis(100)).await;
+    wait_for_connections(receiver, 1).await;
 }
 
 /// Retries a `unicast_fast` enqueue, yielding on backpressure (`QuotaExceeded`).
@@ -259,20 +265,16 @@ async fn send(mut enqueue: impl FnMut() -> io::Result<()>) {
     }
 }
 
-/// Spins until the receiver has counted `target` bytes. On loopback there's no
-/// loss, so this always converges; the deadline just keeps a wiring bug from
-/// hanging the whole run silently.
-async fn await_delivery(counter: &Arc<AtomicUsize>, target: usize) {
-    let deadline = Instant::now() + Duration::from_secs(30);
-    while counter.load(Ordering::Relaxed) < target {
-        if Instant::now() > deadline {
-            panic!(
-                "timed out waiting for delivery: {} / {}",
-                counter.load(Ordering::Relaxed),
-                target
-            );
-        }
-        tokio::task::yield_now().await;
+/// Awaits the receiver's "batch complete" signal. The permit semantics of
+/// `notify_one` cover the case where the receiver finishes before we park here,
+/// so no wakeup is lost; the deadline only exists so a wiring bug fails loud
+/// instead of hanging the whole run.
+async fn await_batch(done: &Notify) {
+    if timeout(Duration::from_secs(30), done.notified())
+        .await
+        .is_err()
+    {
+        panic!("timed out waiting for the batch to be delivered");
     }
 }
 
