@@ -397,7 +397,8 @@ The following properties might look like they should hold but
 ## Verification
 
 The chaos test (`tests/tests/chaos.rs`, run via
-`cargo test -p tests --profile chaos`) exercises every invariant above
+`cargo test -p tests --profile chaos chaos -- --ignored --nocapture`)
+exercises every invariant above
 under sustained random churn:
 
 - Lock ordering is exercised by the constant interleaving of `connect`,

@@ -188,7 +188,7 @@ of a given run's action sequences.
 
 `pea2pea` is designed to be as fast as the machine it runs on. To verify the throughput on your specific hardware, run the included benchmarks:
 
-```rust
+```bash
 cargo bench -p benches
 ```
 

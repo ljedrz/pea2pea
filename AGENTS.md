@@ -30,7 +30,7 @@ cargo test -p tests --profile chaos -- --ignored --nocapture
 # benchmarks (divan)
 cargo bench -p benches
 
-# doc tests
+# doc build (doc tests run as part of `cargo test -p pea2pea`)
 RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --workspace
 
 # lint / format (run in this order)
@@ -66,7 +66,7 @@ When `pea2pea` is built with `features = ["test"]`:
 Tests and benches use `features = ["test"]`, examples do not.
 
 ## Test infrastructure
-- `test-utils` provides: `start_listening`, `wait_for_connections`, `wait_until`, `assert_consistent`, `start_default_nodes`, `FullNoopNode`, `BarrierNode`, and `WritingExt` (`.send_dm()` shorthand).
+- `test-utils` provides: `start_listening`, `wait_for_connections`, `wait_until`, `assert_consistent`, `start_default_nodes`, `FullNoopNode`, `BarrierNode`, `connect_and_wait`, and `WritingExt` (`.send_dm()` shorthand).
 - Tests use a `TestNode` (newtype over `Node`) with `impl_messaging!` macro for `Reading`+`Writing` boilerplate.
 - Topology tests use `connect_nodes(nodes, Topology::*)` and `BarrierNode`.
 

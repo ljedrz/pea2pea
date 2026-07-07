@@ -23,7 +23,7 @@ Because `pea2pea` is a micro-kernel, it handles low-level plumbing while you han
 
 ### ❌ Out of Scope (User Responsibility)
 * **Protocol Logic:** Bugs in your own implementations of the protocols.
-* **Unencrypted Traffic:** `pea2pea` uses raw TCP by default. Lack of encryption is not a vulnerability (see the `tls` or `noise` examples for secure implementations).
+* **Unencrypted Traffic:** `pea2pea` uses raw TCP by default. Lack of encryption is not a vulnerability (see the `tls` or `noise_handshake` examples for secure implementations).
 * **Application-Level DoS:** If your message handler blocks the async runtime.
 
 ## ⚠️ Disclaimer & Vendoring
