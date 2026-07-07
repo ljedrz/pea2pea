@@ -61,15 +61,14 @@
 //!   and keep TCP as a secondary path. pea2pea being TCP-only, this is the
 //!   technique available - and it is sufficient to show traversal is viable.
 
-use std::{env, io, net::SocketAddr, time::Duration};
+use std::{env, io, net::SocketAddr};
 
 use bytes::{Bytes, BytesMut};
 use pea2pea::{
     Config, ConnectionSide, Node, Pea2Pea,
     protocols::{Reading, Writing},
 };
-use rand::RngExt;
-use tokio::{net::TcpSocket, time::sleep};
+use tokio::net::TcpSocket;
 use tokio_util::codec::LengthDelimitedCodec;
 use tracing::*;
 use tracing_subscriber::filter::LevelFilter;
@@ -77,22 +76,20 @@ use tracing_subscriber::filter::LevelFilter;
 const DEFAULT_RENDEZVOUS: &str = "127.0.0.1:9000";
 
 /// How many times a peer will retry the simultaneous-open connection before
-/// giving up. Each retry is a fresh pair of crossing SYNs.
-const HOLE_PUNCH_ATTEMPTS: usize = 20;
-/// Bounds (in ms) for the randomized delay between simultaneous-open attempts.
-/// Kept short so the two peers' dials overlap within roughly one round-trip,
-/// and *jittered* so the two retry cadences can't phase-lock: a dial that
-/// doesn't cross the peer's SYN fails almost instantly (on loopback it is
-/// RST'd within microseconds), so peers redialing on identical fixed intervals
-/// would preserve whatever phase offset they started with - an unlucky offset
-/// would then stay unlucky for every attempt. Random per-attempt delays make
-/// the phases drift until the SYNs cross.
-const HOLE_PUNCH_INTERVAL_MS: std::ops::Range<u64> = 50..150;
+/// giving up. Each retry is a fresh pair of crossing SYNs; in practice the
+/// crossing happens within the first few dozen attempts.
+const HOLE_PUNCH_ATTEMPTS: usize = 500;
 
-/// Sleep for a random duration drawn from [`HOLE_PUNCH_INTERVAL_MS`].
+/// The pause between punch attempts: none beyond yielding to the runtime. A
+/// dial that doesn't cross the peer's SYN is RST'd within one round-trip, so
+/// the crossing window is only about one RTT wide (on loopback: microseconds);
+/// redialing immediately maximizes the fraction of time each peer spends in
+/// `SYN_SENT`, which is what makes the SYNs cross quickly. Fixed sleeps here
+/// would be counterproductive: they shrink that fraction dramatically, and
+/// scheduling noise already provides all the cadence jitter needed to avoid
+/// the two peers' retry loops phase-locking.
 async fn punch_backoff() {
-    let delay_ms = rand::rng().random_range(HOLE_PUNCH_INTERVAL_MS);
-    sleep(Duration::from_millis(delay_ms)).await;
+    tokio::task::yield_now().await;
 }
 
 // === The hole-punching primitive ===
