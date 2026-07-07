@@ -14,15 +14,15 @@ use pea2pea::{
 };
 use rand::RngExt;
 use test_utils::{
-    FullNoopNode, assert_consistent,
+    FullNoopNode, WritingExt, assert_consistent,
     barrier_node::{BarrierNode, connect_and_wait},
     start_default_nodes, start_listening, wait_for_connections, wait_until,
 };
 use tokio::{
-    net::{TcpListener, TcpSocket},
+    net::{TcpListener, TcpSocket, TcpStream},
     sync::{Barrier, Notify},
     task::JoinSet,
-    time::sleep,
+    time::{sleep, timeout},
 };
 
 mod common;
@@ -121,7 +121,7 @@ async fn disconnect_isolates_peer() {
         let p = Node::new(Default::default());
         let addr = p.toggle_listener().await.unwrap().unwrap();
         hub.connect(addr).await.unwrap();
-        peers.push(addr); // keep the Node alive too
+        peers.push(addr); // the dropped `p` stays alive regardless, via its reference cycle
     }
     assert_eq!(hub.num_connected(), 3);
 
@@ -154,12 +154,7 @@ async fn node_stats_survive_disconnect() {
     // round 1: connect, send 3 messages, disconnect
     writer.node().connect(reader_addr).await.unwrap();
     for _ in 0..3 {
-        writer
-            .unicast(reader_addr, msg.clone())
-            .unwrap()
-            .await
-            .unwrap()
-            .unwrap();
+        writer.send_dm(reader_addr, msg.clone()).await.unwrap();
     }
     wait_until(Duration::from_secs(1), || {
         reader.node().stats().received().0 == 3
@@ -182,12 +177,7 @@ async fn node_stats_survive_disconnect() {
     // round 2: reconnect and send 2 more
     writer.node().connect(reader_addr).await.unwrap();
     for _ in 0..2 {
-        writer
-            .unicast(reader_addr, msg.clone())
-            .unwrap()
-            .await
-            .unwrap()
-            .unwrap();
+        writer.send_dm(reader_addr, msg.clone()).await.unwrap();
     }
 
     // node-level stats must reflect both rounds combined
@@ -502,15 +492,32 @@ async fn connection_timeout_works() {
     };
     let node = Node::new(config);
 
-    // attempt to connect to a non-routable IP (TEST-NET-1)
-    // 192.0.2.x is reserved for documentation and examples; it should typically blackhole
-    // or at least not respond with a TCP RST immediately, triggering the timeout logic
-    let blackhole_addr = "192.0.2.1:1234".parse().unwrap();
+    // create a listener with a minimal accept queue that is never accepted from;
+    // once the queue is saturated (below), the OS silently drops further SYNs
+    // (with the default `tcp_abort_on_overflow = 0`), leaving the connect attempt
+    // hanging - a local, deterministic stand-in for a blackholed address
+    let socket = TcpSocket::new_v4().unwrap();
+    socket.bind("127.0.0.1:0".parse().unwrap()).unwrap();
+    let listener = socket.listen(1).unwrap();
+    let stuffed_addr = listener.local_addr().unwrap();
+
+    // saturate the accept queue; its effective depth is the backlog plus a small
+    // OS-specific allowance, so the first few connects succeed instantly - the
+    // first one to stall marks the queue as full (the streams are kept alive so
+    // the queue stays occupied)
+    let mut early_birds = Vec::new();
+    loop {
+        match timeout(Duration::from_millis(50), TcpStream::connect(stuffed_addr)).await {
+            Ok(Ok(stream)) => early_birds.push(stream),
+            _ => break,
+        }
+        assert!(early_birds.len() < 64, "the accept queue never saturated");
+    }
 
     let start = Instant::now();
 
     // perform the connection attempt
-    let result = node.connect(blackhole_addr).await;
+    let result = node.connect(stuffed_addr).await;
 
     let elapsed = start.elapsed();
 
@@ -522,7 +529,8 @@ async fn connection_timeout_works() {
     assert_eq!(err.kind(), io::ErrorKind::TimedOut);
 
     // verify the timing
-    // OS TCP timeouts are usually 30s+, so if this finishes in <1s, we know our logic worked
+    // bare TCP would keep retransmitting the SYN for minutes, so finishing this
+    // quickly means our timeout logic worked
     assert!(elapsed >= Duration::from_millis(200));
     assert!(elapsed < Duration::from_secs(2));
 }
@@ -750,12 +758,7 @@ async fn message_stats() {
     let msg = Bytes::from(msg);
 
     for _ in 0..sent_msgs_count {
-        writer
-            .unicast(reader_addr, msg.clone())
-            .unwrap()
-            .await
-            .unwrap()
-            .unwrap();
+        writer.send_dm(reader_addr, msg.clone()).await.unwrap();
     }
 
     // 2 is the common test length prefix size

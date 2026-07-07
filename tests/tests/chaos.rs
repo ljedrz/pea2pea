@@ -656,7 +656,8 @@ fn pop_random(pool: &Pool, rng: &mut SmallRng) -> Option<StressNode> {
 }
 
 fn random_message(rng: &mut SmallRng) -> Bytes {
-    let size = rng.random_range(MIN_MSG_SIZE..MAX_MSG_SIZE);
+    // inclusive, so that the codec's max_frame_length boundary gets exercised too
+    let size = rng.random_range(MIN_MSG_SIZE..=MAX_MSG_SIZE);
     Bytes::from_static(&MSG_BYTES[..size])
 }
 
@@ -1142,7 +1143,7 @@ async fn infinite_chaos_inner() {
     } else {
         Weights::classic()
     };
-    println!("[epoch 0] mix: {initial_weights}\n");
+    println!("\n[epoch 0] mix: {initial_weights}");
     let dials = Arc::new(Dials {
         weights: RwLock::new(initial_weights),
         max_delay_us: AtomicU64::new(MAX_ACTION_DELAY_US),
@@ -1201,8 +1202,10 @@ async fn infinite_chaos_inner() {
         )));
     }
 
-    // Periodically flood the pool with short-lived extra workers.
-    if bursts_enabled {
+    // Periodically flood the pool with short-lived extra workers; the handle is
+    // kept so the shutdown below can wait out an in-flight storm - its stragglers
+    // could otherwise still be mid-action during the end-of-run invariant checks.
+    let burst_handle = bursts_enabled.then(|| {
         tokio::spawn(burst_director(
             pool.clone(),
             stats.clone(),
@@ -1210,8 +1213,8 @@ async fn infinite_chaos_inner() {
             watch.clone(),
             token.clone(),
             burst_seed,
-        ));
-    }
+        ))
+    });
 
     // Spawn the metrics printer, which doubles as the watchdog driver.
     let m_stats = stats.clone();
@@ -1255,6 +1258,12 @@ async fn infinite_chaos_inner() {
     // sequential await amounts to a concurrent join.
     for w in workers {
         let _ = w.await;
+    }
+
+    // Also wait out the burst director, which joins its in-flight storm (if any)
+    // before exiting; only then are *all* workers quiesced.
+    if let Some(handle) = burst_handle {
+        let _ = handle.await;
     }
 
     // Shut down any remaining nodes; with the workers quiesced, the drain

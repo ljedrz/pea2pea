@@ -227,10 +227,7 @@ async fn no_writing_no_delivery() {
     );
 
     // the writer didn't enable writing, so the reader won't receive anything
-    wait_until(Duration::from_secs(1), || {
-        reader.node().stats().received() == (0, 0)
-    })
-    .await;
+    assert_eq!(reader.node().stats().received(), (0, 0));
 }
 
 #[tokio::test]
@@ -790,8 +787,9 @@ async fn on_connect_abortable_is_cancelled_on_disconnect() {
     impl OnConnect for AbortableNode {
         // ABORTABLE: bool = true is the default
         async fn on_connect(&self, _: SocketAddr) {
-            // long enough that we can disconnect well before this finishes
-            sleep(Duration::from_secs(5)).await;
+            // long enough that the disconnect below lands first, but short enough that a
+            // hook surviving the abort completes within the observation window below
+            sleep(Duration::from_millis(300)).await;
             self.completed.store(true, Ordering::Release);
         }
     }
@@ -808,9 +806,9 @@ async fn on_connect_abortable_is_cancelled_on_disconnect() {
     abortable.node().connect(target_addr).await.unwrap();
     abortable.node().disconnect(target_addr).await;
 
-    // wait substantially less than the OnConnect body would take if it ran -
-    // the body was aborted, so `completed` must still be false.
-    sleep(Duration::from_millis(300)).await;
+    // wait out substantially more than the OnConnect body would take if it kept
+    // running - it was aborted, so `completed` must still be false afterwards
+    sleep(Duration::from_secs(1)).await;
     assert!(
         !abortable.completed.load(Ordering::Acquire),
         "abortable OnConnect should have been cancelled on disconnect"
