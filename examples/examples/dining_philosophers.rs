@@ -56,6 +56,9 @@ impl Philosopher {
     async fn new(name: String) -> Self {
         let config = Config {
             name: Some(name),
+            // a ring of loopback nodes needs per-IP connection headroom
+            // (the default limit is 1)
+            max_connections_per_ip: 2,
             ..Default::default()
         };
 
@@ -99,8 +102,13 @@ impl Philosopher {
                         };
                         debug!(parent: node.node().span(), "asking {} for the fork", neighbor.1);
                         drop(state);
-                        node.unicast_fast(neighbor.0, Message::AreYouUsingTheSharedFork)
-                            .unwrap();
+                        if node
+                            .unicast_fast(neighbor.0, Message::AreYouUsingTheSharedFork)
+                            .is_err()
+                        {
+                            // the dinner is over (the node is shutting down)
+                            return;
+                        }
                         sleep(Duration::from_millis(250)).await;
                     }
                     State::Eating(duration) => {
@@ -201,7 +209,13 @@ async fn main() {
     ];
 
     connect_nodes(&philosophers, Topology::Ring).await.unwrap();
-    sleep(Duration::from_millis(100)).await;
+
+    // wait until every ring link is registered on both of its ends
+    for p in &philosophers {
+        while p.node().num_connected() < 2 {
+            sleep(Duration::from_millis(10)).await;
+        }
+    }
 
     let count = philosophers.len();
     for (i, philosopher) in philosophers.iter().enumerate() {

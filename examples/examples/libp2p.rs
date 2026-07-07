@@ -473,6 +473,7 @@ async fn main() {
     pea2pea_node.enable_handshake().await;
     pea2pea_node.enable_reading().await;
     pea2pea_node.enable_writing().await;
+    pea2pea_node.enable_on_disconnect().await;
 
     // prepare and start a ping-enabled libp2p swarm
     let mut swarm = SwarmBuilder::with_new_identity()

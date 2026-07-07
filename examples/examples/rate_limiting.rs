@@ -82,7 +82,11 @@ async fn main() {
     }
 
     // make sure all the responders have accepted the connection requests
-    sleep(Duration::from_millis(100)).await;
+    for node in nodes.iter().skip(1) {
+        while node.node().num_connected() != 1 {
+            sleep(Duration::from_millis(10)).await;
+        }
+    }
 
     // the first node will be periodically checking for potential spammers
     let recipient = nodes[0].clone();
@@ -154,12 +158,15 @@ async fn main() {
             let recipient_addr = examples::await_connection(node.node()).await;
 
             loop {
-                // deliberately assert on every layer: queueing, sending, and delivery
-                node.unicast(recipient_addr, msg.clone())
-                    .unwrap()
-                    .await
-                    .unwrap()
-                    .unwrap();
+                // check every layer: queueing, sending, and delivery; a failure on
+                // any of them can only mean the demo is over (nodes shutting down)
+                let delivered = match node.unicast(recipient_addr, msg.clone()) {
+                    Ok(rx) => matches!(rx.await, Ok(Ok(()))),
+                    Err(_) => false,
+                };
+                if !delivered {
+                    break;
+                }
 
                 sleep(Duration::from_millis(100)).await;
             }
@@ -179,12 +186,16 @@ async fn main() {
                 break;
             };
 
-            spammer
-                .unicast(recipient_addr, msg.clone())
-                .unwrap()
-                .await
-                .unwrap()
-                .unwrap();
+            // the recipient's disconnect can also land mid-send, so a failed
+            // delivery is the other way to learn the jig is up
+            let delivered = match spammer.unicast(recipient_addr, msg.clone()) {
+                Ok(rx) => matches!(rx.await, Ok(Ok(()))),
+                Err(_) => false,
+            };
+            if !delivered {
+                warn!(parent: spammer.node().span(), "blast! I've been found!");
+                break;
+            }
 
             sleep(Duration::from_millis(20)).await;
         }

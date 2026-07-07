@@ -37,7 +37,7 @@ impl Reading for Player {
         // "bork" the message with a 50% probability
         if rand::rng().random_bool(0.5) {
             let mut bytes = message.into_bytes();
-            let idx = rand::rng().random_range(0..bytes.len() - 1);
+            let idx = rand::rng().random_range(0..bytes.len());
             let changed_char = rand::rng().random_range(b'a'..=b'z');
             bytes[idx] = changed_char;
             message = String::from_utf8(bytes).unwrap();
@@ -78,6 +78,9 @@ async fn main() {
         .map(|id| {
             let config = Config {
                 name: Some(id.to_string()),
+                // a line of loopback nodes needs per-IP connection headroom
+                // for the middle players (the default limit is 1)
+                max_connections_per_ip: 2,
                 ..Default::default()
             };
             Player(Node::new(config))

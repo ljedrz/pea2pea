@@ -95,10 +95,6 @@ async fn punch_backoff() {
     sleep(Duration::from_millis(delay_ms)).await;
 }
 
-/// Wait this long after connecting to the rendezvous before registering;
-/// gives the reading/writing tasks a moment to spin up.
-const POST_CONNECT_SETTLE: Duration = Duration::from_millis(50);
-
 // === The hole-punching primitive ===
 
 /// Create a `TcpSocket` bound to `bind_addr` with `SO_REUSEADDR`, ready to be
@@ -463,9 +459,9 @@ async fn run_peer(name: String, rendezvous_addr: SocketAddr) -> io::Result<()> {
     peer.enable_writing().await;
     // NB: no `toggle_listener` - see the module docs.
 
-    // connect to the rendezvous (an ordinary outbound connection)
+    // connect to the rendezvous (an ordinary outbound connection); sending is
+    // safe the moment `connect` returns - no settling period is needed
     peer.node().connect(rendezvous_addr).await?;
-    sleep(POST_CONNECT_SETTLE).await;
 
     // announce our punch address (in a real deployment: the STUN-learned one)
     peer.unicast_fast(rendezvous_addr, encode_register(&name, punch_addr))

@@ -125,6 +125,13 @@ async fn main() {
 
         // the thug dies before revealing the location of Hapsburg's Plan B
         hapsburgs_thug.node().shut_down().await;
+
+        // wait for Drebin to fully process the thug's demise; as long as the
+        // defunct connection lingers, it holds Drebin's per-IP quota (1 by
+        // default) and the next thug's approach would be turned away
+        while drebin.node().num_connected() != 0 {
+            sleep(Duration::from_millis(10)).await;
+        }
     }
 
     // nodes are never dropped implicitly; always shut them down once done

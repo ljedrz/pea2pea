@@ -176,6 +176,12 @@ async fn main() {
     let config = Config {
         name: Some("explorer".into()),
         listener_addr: Some((Ipv4Addr::UNSPECIFIED, 0).into()),
+        // peers connect mutually (each side dials the other's beaconed address),
+        // so every discovered peer can occupy 2 connections - and peers running
+        // on the same machine all share one IP; without this headroom (the
+        // default limit is 1) the dial-back is rejected and endlessly retried,
+        // since the inbound connection is keyed by the peer's ephemeral port
+        max_connections_per_ip: 10,
         ..Default::default()
     };
     let node = DiscoveryNode(Node::new(config));
