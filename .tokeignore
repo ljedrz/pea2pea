@@ -1,5 +1,7 @@
+assets
 benches
 examples
+test-utils
 tests
 Cargo.toml
 *.md
