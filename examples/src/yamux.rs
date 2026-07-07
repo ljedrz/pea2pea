@@ -57,6 +57,23 @@ impl Frame {
         Self { header, payload }
     }
 
+    // creates a session-level ping message; the opaque value is carried in the
+    // length field, and there is no payload
+    pub fn ping(flags: Vec<Flag>, opaque: u32) -> Self {
+        let header = Header {
+            version: VERSION,
+            ty: Ty::Ping,
+            flags,
+            stream_id: 0,
+            length: opaque,
+        };
+
+        Self {
+            header,
+            payload: Default::default(),
+        }
+    }
+
     pub fn terminate(stream_id: u32) -> Self {
         let header = Header {
             version: VERSION,
@@ -266,8 +283,9 @@ impl Encoder<Frame> for Codec {
         dst.put_u16(encode_flags(&msg.header.flags));
         // stream ID
         dst.put_u32(msg.header.stream_id);
-        // length
-        dst.put_u32(msg.payload.len() as u32);
+        // length; for Data frames it is the payload size, for the header-only
+        // types it carries their semantic value (ping opaque, GoAway code)
+        dst.put_u32(msg.header.length);
 
         // data
         dst.put(msg.payload);

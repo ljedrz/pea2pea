@@ -84,6 +84,10 @@ impl Libp2pNode {
                 // reply to pings with the same payload
                 Some(yamux::Frame::data(stream_id, vec![], Some(payload)))
             }
+            Event::SessionPing(opaque) => {
+                // reply to the session keepalive in kind, echoing the opaque value
+                Some(yamux::Frame::ping(vec![yamux::Flag::Ack], opaque))
+            }
             _ => None,
         };
 
@@ -114,6 +118,7 @@ enum Event {
     StreamHalfClosed(yamux::StreamId),
     StreamTerminated(yamux::StreamId),
     ReceivedPing(yamux::StreamId, Bytes),
+    SessionPing(u32),
     Unknown(yamux::Frame),
 }
 
@@ -148,9 +153,12 @@ impl Encoder<yamux::Frame> for Codec {
     type Error = io::Error;
 
     fn encode(&mut self, msg: yamux::Frame, dst: &mut BytesMut) -> Result<(), Self::Error> {
-        // encode the Yamux frame
-        self.yamux.encode(msg, dst)?;
-        let mut bytes = dst.split().freeze();
+        // encode the Yamux frame into a scratch buffer: `dst` may already hold
+        // previously encoded - and thus already encrypted - messages belonging
+        // to the same write batch, and those must not be encrypted again
+        let mut plaintext = BytesMut::new();
+        self.yamux.encode(msg, &mut plaintext)?;
+        let mut bytes = plaintext.freeze();
 
         // split the frame into noise-compatible chunks
         while !bytes.is_empty() {
@@ -361,6 +369,22 @@ impl Reading for Libp2pNode {
             stream_id, flags, ..
         } = &message.header;
         let payload = message.payload;
+
+        // session-level (type Ping) frames are keepalive/RTT probes, unrelated
+        // to the libp2p ping *protocol* (which travels in Data frames on a
+        // dedicated stream); their opaque value is carried in the header's
+        // length field, and they don't take part in stream bookkeeping. An ACK
+        // would be a response to a ping of ours (we never send any)
+        if message.header.ty == yamux::Ty::Ping {
+            if flags.contains(&yamux::Flag::Syn)
+                && let Err(e) = self
+                    .process_event(Event::SessionPing(message.header.length), source)
+                    .await
+            {
+                error!("Couldn't process an event: {e}");
+            }
+            return;
+        }
 
         // register the discovered events
         let mut events = vec![];
