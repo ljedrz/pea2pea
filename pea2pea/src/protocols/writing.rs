@@ -46,6 +46,8 @@ where
     /// The depth of per-connection queues used to send outbound messages; the greater it is, the more outbound
     /// messages the node can enqueue. Setting it to a large value is not recommended, as doing it might
     /// obscure potential issues with your implementation (like slow serialization) or network.
+    ///
+    /// note: Must not be `0` - [`Writing::enable_writing`] panics on such a value.
     const MESSAGE_QUEUE_DEPTH: usize = 64;
 
     /// The initial size of a per-connection buffer for writing outbound messages. Can be set to the maximum expected size
@@ -73,9 +75,16 @@ where
     ///
     /// # Panics
     ///
-    /// Panics if called more than once on the same [`Node`].
+    /// Panics if called more than once on the same [`Node`], or if
+    /// [`Writing::MESSAGE_QUEUE_DEPTH`] is `0`.
     fn enable_writing(&self) -> impl Future<Output = ()> {
         async {
+            // a zero depth would panic (obscurely) at the first connection instead
+            assert!(
+                Self::MESSAGE_QUEUE_DEPTH != 0,
+                "Writing::MESSAGE_QUEUE_DEPTH must not be 0"
+            );
+
             let (conn_sender, conn_receiver) =
                 mpsc::channel(self.node().config().max_connecting as usize);
 

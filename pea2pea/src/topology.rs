@@ -4,7 +4,6 @@ use crate::Pea2Pea;
 
 /// The way in which nodes are connected to each other; used in [`connect_nodes`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[non_exhaustive]
 pub enum Topology {
     /// Each node - except the last one - connects to the next one in a linear fashion.
     Line,

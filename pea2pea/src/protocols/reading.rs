@@ -42,6 +42,8 @@ where
     /// The depth of per-connection queues used to process inbound messages; the greater it is, the more inbound
     /// messages the node can enqueue, but setting it to a large value can make the node more susceptible to DoS
     /// attacks.
+    ///
+    /// note: Must not be `0` - [`Reading::enable_reading`] panics on such a value.
     const MESSAGE_QUEUE_DEPTH: usize = 64;
 
     /// Determines whether TCP backpressure should be exerted in case the number of queued messages
@@ -83,9 +85,16 @@ where
     ///
     /// # Panics
     ///
-    /// Panics if called more than once on the same [`Node`].
+    /// Panics if called more than once on the same [`Node`], or if
+    /// [`Reading::MESSAGE_QUEUE_DEPTH`] is `0`.
     fn enable_reading(&self) -> impl Future<Output = ()> {
         async {
+            // a zero depth would panic (obscurely) at the first connection instead
+            assert!(
+                Self::MESSAGE_QUEUE_DEPTH != 0,
+                "Reading::MESSAGE_QUEUE_DEPTH must not be 0"
+            );
+
             let (conn_sender, conn_receiver) =
                 mpsc::channel(self.node().config().max_connecting as usize);
 

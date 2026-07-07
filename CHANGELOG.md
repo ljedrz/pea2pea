@@ -1,3 +1,10 @@
+# 0.57.2
+
+### Changed
+
+- `Reading::enable_reading` and `Writing::enable_writing` now panic upfront if the respective `MESSAGE_QUEUE_DEPTH` is `0`; such a value would cause an obscure panic at the first connection anyway
+- `Topology` is no longer marked as `#[non_exhaustive]`
+
 # 0.57.1
 
 ### Changed
