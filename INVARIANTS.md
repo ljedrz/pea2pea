@@ -371,10 +371,10 @@ The following properties might look like they should hold but
   peer semantics must implement tie-breaking in `Handshake`.
 
 - **The self-connect check is best-effort.** It compares against the
-  node's own listening address and the loopback variant of its port,
-  but does not enumerate local interfaces. A wildcard-bound node
-  connecting to one of its own non-loopback addresses will succeed in
-  connecting to itself.
+  node's own listening address and - for a wildcard-bound listener -
+  the loopback variant of its port, but does not enumerate local
+  interfaces. A wildcard-bound node connecting to one of its own
+  non-loopback addresses will succeed in connecting to itself.
 
 - **`unicast` returning `Ok` does not guarantee delivery.** The `Ok`
   return only means the message was successfully enqueued. The returned

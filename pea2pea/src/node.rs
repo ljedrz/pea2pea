@@ -645,7 +645,8 @@ impl Node {
     /// in the [`Handshake`] protocol.
     ///
     /// note: A best-effort self-connect check is performed against the node's listening address
-    /// and the loopback variant of its port. It does **not** enumerate local network interfaces:
+    /// and - if the node is bound to a wildcard address - the loopback variant of its port. It
+    /// does **not** enumerate local network interfaces:
     /// if the node listens on a wildcard address (e.g. `0.0.0.0`) and `connect` is called with
     /// one of the host's own non-loopback addresses (e.g. its LAN IP, or its public IP), the
     /// connection will succeed and the node will end up talking to itself over a real TCP loop.
@@ -702,10 +703,14 @@ impl Node {
             return Err(shutting_down_error());
         }
 
-        // a simple self-connect attempt check
+        // a simple self-connect attempt check; the loopback heuristic only applies to a
+        // wildcard-bound listener, the only case where a loopback address with the listening
+        // port actually reaches the node itself
         if let Ok(listening_addr) = self.listening_addr().await
             && (addr == listening_addr
-                || addr.ip().is_loopback() && addr.port() == listening_addr.port())
+                || listening_addr.ip().is_unspecified()
+                    && addr.ip().is_loopback()
+                    && addr.port() == listening_addr.port())
         {
             return Err(io::Error::new(
                 ErrorKind::AddrInUse,

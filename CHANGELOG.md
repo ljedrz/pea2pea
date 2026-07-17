@@ -5,6 +5,10 @@
 - `Reading::enable_reading` and `Writing::enable_writing` now panic upfront if the respective `MESSAGE_QUEUE_DEPTH` is `0`; such a value would cause an obscure panic at the first connection anyway
 - `Topology` is no longer marked as `#[non_exhaustive]`
 
+### Fixed
+
+- the anti-self-connect loopback heuristic now only fires if the listener is an unspecified address
+
 # 0.57.1
 
 ### Changed
