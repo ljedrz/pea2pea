@@ -33,6 +33,9 @@ where
 
     /// Prepares the node to perform specified network handshakes.
     ///
+    /// note: If the node has already begun shutting down, this is a no-op - the protocol is
+    /// not enabled.
+    ///
     /// # Panics
     ///
     /// Panics if called more than once on the same [`Node`].

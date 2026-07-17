@@ -66,6 +66,9 @@ where
     /// state. Calls to [`Node::disconnect`] will wait for it to complete, ensuring that any
     /// necessary cleanup (e.g., notifying a database) is finished before the function returns.
     ///
+    /// note: If the node has already begun shutting down, this is a no-op - the protocol is
+    /// not enabled.
+    ///
     /// # Panics
     ///
     /// Panics if called more than once on the same [`Node`].

@@ -73,6 +73,9 @@ where
 
     /// Prepares the node to send messages.
     ///
+    /// note: If the node has already begun shutting down, this is a no-op - the protocol is
+    /// not enabled.
+    ///
     /// # Panics
     ///
     /// Panics if called more than once on the same [`Node`], or if

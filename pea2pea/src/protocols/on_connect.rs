@@ -78,6 +78,9 @@ where
     /// Attaches the behavior specified in [`OnConnect::on_connect`] right after every successful
     /// handshake.
     ///
+    /// note: If the node has already begun shutting down, this is a no-op - the protocol is
+    /// not enabled.
+    ///
     /// # Panics
     ///
     /// Panics if called more than once on the same [`Node`].
