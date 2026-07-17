@@ -99,7 +99,8 @@ pub struct Config {
     /// both outbound connects in progress and inbound connections still being accepted and handshaked.
     ///
     /// note: It should not be greater than [`Config::max_connections`]: pending connections count
-    /// towards that limit, so a value above it can never actually be reached.
+    /// towards that limit, so a value above it can never actually be reached, and [`Node::new`]
+    /// clamps it accordingly.
     ///
     /// note: On the inbound path this doubles as a backpressure bound - at most `max_connecting`
     /// inbound connections are set up concurrently, and any surplus waits in the OS accept queue

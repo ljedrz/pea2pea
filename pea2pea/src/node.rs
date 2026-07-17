@@ -237,6 +237,18 @@ impl Node {
         // create a tracing span containing the node's name
         let span = create_span(config.name.as_deref().unwrap());
 
+        // pending connections count towards `max_connections`, so any surplus of the
+        // connection-setup budget could never be used; clamp it, which also keeps the
+        // default `max_connecting` valid when only `max_connections` is lowered
+        if config.max_connecting > config.max_connections {
+            debug!(
+                parent: &span,
+                "clamping max_connecting ({}) to max_connections ({})",
+                config.max_connecting, config.max_connections,
+            );
+            config.max_connecting = config.max_connections;
+        }
+
         // shared budget for concurrent connection setups
         let connecting_permits = Arc::new(Semaphore::new(config.max_connecting as usize));
 
@@ -1180,6 +1192,18 @@ mod config_tests {
             max_connecting: 0,
             ..Default::default()
         });
+    }
+
+    // Pending connections count towards `max_connections`, so a setup budget above it could
+    // never be used.
+    #[test]
+    fn excessive_max_connecting_is_clamped() {
+        let node = Node::new(Config {
+            max_connections: 10,
+            max_connecting: 11,
+            ..Default::default()
+        });
+        assert_eq!(node.config().max_connecting, 10);
     }
 }
 

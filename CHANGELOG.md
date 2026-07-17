@@ -4,6 +4,7 @@
 
 - `Reading::enable_reading` and `Writing::enable_writing` now panic upfront if the respective `MESSAGE_QUEUE_DEPTH` is `0`; such a value would cause an obscure panic at the first connection anyway
 - `Topology` is no longer marked as `#[non_exhaustive]`
+- `Config::max_connecting` is now clamped to the value of `::max_connected` in case it's greater
 
 ### Fixed
 
