@@ -562,8 +562,10 @@ impl Node {
 
         debug!(parent: &conn_span, "fully connected");
 
-        // if enabled, enact OnConnect
-        if self.protocols.on_connect.get().is_some() {
+        // if enabled, enact OnConnect; keyed off the guard rather than a fresh protocol check,
+        // so that a concurrent `enable_on_connect` can't produce a scheduling that the sched
+        // accounting (and thus `shut_down`) doesn't know about
+        if sched_guard.is_some() {
             trace!(parent: &conn_span, "executing OnConnect logic...");
 
             // the scheduling runs in a dedicated task, so that it is carried through even if the
