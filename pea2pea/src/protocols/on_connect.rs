@@ -123,7 +123,15 @@ where
                         }
                     });
                     // notify the node that the initial actions have been scheduled
-                    let _ = notifier.send((handle, Self::ABORTABLE)); // can't really fail
+                    if let Err((handle, _)) = notifier.send((handle, Self::ABORTABLE))
+                        && Self::ABORTABLE
+                    {
+                        // the node-side scheduling task gave up waiting (only possible on
+                        // hard-abort shutdown paths); abort the hook rather than let its task
+                        // escape the lifecycle cleanup that `ABORTABLE` promises - when it is
+                        // `false`, running detached to completion is the contract instead
+                        handle.abort();
+                    }
                 })
                 .await;
             };

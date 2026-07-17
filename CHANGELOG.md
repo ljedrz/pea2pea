@@ -9,8 +9,9 @@
 ### Fixed
 
 - the anti-self-connect loopback heuristic now only fires if the listener is an unspecified address
-- an OnConnect double-check race (a pathological edge case)
+- an `OnConnect` double-check race (a pathological edge case)
 - the stats are now calculated correctly also for failing decode that would break a connection
+- a detached `OnConnect` hook task in the hard-abort shutdown path (edge case)
 
 # 0.57.1
 
