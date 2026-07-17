@@ -10,6 +10,7 @@
 
 - the anti-self-connect loopback heuristic now only fires if the listener is an unspecified address
 - an OnConnect double-check race (a pathological edge case)
+- the stats are now calculated correctly also for failing decode that would break a connection
 
 # 0.57.1
 

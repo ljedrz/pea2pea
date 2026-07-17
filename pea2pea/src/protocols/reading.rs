@@ -379,16 +379,18 @@ impl<D: Decoder> Decoder for CountingCodec<D> {
 
     fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
         let initial = src.len();
-        let ret = self.codec.decode(src)?;
-        self.account(initial, src.len(), ret.is_some());
-        Ok(ret)
+        let ret = self.codec.decode(src);
+        // account even on a decode error, so that any bytes consumed by the failed call
+        // still get registered
+        self.account(initial, src.len(), matches!(ret, Ok(Some(_))));
+        ret
     }
 
     fn decode_eof(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
         let initial = src.len();
-        let ret = self.codec.decode_eof(src)?;
-        self.account(initial, src.len(), ret.is_some());
-        Ok(ret)
+        let ret = self.codec.decode_eof(src);
+        self.account(initial, src.len(), matches!(ret, Ok(Some(_))));
+        ret
     }
 }
 
