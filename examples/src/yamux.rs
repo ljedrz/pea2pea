@@ -1,5 +1,9 @@
-//! A simple implementation of the Yamux multiplexer, scoped to what the `libp2p`
-//! example needs (it only ever runs beneath the noise codec, whole frames at a time).
+//! A deliberately minimal implementation of the Yamux multiplexer, scoped to what the `libp2p`
+//! example needs - reimplementing Yamux is not the point of that example. Notably, it performs no
+//! flow control (`WindowUpdate` frames are parsed, but no receive window is ever tracked) and no
+//! frame reassembly: it only ever runs beneath the noise codec, which hands it one whole decrypted
+//! frame per `decode` call, and `Ty::Data` payloads are taken as "the rest of the buffer" on that
+//! basis. Reach for a real Yamux crate for anything beyond this example.
 
 use std::{fmt, io};
 
@@ -9,6 +13,9 @@ use tokio_util::codec::{Decoder, Encoder};
 
 // the version used in Yamux message headers
 pub const VERSION: u8 = 0;
+
+// the size of a Yamux message header: version + type + flags + stream ID + length
+const HEADER_LEN: usize = 1 + 1 + 2 + 4 + 4;
 
 // the numeric ID of a Yamux stream
 pub type StreamId = u32;
@@ -241,6 +248,17 @@ impl Decoder for Codec {
     type Error = io::Error;
 
     fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
+        // the noise codec above hands over one whole decrypted message, but nothing guarantees
+        // it is a well-formed frame - and the header reads below panic on a short buffer. This
+        // is an error rather than `Ok(None)`: `src` is a complete message, so a short one is
+        // malformed, and returning `Ok(None)` would silently discard it
+        if src.len() < HEADER_LEN {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "truncated Yamux header",
+            ));
+        }
+
         // parse the Yamux header
         let version = src.get_u8();
         let ty = Ty::try_from(src.get_u8())?;
