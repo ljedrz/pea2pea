@@ -1,5 +1,6 @@
-use std::{future::Future, io, time::Duration};
+use std::{future::Future, io, panic::AssertUnwindSafe, time::Duration};
 
+use futures_util::FutureExt;
 use tokio::{
     io::{AsyncRead, AsyncWrite, split},
     net::TcpStream,
@@ -14,7 +15,8 @@ use crate::{
     Connection, Pea2Pea,
     node::NodeTask,
     protocols::{
-        ProtocolHandler, ReturnableConnection, install_protocol_handler, run_setup_handler_loop,
+        ProtocolHandler, ReturnableConnection, install_protocol_handler, panic_message,
+        run_setup_handler_loop,
     },
 };
 
@@ -119,20 +121,23 @@ impl<H: Handshake> HandshakeInternal for H {
         let conn_span = conn.span().clone();
 
         debug!(parent: &conn_span, "executing Handshake logic...");
-        let result = timeout(
-            Duration::from_millis(Self::TIMEOUT_MS),
-            self.perform_handshake(conn),
-        )
-        .await;
+        // a panicking implementation would otherwise unwind this task with the returner unsent,
+        // which the callsite can only observe as the generic "shutting down" error
+        let handshake = AssertUnwindSafe(self.perform_handshake(conn)).catch_unwind();
+        let result = timeout(Duration::from_millis(Self::TIMEOUT_MS), handshake).await;
 
         let ret = match result {
-            Ok(Ok(conn)) => {
+            Ok(Ok(Ok(conn))) => {
                 debug!(parent: &conn_span, "handshake succeeded");
                 Ok(conn)
             }
-            Ok(Err(e)) => {
+            Ok(Ok(Err(e))) => {
                 error!(parent: &conn_span, "handshake failed: {e}");
                 Err(e)
+            }
+            Ok(Err(payload)) => {
+                error!(parent: &conn_span, "Handshake::perform_handshake panicked: {}", panic_message(&*payload));
+                Err(io::Error::other("Handshake::perform_handshake panicked"))
             }
             Err(_) => {
                 self.node().heuristics().register_handshake_timeout();

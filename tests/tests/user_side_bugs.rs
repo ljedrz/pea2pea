@@ -76,6 +76,44 @@ async fn broken_handshake_impl() {
 }
 
 #[tokio::test]
+async fn panicking_handshake_is_not_reported_as_a_shutdown() {
+    silence_panics();
+    define_fail_node!();
+
+    impl Handshake for FailNode {
+        async fn perform_handshake(&self, _conn: Connection) -> io::Result<Connection> {
+            self.notify.notify_one();
+            panic!("PARKOUR!");
+        }
+    }
+
+    let (fail_node, notify) = FailNode::new_with_notifier();
+    fail_node.enable_handshake().await;
+
+    let peer = Node::new(Config::default());
+    let peer_addr = peer.toggle_listener().await.unwrap().unwrap();
+
+    let err = fail_node.node().connect(peer_addr).await.unwrap_err();
+    timed_notified(&notify).await;
+
+    let msg = err.to_string();
+    assert!(
+        msg.contains("panicked"),
+        "expected the panic to be reported, got: {msg}"
+    );
+    assert!(
+        !msg.contains("shutting down"),
+        "the panic was misreported as a shutdown: {msg}"
+    );
+    // the node is still alive and its reservation was released
+    assert_eq!(fail_node.node().num_connecting(), 0);
+    assert_eq!(fail_node.node().num_connected(), 0);
+
+    peer.shut_down().await;
+    fail_node.node().shut_down().await;
+}
+
+#[tokio::test]
 async fn broken_reading_codec() {
     silence_panics();
     define_fail_node!();

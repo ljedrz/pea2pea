@@ -4,6 +4,7 @@
 
 - strenghtened the enforcement of 2 invariants
 - an accept loop error on shutdown will now emit a `DEBUG` log instead of an `ERROR`
+- handshake panics caused by the user's implementation will now error more gracefully
 
 ### Fixed
 
