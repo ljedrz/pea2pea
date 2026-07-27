@@ -796,30 +796,15 @@ impl Node {
         origin: DisconnectOrigin,
         conn_id: Option<u64>,
     ) -> bool {
-        // claim the disconnect to avoid duplicate executions, or return early if already claimed
-        if let Some(conn) = self.connections.active.read().get(&addr) {
-            if conn_id.is_some_and(|id| conn.id != id) {
-                // the address now belongs to a newer connection; this call was aimed at its
-                // defunct predecessor
-                return false;
-            }
-            if conn.disconnecting.swap(true, AcqRel) {
-                // valid connection, but someone else is already disconnecting it
-                return false;
-            }
-        } else {
-            // not connected
+        // claim the disconnect to avoid duplicate executions, or return early if already claimed;
+        // the claim comes with the finalizer that completes the teardown, so from this point on it
+        // runs even if this future is dropped at one of the awaits below
+        let Some(finalizer) = self.claim_disconnect(addr, conn_id) else {
             return false;
         };
 
         let conn_span = create_connection_span(addr, self.span());
         debug!(parent: &conn_span, "disconnecting (origin: {origin:?})...");
-
-        // the claim is taken, so from this point on the teardown must run even if this future is
-        // dropped at one of the awaits below (e.g. due to a timeout around `Node::disconnect`);
-        // no other path can reclaim the connection, so a skipped teardown would leave it in the
-        // active set forever and hang the drain loop in `Node::shut_down`
-        let finalizer = DisconnectFinalizer { node: self, addr };
 
         // if the OnDisconnect protocol is enabled, trigger it
         if let Some(handler) = self.protocols.on_disconnect.get() {
@@ -856,6 +841,34 @@ impl Node {
         debug!(parent: &conn_span, "fully disconnected");
 
         true
+    }
+
+    /// Claims the disconnect of `addr`, returning the [`DisconnectFinalizer`] that completes the
+    /// teardown on drop; `None` if the address isn't connected, belongs to a newer connection
+    /// than `conn_id`, or is already being disconnected by someone else.
+    ///
+    /// Taking the claim and arming the finalizer must not be separated by a yield point: no other
+    /// path can reclaim the connection, so a disconnect cancelled in between would leave it in the
+    /// active set forever and hang the drain loop in [`Node::shut_down`]. This being a plain `fn`
+    /// rather than inline `async` code is what enforces that.
+    fn claim_disconnect(
+        &self,
+        addr: SocketAddr,
+        conn_id: Option<u64>,
+    ) -> Option<DisconnectFinalizer<'_>> {
+        let active = self.connections.active.read();
+        let conn = active.get(&addr)?;
+        if conn_id.is_some_and(|id| conn.id != id) {
+            // the address now belongs to a newer connection; this call was aimed at its
+            // defunct predecessor
+            return None;
+        }
+        if conn.disconnecting.swap(true, AcqRel) {
+            // valid connection, but someone else is already disconnecting it
+            return None;
+        }
+
+        Some(DisconnectFinalizer { node: self, addr })
     }
 
     /// Returns a list containing addresses of active connections.

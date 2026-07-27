@@ -1,5 +1,9 @@
 # 0.57.3
 
+### Changed
+
+- strenghtened the enforcement of 2 invariants
+
 ### Fixed
 
 - write stats accounting for messages >8KiB

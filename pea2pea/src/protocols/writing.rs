@@ -16,6 +16,7 @@ use parking_lot::RwLock;
 use tokio::{
     io::AsyncWrite,
     sync::{mpsc, oneshot},
+    task::JoinHandle,
     time::timeout,
 };
 use tokio_util::codec::{Encoder, FramedWrite};
@@ -415,23 +416,17 @@ impl<W: Writing> WritingInternal for W {
         }));
         let _ = rx_writer.await;
 
-        // register the connection's message sender with the Writing protocol handler only now
-        // that the writer task is confirmed to be running and about to be owned by the
-        // connection (below): if the sender were registered before the await above, this setup
-        // task getting aborted there (e.g. due to node shutdown) would leak a running, unowned
-        // writer task, kept alive indefinitely by the registered sender. The registration still
-        // precedes `Connections::add` in `adapt_stream`, so it's reachable by Writing slightly
-        // before the connection is fully finalized, which is fine and deliberate, as writing is
-        // user-initiated and safe to accept early; do not synchronize these - gating writing
-        // buys nothing, and would only add complexity or hurt performance
-        conn_senders.write().insert(
-            addr,
-            (
-                conn_id,
-                Arc::new(outbound_message_sender) as Arc<dyn Any + Send + Sync>,
-            ),
+        // only now that the writer task is confirmed to be running: registering the sender
+        // before the await above would mean this setup task getting aborted there (e.g. due to
+        // node shutdown) leaks a running, unowned writer task, kept alive indefinitely by the
+        // registered sender
+        adopt_writer(
+            &mut conn,
+            conn_senders,
+            conn_id,
+            Arc::new(outbound_message_sender),
+            writer_task,
         );
-        conn.tasks.push(writer_task);
 
         // return the Connection to the Node, resuming Node::adapt_stream
         let conn_span = conn.span().clone();
@@ -439,6 +434,28 @@ impl<W: Writing> WritingInternal for W {
             error!(parent: &conn_span, "couldn't return a Connection from the Writing handler");
         }
     }
+}
+
+/// Publishes the connection's outbound message sender and hands the writer task over to the
+/// connection, which from then on owns it.
+///
+/// These two steps must not be separated by a yield point: if the calling setup task were
+/// aborted between them, the published sender would keep a running, unowned writer task alive
+/// for the lifetime of the node. This being a plain `fn` rather than inline `async` code is what
+/// enforces that - an `.await` cannot be introduced here without changing the signature.
+///
+/// The publication still precedes `Connections::add` in `Node::adapt_stream`, so [`Writing`] is
+/// usable slightly before the connection is fully finalized. That is deliberate: writing is
+/// user-initiated and safe to accept early, and gating it would only add complexity.
+fn adopt_writer(
+    conn: &mut Connection,
+    conn_senders: &WritingSenders,
+    conn_id: u64,
+    sender: Arc<dyn Any + Send + Sync>,
+    writer_task: JoinHandle<()>,
+) {
+    conn_senders.write().insert(conn.addr(), (conn_id, sender));
+    conn.tasks.push(writer_task);
 }
 
 /// Used to queue messages for delivery and return its confirmation.

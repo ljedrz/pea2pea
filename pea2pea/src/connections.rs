@@ -48,16 +48,22 @@ impl Connections {
         mut guard: ConnectionGuard<'_>,
         shutdown: &crate::node::ShutdownState,
     ) -> io::Result<()> {
-        // lock discipline is `limits` -> `active` everywhere; the guard's Drop (which locks
-        // `limits` to clear `connecting`) runs after the `active` guard is released at scope end
+        // lock discipline is `limits` -> `active` everywhere, and the guard's Drop locks `limits`
+        // to clear `connecting` - so it must not run while `active` is held, or it inverts the
+        // order and deadlocks against `check_and_reserve`. Both are dropped explicitly below
+        // rather than left to scope end, so the ordering doesn't rest on the reader knowing that
+        // parameters drop after locals.
         let mut active = self.active.write();
         if shutdown.is_underway() {
+            // `active` is released here, and only then the (uncompleted) guard, which releases
+            // the reservation
             return Err(crate::node::shutting_down_error());
         }
         active.insert(conn.addr(), conn);
-        // do NOT drop the guard or otherwise touch `limits` while `active` is held - that inverts
-        // the order and deadlocks against check_and_reserve
         guard.completed = true;
+        drop(active);
+        drop(guard);
+
         Ok(())
     }
 
