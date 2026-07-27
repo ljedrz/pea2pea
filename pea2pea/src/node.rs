@@ -389,6 +389,11 @@ impl Node {
                                     ErrorKind::QuotaExceeded | ErrorKind::AlreadyExists => {
                                         debug!(parent: node.span(), "rejecting connection from {addr}: {e}");
                                     }
+                                    // a shutdown racing the accept loop's own abort is expected,
+                                    // and so is anything else failing once one is under way
+                                    _ if node.shutdown.is_underway() => {
+                                        debug!(parent: node.span(), "dropping the connection from {addr}: {e}");
+                                    }
                                     _ => {
                                         error!(parent: node.span(), "couldn't accept a connection from {addr}: {e}");
                                     }

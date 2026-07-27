@@ -3,6 +3,7 @@
 ### Changed
 
 - strenghtened the enforcement of 2 invariants
+- an accept loop error on shutdown will now emit a `DEBUG` log instead of an `ERROR`
 
 ### Fixed
 
