@@ -790,6 +790,58 @@ async fn message_stats() {
     .await;
 }
 
+// A batch of messages at or above `FramedWrite`'s 8KiB backpressure boundary must still be
+// accounted for in full: encoding such a message makes the sink flush the entire write buffer
+// first, so a naive before/after diff of that buffer reads as zero for every message in the
+// batch but the first. `message_stats` above can't catch this - it stays under the boundary,
+// and `send_dm` awaits each delivery, which puts every message in a batch of its own.
+#[tokio::test] // deliberately single-threaded; see the enqueue loop below
+async fn write_stats_account_for_batched_oversized_messages() {
+    const MSG_COUNT: u64 = 8; // must not exceed Writing::MESSAGE_QUEUE_DEPTH
+    const PAYLOAD_SIZE: u64 = 16 * 1024; // comfortably past the backpressure boundary
+
+    let reader = TestNode::default();
+    let reader_addr = start_listening(&reader).await;
+    reader.enable_reading().await;
+
+    let writer = TestNode::default();
+    writer.enable_writing().await;
+    writer.node().connect(reader_addr).await.unwrap();
+
+    let msg = Bytes::from(vec![0u8; PAYLOAD_SIZE as usize]);
+
+    // queue everything up without an intervening await: on a single-threaded runtime the writer
+    // task can't be polled until this loop yields, so `recv_many` is guaranteed to coalesce the
+    // messages into a single batch - the only shape that exercises the mid-batch flush
+    for _ in 0..MSG_COUNT {
+        writer.unicast_fast(reader_addr, msg.clone()).unwrap();
+    }
+
+    // 2 is the common test length prefix size
+    let expected_bytes = MSG_COUNT * (2 + PAYLOAD_SIZE);
+
+    // wait for the batch to be written out, then check the byte counts separately, so that a
+    // miscount surfaces as a comparison instead of a `wait_until` timeout
+    wait_until(Duration::from_secs(1), || {
+        writer.node().stats().sent().0 == MSG_COUNT
+    })
+    .await;
+    assert_eq!(writer.node().stats().sent(), (MSG_COUNT, expected_bytes));
+
+    let conn_info = writer.node().connection_info(reader_addr).unwrap();
+    assert_eq!(conn_info.stats().sent(), (MSG_COUNT, expected_bytes));
+
+    // cross-check against the read side, which counts bytes independently
+    wait_until(Duration::from_secs(1), || {
+        reader.node().stats().received().0 == MSG_COUNT
+    })
+    .await;
+    assert_eq!(
+        reader.node().stats().received(),
+        (MSG_COUNT, expected_bytes)
+    );
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn drops_messages_wo_backpressure() {
     #[derive(Clone)]
