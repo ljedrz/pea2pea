@@ -36,13 +36,12 @@ impl Heuristics {
     /// Returns the number of [`Node::connect`] attempts that were rejected because the shared
     /// connection-setup budget ([`Config::max_connecting`]) was exhausted at the time of the call.
     ///
-    /// note: This counts *every* budget rejection. Although inbound accepts and outbound connects
-    /// draw from the same budget, only outbound dials are ever *rejected* by it - an inbound accept
-    /// that finds the budget full is instead *backpressured* (it waits for a slot, surplus peers
-    /// queuing in the OS accept queue), so there is no inbound rejection event to count. A rising
-    /// *rate* here while the node's own dial rate is modest is therefore a strong indicator of
-    /// inbound-side saturation (e.g. a connection flood) crowding out the shared budget. Sample it
-    /// periodically and watch the slope rather than the absolute value.
+    /// Only outbound dials are ever rejected by the budget; an inbound accept that finds it full
+    /// is backpressured instead, so there is no inbound rejection event to count.
+    ///
+    /// note: Sample this periodically and watch the slope, not the absolute value. A rising rate
+    /// while your own dial rate is modest points at inbound-side saturation crowding out the
+    /// shared budget.
     pub fn connect_budget_rejections(&self) -> u64 {
         self.connect_budget_rejections.load(Relaxed)
     }

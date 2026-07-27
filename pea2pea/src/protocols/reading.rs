@@ -43,7 +43,7 @@ where
     /// messages the node can enqueue, but setting it to a large value can make the node more susceptible to DoS
     /// attacks.
     ///
-    /// note: Must not be `0` - [`Reading::enable_reading`] panics on such a value.
+    /// note: Must not be `0`.
     const MESSAGE_QUEUE_DEPTH: usize = 64;
 
     /// Determines whether TCP backpressure should be exerted in case the number of queued messages
@@ -83,8 +83,7 @@ where
 
     /// Prepares the node to receive messages.
     ///
-    /// note: If the node has already begun shutting down, this is a no-op - the protocol is
-    /// not enabled.
+    /// note: A no-op if the node is already shutting down; the protocol is not enabled.
     ///
     /// # Panics
     ///
@@ -138,9 +137,11 @@ where
     /// executed sequentially, use [`tokio::spawn`] to move processing to a background task to keep
     /// the connection loop responsive.
     ///
-    /// note: If the connection is torn down, the task driving this method is aborted, so an
-    /// in-flight call may be cancelled at any `.await` point. Work that must run to completion
-    /// once begun should be moved to a [`tokio::spawn`]ed task rather than executed inline.
+    /// # Cancel safety
+    ///
+    /// If the connection is torn down, the task driving this method is aborted, so an in-flight
+    /// call may be cancelled at any `.await` point. Work that must run to completion once begun
+    /// should be moved to a [`tokio::spawn`]ed task rather than executed inline.
     fn process_message(
         &self,
         source: SocketAddr,

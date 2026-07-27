@@ -33,20 +33,20 @@ pub(crate) type OnDisconnectBundle = (JoinHandle<()>, oneshot::Receiver<()>);
 /// to the peer sending a noncompliant message or when the peer is the one to shut down the
 /// connection with the node.
 ///
-/// note: The node can only tell that a peer disconnected from it if it is actively trying to read
-/// from the associated connection (i.e. [`Reading`] is enabled) or if it attempts to send a message
-/// to it (i.e. one of the [`Writing`] methods is called). This extends to idle or vanished peers:
-/// the idle timeout is part of [`Reading`] ([`Reading::IDLE_TIMEOUT_MS`]), so without that protocol
-/// a peer that goes away without a TCP FIN/RST holds its connection slot indefinitely.
+/// # Notes
 ///
-/// note: This hook is executed before the connection is fully removed from the node's internal
-/// state. Calls to [`Node::disconnect`] will wait for it to complete, ensuring that any necessary
-/// cleanup (e.g., notifying a database) is finished before the function returns. The connection
-/// remains live while the hook runs; in particular, [`Reading::process_message`] may still be
-/// invoked for messages that arrive during it.
-///
-/// note: [`OnDisconnect::on_disconnect`] may run before [`OnConnect::on_connect`] for the same
-/// address has finished, or even started - see [`OnConnect`] for details and recommended patterns.
+/// - The node can only tell that a peer disconnected from it if it is actively trying to read from
+///   the associated connection (i.e. [`Reading`] is enabled) or if it attempts to send a message to
+///   it (i.e. one of the [`Writing`] methods is called). This extends to idle or vanished peers: the
+///   idle timeout is part of [`Reading`] ([`Reading::IDLE_TIMEOUT_MS`]), so without that protocol a
+///   peer that goes away without a TCP FIN/RST holds its connection slot indefinitely.
+/// - This hook is executed before the connection is fully removed from the node's internal state.
+///   Calls to [`Node::disconnect`] will wait for it to complete, ensuring that any necessary cleanup
+///   (e.g. notifying a database) is finished before the function returns. The connection remains
+///   live while the hook runs; in particular, [`Reading::process_message`] may still be invoked for
+///   messages that arrive during it.
+/// - [`OnDisconnect::on_disconnect`] may run before [`OnConnect::on_connect`] for the same address
+///   has finished, or even started - see [`OnConnect`] for details and recommended patterns.
 pub trait OnDisconnect: Pea2Pea
 where
     Self: Clone + Send + Sync + 'static,
@@ -55,19 +55,13 @@ where
     /// If the hook exceeds this time, it will be aborted to ensure the node cleans up
     /// resources promptly.
     ///
-    /// note: Unlike [`Reading::IDLE_TIMEOUT_MS`](Reading::IDLE_TIMEOUT_MS), a value of `0` does
-    /// not disable the timeout - it aborts every hook (almost) instantly.
+    /// note: `0` does not disable this timeout - it aborts every hook (almost) instantly.
     const TIMEOUT_MS: u64 = 3_000;
 
     /// Attaches the behavior specified in [`OnDisconnect::on_disconnect`] to every occurrence of the
     /// node disconnecting from a peer.
     ///
-    /// note: This hook is executed before the connection is fully removed from the node's internal
-    /// state. Calls to [`Node::disconnect`] will wait for it to complete, ensuring that any
-    /// necessary cleanup (e.g., notifying a database) is finished before the function returns.
-    ///
-    /// note: If the node has already begun shutting down, this is a no-op - the protocol is
-    /// not enabled.
+    /// note: A no-op if the node is already shutting down; the protocol is not enabled.
     ///
     /// # Panics
     ///

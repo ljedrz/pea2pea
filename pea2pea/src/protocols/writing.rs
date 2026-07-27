@@ -47,7 +47,7 @@ where
     /// messages the node can enqueue. Setting it to a large value is not recommended, as doing it might
     /// obscure potential issues with your implementation (like slow serialization) or network.
     ///
-    /// note: Must not be `0` - [`Writing::enable_writing`] panics on such a value.
+    /// note: Must not be `0`.
     const MESSAGE_QUEUE_DEPTH: usize = 64;
 
     /// The initial size of a per-connection buffer for writing outbound messages. Can be set to the maximum expected size
@@ -59,8 +59,7 @@ where
     /// stream before the connection is considered dead. Under sustained load, the effective
     /// per-message allowance is therefore this value divided by the batch size.
     ///
-    /// note: Unlike [`Reading::IDLE_TIMEOUT_MS`](crate::protocols::Reading::IDLE_TIMEOUT_MS),
-    /// a value of `0` does not disable the timeout - it fails every write (almost) instantly.
+    /// note: `0` does not disable this timeout - it fails every write (almost) instantly.
     const TIMEOUT_MS: u64 = 10_000;
 
     /// The type of the outbound messages; unless their serialization is expensive and the message
@@ -73,8 +72,7 @@ where
 
     /// Prepares the node to send messages.
     ///
-    /// note: If the node has already begun shutting down, this is a no-op - the protocol is
-    /// not enabled.
+    /// note: A no-op if the node is already shutting down; the protocol is not enabled.
     ///
     /// # Panics
     ///

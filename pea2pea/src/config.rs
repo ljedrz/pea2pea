@@ -1,10 +1,7 @@
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
 #[cfg(doc)]
-use crate::{
-    Node,
-    protocols::{self, Handshake, Reading, Writing},
-};
+use crate::{Heuristics, Node, protocols::Handshake};
 
 /// The node's configuration. See the source of [`Config::default`] for the defaults.
 #[derive(Debug, Clone)]
@@ -75,8 +72,7 @@ pub struct Config {
     /// note: As a `u16`, a single node tops out at 65,535 connections; scaling beyond that means
     /// distributing load across multiple nodes/listeners.
     ///
-    /// note: Must not be `0` - [`Node::new`] panics on such a value. A node that should never
-    /// have any connections can simply not listen and not dial instead.
+    /// note: Must not be `0`.
     pub max_connections: u16,
     /// The maximum number of active connections the node can maintain with a single IP.
     ///
@@ -93,35 +89,27 @@ pub struct Config {
     /// gateway, a reverse proxy, or anything over loopback - raise this to match, or those peers are
     /// rejected once the per-IP count is hit. Note the default outside the `test` feature is 1.
     ///
-    /// note: Must not be `0` - [`Node::new`] panics on such a value.
+    /// note: Must not be `0`.
     pub max_connections_per_ip: u16,
     /// The maximum number of simultaneous connection attempts (a.k.a. pending connections), covering
     /// both outbound connects in progress and inbound connections still being accepted and handshaked.
     ///
-    /// note: It should not be greater than [`Config::max_connections`]: pending connections count
-    /// towards that limit, so a value above it can never actually be reached, and [`Node::new`]
-    /// clamps it accordingly.
+    /// [`Node::new`] clamps values above [`Config::max_connections`], since pending connections
+    /// count towards that limit too.
     ///
-    /// note: On the inbound path this doubles as a backpressure bound - at most `max_connecting`
-    /// inbound connections are set up concurrently, and any surplus waits in the OS accept queue
-    /// (bar a single already-accepted connection awaiting a free setup slot; see
-    /// [`Config::listener_backlog`], which should be sized accordingly).
+    /// Inbound accepts and outbound dials draw on this one budget, which is also what
+    /// backpressures the accept loop: at most `max_connecting` inbound connections are set up
+    /// concurrently and the surplus waits in the OS accept queue, so size
+    /// [`Config::listener_backlog`] to match. An inbound flood can therefore exhaust the budget
+    /// and fail your own dials - [`Heuristics::connect_budget_rejections`] is how you detect
+    /// that, and [`Node::toggle_listener`] is how you shed the load.
     ///
-    /// note: The shared budget is a single hard ceiling; an inbound flood that would starve outbound
-    /// would *already* be stalling all new inbound peers (backpressured into the OS accept queue),
-    /// so it is a node-health event the operator
-    /// must detect and handle. Mitigation is left to the application: shed inbound load via
-    /// [`Node::toggle_listener`], reject unwanted peers early in [`Handshake`], or block offending
-    /// address ranges at the network layer. See [`Node::connect`] for detecting and reacting to this
-    /// condition.
-    ///
-    /// note: Must not be `0` - [`Node::new`] panics on such a value. To stop admitting inbound
-    /// connections at runtime, use [`Node::toggle_listener`] instead.
+    /// note: Must not be `0`.
     pub max_connecting: u16,
     /// The maximum time (in milliseconds) allowed to establish a raw (before the [`Handshake`] protocol) TCP connection.
     ///
-    /// note: Unlike [`Reading::IDLE_TIMEOUT_MS`], a value of `0` does not disable the timeout -
-    /// it fails every connection attempt (almost) instantly.
+    /// note: `0` does not disable this timeout - it fails every connection attempt (almost)
+    /// instantly.
     pub connection_timeout_ms: u16,
 }
 

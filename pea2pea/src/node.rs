@@ -652,47 +652,38 @@ impl Node {
 
     /// Connects to the provided `SocketAddr`.
     ///
-    /// note: `pea2pea` identifies connections by their socket address (IP + port). If Node A
-    /// connects to Node B, and Node B simultaneously connects to Node A, the library considers
-    /// these two distinct connections (one outgoing, one incoming). To ensure a single logical
-    /// connection per peer, you must implement a tie-breaking mechanism in your application logic
-    /// in the [`Handshake`] protocol.
+    /// # Notes
     ///
-    /// note: A best-effort self-connect check is performed against the node's listening address
-    /// and - if the node is bound to a wildcard address - the loopback variant of its port. It
-    /// does **not** enumerate local network interfaces:
-    /// if the node listens on a wildcard address (e.g. `0.0.0.0`) and `connect` is called with
-    /// one of the host's own non-loopback addresses (e.g. its LAN IP, or its public IP), the
-    /// connection will succeed and the node will end up talking to itself over a real TCP loop.
-    /// The library cannot detect this without OS-specific interface enumeration, which it
-    /// deliberately avoids. If your application must reject such connections, do it in
-    /// [`Handshake`] - typically by exchanging a unique node identifier and refusing matches,
-    /// which also handles the simultaneous-connection case above.
+    /// - `pea2pea` identifies connections by their socket address (IP + port). If Node A connects
+    ///   to Node B, and Node B simultaneously connects to Node A, the library considers these two
+    ///   distinct connections (one outgoing, one incoming). To ensure a single logical connection
+    ///   per peer, implement a tie-breaking mechanism in the [`Handshake`] protocol.
+    /// - The self-connect check is best-effort. It compares against the node's listening address
+    ///   and - for a wildcard-bound listener - the loopback variant of its port, but does not
+    ///   enumerate local interfaces, so dialing one of the host's own non-loopback addresses (its
+    ///   LAN or public IP) will connect the node to itself over a real TCP loop. Rejecting that is
+    ///   the same job as the tie-breaking above: exchange a node identifier in [`Handshake`] and
+    ///   refuse matches.
+    /// - A disconnect is not instantaneous. From the moment one is initiated (by
+    ///   [`Node::disconnect`], a read/write error, or peer-side close) until the connection is
+    ///   fully removed, the address remains registered and `connect` to it returns
+    ///   [`io::ErrorKind::AlreadyExists`]. If [`OnDisconnect`] is enabled this window spans the
+    ///   hook's execution, bounded by [`OnDisconnect::TIMEOUT_MS`]. Reconnection logic that races a
+    ///   disconnect should treat `AlreadyExists` as retriable and back off, rather than as a
+    ///   permanent failure.
+    /// - [`ErrorKind::QuotaExceeded`] covers three distinct limits - the per-IP cap
+    ///   ([`Config::max_connections_per_ip`]), the global cap ([`Config::max_connections`]), and
+    ///   exhaustion of the shared connection-setup budget ([`Config::max_connecting`]). Checking
+    ///   [`Node::num_connecting`] / [`Node::num_connected`] against your caps before dialing keeps
+    ///   the first two from firing. The budget is the exception: it is shared with inbound accepts,
+    ///   so a flood can exhaust it and fail your dials while you are below your own caps.
     ///
-    /// note: A disconnect is not instantaneous. From the moment a disconnect is initiated (by
-    /// [`Node::disconnect`], a read/write error, or peer-side close) until the connection is fully
-    /// removed, the address remains registered and `connect` to it returns
-    /// [`io::ErrorKind::AlreadyExists`]. If [`OnDisconnect`] is enabled this window spans the hook's
-    /// execution, bounded by [`OnDisconnect::TIMEOUT_MS`]. Reconnection logic that races a disconnect
-    /// should treat `AlreadyExists` as retriable and back off, rather than as a permanent failure.
+    /// # Cancel safety
     ///
-    /// note: A return of [`ErrorKind::QuotaExceeded`] covers several distinct limits - the per-IP
-    /// cap ([`Config::max_connections_per_ip`]), the global connection cap ([`Config::max_connections`]),
-    /// and exhaustion of the shared connection-setup budget ([`Config::max_connecting`]). The intended
-    /// usage is to check your own outbound conditions (e.g. [`Node::num_connecting`] /
-    /// [`Node::num_connected`] against the configured caps) *before* dialing, so a `QuotaExceeded`
-    /// here is not expected during normal operation. The budget case is the notable exception: because
-    /// inbound accepts and outbound connects share that budget, a hostile inbound flood can exhaust it
-    /// and make *your own* outbound dials fail here even when you are below your own caps. For
-    /// monitoring that specifically, [`Heuristics::connect_budget_rejections`] counts these rejections
-    /// for rate-based detection; react by shedding inbound load (e.g. [`Node::toggle_listener`]) or
-    /// filtering peers in [`Handshake`].
-    ///
-    /// note: If this future is dropped mid-call (e.g. due to an enclosing timeout) before the
-    /// connection is finalized, the attempt is cleanly rolled back; if it is dropped after
-    /// finalization, the connection remains established, and [`OnConnect`] (if enabled) still
-    /// runs for it. After a cancellation, use [`Node::is_connected`] to tell the two outcomes
-    /// apart.
+    /// If this future is dropped before the connection is finalized, the attempt is cleanly rolled
+    /// back; if it is dropped after finalization, the connection remains established and
+    /// [`OnConnect`] (if enabled) still runs for it. Use [`Node::is_connected`] to tell the two
+    /// outcomes apart.
     pub async fn connect(&self, addr: SocketAddr) -> io::Result<()> {
         self.connect_inner(addr, None)
             .await
@@ -783,10 +774,12 @@ impl Node {
     /// note: The address is not immediately reusable. See [`Node::connect`] for the reconnection
     /// contract during the teardown window.
     ///
-    /// note: If this future is dropped before completion (e.g. due to an enclosing timeout), the
-    /// connection is still fully torn down and the accounting remains consistent; only the
-    /// [`OnDisconnect`] hook's run-to-completion guarantee is lost - it may be skipped, aborted
-    /// mid-flight, or overlap the connection's removal.
+    /// # Cancel safety
+    ///
+    /// If this future is dropped before completion, the connection is still fully torn down and
+    /// the accounting remains consistent; only the [`OnDisconnect`] hook's run-to-completion
+    /// guarantee is lost - it may be skipped, aborted mid-flight, or overlap the connection's
+    /// removal.
     pub async fn disconnect(&self, addr: SocketAddr) -> bool {
         self.disconnect_w_origin(addr, DisconnectOrigin::User, None)
             .await
@@ -972,9 +965,11 @@ impl Node {
     /// connection - and aborts the very task - the hook runs on; instead, signal shutdown to a
     /// separate task and call it there.
     ///
-    /// note: If this future is dropped before completion (e.g. due to an enclosing timeout), the
-    /// node's long-running tasks are aborted right away - active [`OnDisconnect`] hooks may then
-    /// be cut short - and the shutdown can be concluded with another `shut_down` call.
+    /// # Cancel safety
+    ///
+    /// If this future is dropped before completion, the node's long-running tasks are aborted
+    /// right away - active [`OnDisconnect`] hooks may then be cut short - and the shutdown can be
+    /// concluded with another `shut_down` call.
     pub async fn shut_down(&self) {
         // immediately mark the node as shutting down
         self.shutdown.begin();

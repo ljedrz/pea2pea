@@ -414,6 +414,9 @@ under sustained random churn:
 - The senders-map invariant is exercised by the rapid connect/
   disconnect cycle, which would surface as `unicast`-returns-
   `NotConnected` on otherwise-live connections if the gating broke.
+- Cleanup layering and reservation atomicity are exercised by cancelling
+  a share of connection attempts part-way through setup, so the rollback
+  paths run under churn rather than only on the success path.
 
 A failed invariant typically surfaces as drift in the
 `on_connect`/`on_disconnect` counters, a hang during cleanup, or

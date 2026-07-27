@@ -144,38 +144,46 @@ mode, along with the properties it deliberately does *not* promise - see
 ### 🌀 Chaos Testing
 
 `pea2pea` is [routinely](https://github.com/ljedrz/pea2pea/actions/workflows/nightly-chaos.yml)
-subjected to a genuinely brutal adversarial gauntlet: long runs of maximally hostile, fully
-randomized concurrent churn, designed to surface synchronization bugs, leaks, and lifecycle
-inconsistencies that no scripted test can reach.
+run through a randomized concurrency stress test built to surface synchronization bugs, leaks,
+and lifecycle inconsistencies that scripted tests don't reach.
 
-The test maintains a pool of up to 32 live nodes and unleashes 16 uncoordinated workers on it,
-each rolling dice on every action - node spawns and shutdowns, connects and disconnects, listener
-flapping, broadcasts and unicasts - racing one another on every shared structure the library
-exposes. And the pressure is never allowed to settle into a comfortable rhythm:
+A pool of up to 32 live nodes is driven by 16 uncoordinated workers, each picking a random action
+every iteration - node spawns and shutdowns, connects and disconnects, listener flapping,
+broadcasts and unicasts - so every shared structure in the library stays contended. Four
+mechanisms keep the run out of any steady state:
 
-- **Swarm-sampled action mixes.** Every epoch, the action weights are randomly
-  re-rolled from the run's seed - some actions dominate, others vanish
-  entirely - so successive epochs explore wildly different regimes (all-out
-  churn, connection hoarding, drain-only, ...) instead of one hand-tuned mix.
+- **Swarm-sampled action mixes.** Every epoch the action weights are re-rolled
+  from the run's seed - some actions dominate, others drop out entirely - so
+  successive epochs explore different regimes (all-out churn, connection
+  hoarding, drain-only) rather than one hand-tuned mix.
 - **An adaptive governor.** A feedback loop measures executor lag and steers
-  the action pacing to keep the runtime contended-but-alive on any host: the
-  test automatically finds each machine's breaking point and camps next to it.
-- **Burst storms.** Every so often, dozens of extra workers flood the pool at
-  zero delay, deliberately shoving the executor into the overloaded, lagging
-  regime - and then release the pressure, exercising recovery from it.
+  action pacing to keep the runtime contended but alive, so the test locates
+  each host's saturation point instead of assuming one.
+- **Burst storms.** Periodically, dozens of extra workers flood the pool at
+  zero delay to push the executor into overload, then withdraw, so recovery is
+  exercised as well.
+- **Cancelled connections.** Some connection attempts are dropped part-way
+  through setup - during the TCP connect, the handshake, the protocol wiring,
+  or the `OnConnect` scheduling - so the rollback paths get exercised alongside
+  the success paths. Each must either roll back cleanly or complete and stay
+  consistent.
 
-While the storm rages, watchdogs fail the run on the spot if any operation
-wedges past its designed time bounds, the workers stall as a whole, a node
-exceeds its configured connection limits or retains active connections past
-its shutdown, or the file-descriptor and task counts creep beyond their
-ceilings. At the end of a run, every counter must reconcile exactly: nodes
-spawned equals nodes shut down, every `on_connect` is paired with an
-`on_disconnect`, and nothing whatsoever remains in flight. The properties
-being defended are the ones catalogued in [INVARIANTS.md](INVARIANTS.md).
+Watchdogs fail the run on the spot if an operation wedges past its time bounds, the workers stall
+as a whole, a node exceeds its connection limits or keeps active connections past its shutdown, a
+node's sent-byte count stops matching the messages it sent, or the file-descriptor and task counts
+drift beyond their ceilings.
 
-This is no ceremonial test suite: its regimes have repeatedly caught real
-bugs living in race windows so narrow that they required tens of millions of
-operations to trigger even once.
+At the end of a run every counter must reconcile exactly: nodes spawned equals nodes shut down,
+every `on_connect` is paired with an `on_disconnect`, every inbound frame decoded to a size some
+peer actually sends, and nothing remains in flight. The properties being checked are catalogued in
+[INVARIANTS.md](INVARIANTS.md).
+
+The traffic is shaped to make the byte checks bite: each node sends one fixed payload size, drawn
+from a set that straddles the framing layer's internal flush boundary - where batched writes are
+most likely to be miscounted.
+
+The test has repeatedly caught bugs in race windows narrow enough to need tens of millions of
+operations to trigger once.
 
 The chaos test is included in the repository as
 [`tests/chaos.rs`](tests/tests/chaos.rs); it runs until interrupted (or for

@@ -41,14 +41,29 @@
 //! The governor pauses its steering while a burst is active. Set
 //! `CHAOS_BURST=0` to disable bursts.
 //!
+//! A few percent of connect attempts are cancelled part-way through setup by
+//! dropping their future after a bounded number of polls, so the rollback
+//! paths run under churn instead of only on the success path. Disconnects are
+//! deliberately left alone: a cancelled disconnect may skip its `OnDisconnect`
+//! hook, which would legitimately break the on_connect/on_disconnect pairing
+//! the run asserts on.
+//!
 //! Alongside the end-of-run invariants, watchdogs run *during* the test:
 //! no action may exceed a generous age bound (that's a wedge, not
 //! congestion), the workers as a whole must keep completing actions,
 //! sampled nodes must respect their configured connection limits,
-//! `shut_down` must leave no active connections behind, and the
+//! `shut_down` must leave no active connections behind, every node's
+//! sent-byte count must match the messages it sent, and the
 //! file-descriptor and task counts must stay under generous ceilings
 //! (that's a leak, not a spike). A violation fails the run immediately.
 //! Set `CHAOS_WATCHDOG=0` to disable them.
+//!
+//! The end-of-run checks also require that every inbound frame decoded to a
+//! size some node in the pool actually sends. Each node is assigned one fixed
+//! payload size at spawn, which is what makes the sent-byte check an exact
+//! equality rather than a loose bound; the sizes straddle the framing layer's
+//! internal flush boundary, where batched writes are most likely to be
+//! miscounted.
 //!
 //! ## Tuning
 //!
