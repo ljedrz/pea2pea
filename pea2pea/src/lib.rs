@@ -15,7 +15,7 @@ pub mod protocols;
 pub use config::Config;
 pub use connections::{Connection, ConnectionInfo, ConnectionSide, DisconnectOrigin};
 pub use heuristics::Heuristics;
-pub use node::Node;
+pub use node::{Node, ShuttingDown};
 pub use stats::Stats;
 pub use topology::{Topology, connect_nodes};
 

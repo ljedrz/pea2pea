@@ -10,7 +10,8 @@ use std::{
 
 use bytes::{Bytes, BytesMut};
 use pea2pea::{
-    Config, Connection, ConnectionSide, Node, Pea2Pea, Topology, connect_nodes, protocols::*,
+    Config, Connection, ConnectionSide, Node, Pea2Pea, ShuttingDown, Topology, connect_nodes,
+    protocols::*,
 };
 use rand::RngExt;
 use test_utils::{
@@ -704,10 +705,19 @@ async fn connect_after_shut_down_is_rejected() {
 
     // shut_down() should make subsequent connects fail immediately
     let err = connector.connect(target_addr).await.unwrap_err();
+    // no standard ErrorKind means "permanently going away", so the payload is the contract
     assert_eq!(err.kind(), io::ErrorKind::Other);
+    assert!(ShuttingDown::caused(&err), "got: {err}");
     // and no slot is taken
     assert_eq!(connector.num_connecting(), 0);
     assert_eq!(connector.num_connected(), 0);
+
+    // the same goes for the listener
+    let err = connector.toggle_listener().await.unwrap_err();
+    assert!(ShuttingDown::caused(&err), "got: {err}");
+
+    // an unrelated `Other` error must not be mistaken for one
+    assert!(!ShuttingDown::caused(&io::Error::other("something else")));
 }
 
 #[tokio::test]

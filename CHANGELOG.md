@@ -1,10 +1,14 @@
 # 0.57.3
 
+### Added
+
+- `ShuttingDown`, the payload carried by every error returned because the node is shutting down; `ShuttingDown::caused` recognizes those errors without matching on the error message
+
 ### Changed
 
-- strenghtened the enforcement of 2 invariants
+- strengthened the enforcement of 2 invariants
 - an accept loop error on shutdown will now emit a `DEBUG` log instead of an `ERROR`
-- handshake panics caused by the user's implementation will now error more gracefully
+- panics caused by the user's `Handshake::perform_handshake`, `Reading::codec` or `Writing::codec` implementation will now error more gracefully, instead of surfacing as a "shutting down" error
 
 ### Fixed
 

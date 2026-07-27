@@ -1,5 +1,6 @@
 use std::{
     collections::HashMap,
+    fmt,
     io::{self, ErrorKind},
     net::SocketAddr,
     ops::Deref,
@@ -68,10 +69,48 @@ async fn wait_for_drain(notify: &Notify, drained: impl Fn() -> bool) {
     }
 }
 
-/// The error returned by every path that rejects work due to node shutdown; the message is
-/// part of the shutdown contract, so all the sites must stay in sync.
+/// The payload carried by every [`io::Error`] the library returns because the node is shutting
+/// down - from [`Node::connect`], [`Node::toggle_listener`], or any other operation that can no
+/// longer be admitted.
+///
+/// The [`io::ErrorKind`] of those errors is [`io::ErrorKind::Other`], since none of the standard
+/// kinds means "this component is going away permanently". This type is therefore the contract:
+/// match on it rather than on the message, which is not stable.
+///
+/// ```no_run
+/// # use pea2pea::{Node, ShuttingDown};
+/// # async fn f(node: &Node, addr: std::net::SocketAddr) {
+/// if let Err(e) = node.connect(addr).await {
+///     if ShuttingDown::caused(&e) {
+///         // the node is gone for good; don't retry
+///     }
+/// }
+/// # }
+/// ```
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ShuttingDown;
+
+impl fmt::Display for ShuttingDown {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("shutting down")
+    }
+}
+
+impl std::error::Error for ShuttingDown {}
+
+impl ShuttingDown {
+    /// Whether `err` was produced because the node is shutting down.
+    ///
+    /// note: This inspects `err` itself, not a chain of sources - it recognizes the errors the
+    /// library returns, not ones an application has wrapped further.
+    pub fn caused(err: &io::Error) -> bool {
+        err.get_ref().is_some_and(|inner| inner.is::<Self>())
+    }
+}
+
+/// The error returned by every path that rejects work due to node shutdown.
 pub(crate) fn shutting_down_error() -> io::Error {
-    io::Error::other("shutting down")
+    io::Error::other(ShuttingDown)
 }
 
 /// A sequential numeric identifier assigned to `Node`s that were not provided with a name.
@@ -274,6 +313,9 @@ impl Node {
     /// actual bound address when the listener was just enabled - it will differ from the one in
     /// [`Config::listener_addr`] if that one's port was unspecified (i.e. `0`) - and `Ok(None)`
     /// when it was just disabled.
+    ///
+    /// note: Once the node is shutting down this fails with a [`ShuttingDown`] payload; see that
+    /// type for recognizing it.
     ///
     /// note: Disabling the listener aborts the accept loop, so no *new* inbound connections are
     /// admitted after this returns. It does **not** abort inbound connections already accepted and
@@ -682,6 +724,9 @@ impl Node {
     ///   [`Node::num_connecting`] / [`Node::num_connected`] against your caps before dialing keeps
     ///   the first two from firing. The budget is the exception: it is shared with inbound accepts,
     ///   so a flood can exhaust it and fail your dials while you are below your own caps.
+    /// - Once the node is shutting down every dial is refused, carrying a [`ShuttingDown`] payload
+    ///   ([`ShuttingDown::caused`] recognizes it). Unlike the cases above, that one is permanent -
+    ///   there is no point in retrying.
     ///
     /// # Cancel safety
     ///
