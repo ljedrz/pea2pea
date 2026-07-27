@@ -982,7 +982,12 @@ impl Node {
             ));
         }
 
-        // check the global connecting count limit
+        // check the global connecting count limit; in practice this never rejects: both callers
+        // hold a permit from `connecting_permits` (capacity `max_connecting`) for longer than the
+        // reservation this counts - `ConnectionGuard` clears `connecting` inside
+        // `Connections::add`, while the permit lives until the whole setup returns - so the
+        // semaphore is always the tighter bound and caps `connecting.len()` at
+        // `max_connecting - 1` by the time we get here
         let num_connecting = limits.connecting.len();
         let connecting_limit = self.config.max_connecting as usize;
         if num_connecting >= connecting_limit {
