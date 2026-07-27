@@ -630,7 +630,13 @@ impl StressNode {
         let config = Config {
             listener_addr: Some("127.0.0.1:0".parse().unwrap()),
             max_connections: MAX_NODES as u16,
-            max_connections_per_ip: MAX_NODES as u16,
+            // Kept below `max_connections` so that the per-IP path actually binds and gets
+            // exercised. It binds asymmetrically: every node listens on `127.0.0.1`, so all of
+            // a node's *outbound* dials charge that one bucket and this caps them, while inbound
+            // connections spread across `SRC_IP_COUNT` source IPs and rarely approach it. At
+            // `max_connections` it would never reject, leaving both the rejection branch and any
+            // under-release in the per-IP accounting invisible.
+            max_connections_per_ip: MAX_NODES as u16 / 2,
             max_connecting: MAX_NODES as u16 / 2,
             connection_timeout_ms: 10,
             ..Default::default()
