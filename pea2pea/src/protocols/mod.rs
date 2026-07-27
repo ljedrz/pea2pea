@@ -300,6 +300,19 @@ pub(crate) async fn run_hook_handler_loop<T: Send, U: Send>(
     }
 }
 
+/// Runs a user-supplied piece of connection setup, turning a panic into an error the caller can
+/// return.
+pub(crate) fn catch_setup_panic<T>(
+    span: &tracing::Span,
+    what: &'static str,
+    f: impl FnOnce() -> T,
+) -> io::Result<T> {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)).map_err(|payload| {
+        tracing::error!(parent: span, "{what} panicked: {}", panic_message(&*payload));
+        io::Error::other(format!("{what} panicked"))
+    })
+}
+
 /// Extracts a human-readable message from a panic payload caught via `catch_unwind`.
 pub(crate) fn panic_message(payload: &(dyn std::any::Any + Send)) -> &str {
     payload

@@ -29,7 +29,7 @@ use crate::{
     connections::{DisconnectOrigin, create_connection_span},
     node::NodeTask,
     protocols::{
-        DisconnectOnDrop, Protocol, ProtocolHandler, ReturnableConnection,
+        DisconnectOnDrop, Protocol, ProtocolHandler, ReturnableConnection, catch_setup_panic,
         install_protocol_handler, panic_message, run_setup_handler_loop,
     },
 };
@@ -334,7 +334,15 @@ impl<W: Writing> WritingInternal for W {
     ) {
         let addr = conn.addr();
         let conn_id = conn.id;
-        let codec = self.codec(addr, !conn.side());
+        let codec = match catch_setup_panic(conn.span(), "Writing::codec", || {
+            self.codec(addr, !conn.side())
+        }) {
+            Ok(codec) => codec,
+            Err(err) => {
+                let _ = conn_returner.send(Err(err));
+                return;
+            }
+        };
         let Some(writer) = conn.writer.take() else {
             let err = io::Error::other("the stream was not returned during the handshake");
             error!(parent: conn.span(), "{err}");

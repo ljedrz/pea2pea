@@ -24,8 +24,8 @@ use crate::{
     connections::DisconnectOrigin,
     node::NodeTask,
     protocols::{
-        DisconnectOnDrop, ProtocolHandler, ReturnableConnection, install_protocol_handler,
-        panic_message, run_setup_handler_loop,
+        DisconnectOnDrop, ProtocolHandler, ReturnableConnection, catch_setup_panic,
+        install_protocol_handler, panic_message, run_setup_handler_loop,
     },
 };
 
@@ -169,7 +169,15 @@ impl<R: Reading> ReadingInternal for R {
     async fn handle_new_connection(&self, (mut conn, conn_returner): ReturnableConnection) {
         let addr = conn.addr();
         let conn_id = conn.id;
-        let codec = self.codec(addr, !conn.side());
+        let codec = match catch_setup_panic(conn.span(), "Reading::codec", || {
+            self.codec(addr, !conn.side())
+        }) {
+            Ok(codec) => codec,
+            Err(err) => {
+                let _ = conn_returner.send(Err(err));
+                return;
+            }
+        };
         let Some(reader) = conn.reader.take() else {
             let err = io::Error::other("the stream was not returned during the handshake");
             error!(parent: conn.span(), "{err}");
