@@ -13,6 +13,7 @@
 ### Fixed
 
 - write stats accounting for messages >8KiB
+- `Topology::num_expected_connections` no longer underflows for a `Grid` with a zero dimension
 
 # 0.57.2
 

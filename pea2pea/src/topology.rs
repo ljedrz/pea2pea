@@ -38,6 +38,10 @@ pub enum Topology {
 
 impl Topology {
     /// Returns the expected total number of connections for the given number of nodes.
+    ///
+    /// note: [`Topology::Grid`] is the one variant whose result comes from its own dimensions
+    /// rather than `num_nodes`; the two agree only when `width * height == num_nodes`, which is
+    /// what [`connect_nodes`] requires.
     pub fn num_expected_connections(&self, num_nodes: usize) -> usize {
         if num_nodes == 0 {
             return 0;
@@ -48,7 +52,13 @@ impl Topology {
             Self::Ring => num_nodes * 2,
             Self::Mesh => (num_nodes - 1) * num_nodes,
             Self::Star => (num_nodes - 1) * 2,
-            Self::Grid { width, height } => ((width * height) * 2 - width - height) * 2,
+            // counted as lattice edges - `(width - 1) * height` horizontal plus
+            // `width * (height - 1)` vertical - then doubled, since both endpoints register the
+            // connection; phrasing it this way keeps a zero dimension from underflowing, which
+            // the equivalent `(width * height * 2 - width - height)` does
+            Self::Grid { width, height } => {
+                (width.saturating_sub(1) * height + width * height.saturating_sub(1)) * 2
+            }
             Self::Tree => (num_nodes - 1) * 2,
             Self::Random { degree, seed: _ } => num_nodes * degree * 2,
         }

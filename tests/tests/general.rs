@@ -1436,3 +1436,21 @@ async fn num_expected_connections_zero_nodes() {
         0
     );
 }
+
+#[tokio::test]
+async fn num_expected_connections_degenerate_grid() {
+    for (width, height) in [(0, 0), (0, 5), (5, 0)] {
+        let grid = Topology::Grid { width, height };
+        assert_eq!(grid.num_expected_connections(5), 0, "{width}x{height}");
+    }
+
+    // ...and the well-formed cases are unchanged: lattice edges, doubled
+    for (width, height, expected) in [(1, 1, 0), (1, 5, 8), (5, 1, 8), (2, 4, 20), (5, 2, 26)] {
+        let grid = Topology::Grid { width, height };
+        assert_eq!(
+            grid.num_expected_connections(width * height),
+            expected,
+            "{width}x{height}"
+        );
+    }
+}
