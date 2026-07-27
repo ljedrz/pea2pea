@@ -69,12 +69,15 @@ use std::{
     // alloc::System,
     env,
     fmt,
+    future::{Future, poll_fn},
     io,
     net::{IpAddr, Ipv4Addr, SocketAddr},
+    pin::pin,
     sync::{
         Arc,
         atomic::{AtomicBool, AtomicU8, AtomicU32, AtomicU64, AtomicUsize, Ordering},
     },
+    task::Poll,
     time::{Duration, Instant},
 };
 
@@ -110,9 +113,37 @@ const METRICS_INTERVAL: Duration = Duration::from_secs(5);
 /// enabled the ceiling is only the starting point.
 const MIN_ACTION_DELAY_US: u64 = 0;
 const MAX_ACTION_DELAY_US: u64 = 500;
-/// Message size bounds.
-const MIN_MSG_SIZE: usize = 1;
-const MAX_MSG_SIZE: usize = 4096;
+/// The per-message framing overhead `msg_codec` adds (its default length field width).
+const FRAME_OVERHEAD: usize = 4;
+
+/// The payload size a node sends, picked once at spawn. Fixing it per node is what makes
+/// the write-side byte counter exactly predictable - `bytes == msgs * (size + overhead)`,
+/// a hard equality rather than a bound - which `sent_stats_violation` checks. A size drawn
+/// per message would only support a `msgs * MIN ..= msgs * MAX` bound, and across this
+/// range that spans three orders of magnitude: far too loose to catch a real miscount.
+///
+/// The set is chosen so that the *frame* (payload + overhead) straddles `FramedWrite`'s
+/// 8KiB backpressure boundary, at and above which encoding a message first flushes the
+/// whole write buffer: 8188 lands a frame exactly on it, 8179/8191 sit just below and just
+/// above, and the rest spread out on either side. Most are primes, so buffer fills land on
+/// awkward offsets instead of dividing the boundary evenly, and the codec's
+/// `max_frame_length` gets exercised by the largest.
+const MSG_SIZES: [usize; 12] = [
+    1, 3, 61, 251, 1021, 4093, 8179, 8188, 8191, 12289, 16381, 16384,
+];
+
+/// The largest payload any node sends; sizes the shared buffer and caps the codec's frame
+/// length. Derived from [`MSG_SIZES`], which is kept ascending, so the two cannot drift apart.
+const MAX_MSG_SIZE: usize = MSG_SIZES[MSG_SIZES.len() - 1];
+
+/// Percentage of connect attempts deliberately cancelled mid-setup, and the largest poll
+/// budget such an attempt is given before its future is dropped. A budget beyond the
+/// setup's own poll count lets the attempt finish normally, so the range is chosen to
+/// straddle it: the setup suspends at the TCP connect (capped by `connection_timeout_ms`),
+/// the handshake, the `Reading`/`Writing` wiring, `Connections::add`, and the `OnConnect`
+/// scheduling, which puts every stage within reach.
+const CANCEL_CONNECT_PCT: u8 = 5;
+const CANCEL_CONNECT_MAX_POLLS: u32 = 12;
 
 /// How often the swarm sampler re-rolls the action mix.
 const DEFAULT_EPOCH_SECS: u64 = 30;
@@ -155,6 +186,14 @@ const SRC_IP_COUNT: u32 = 64;
 static SRC_IP_CURSOR: AtomicU32 = AtomicU32::new(0);
 
 static MSG_BYTES: &[u8] = &[0xAB; MAX_MSG_SIZE];
+
+/// Hands out [`MSG_SIZES`] round-robin (mirroring `SRC_IP_CURSOR`), so that every size is
+/// represented in the pool instead of being left to random clustering.
+static MSG_SIZE_CURSOR: AtomicUsize = AtomicUsize::new(0);
+
+fn next_msg_size() -> usize {
+    MSG_SIZES[MSG_SIZE_CURSOR.fetch_add(1, Ordering::Relaxed) % MSG_SIZES.len()]
+}
 
 // =========================================================================
 // Action mix
@@ -439,17 +478,58 @@ impl<'a> Drop for InFlightGuard<'a> {
     }
 }
 
+/// The node-level health counters, in the order [`Heur::absorb`] reads them.
+const HEUR_NAMES: [&str; 6] = [
+    "budget_rej",
+    "inbound_rej",
+    "accept_err",
+    "hs_timeout",
+    "idle_timeout",
+    "write_timeout",
+];
+
+/// Node-level [`pea2pea::Heuristics`] accumulated across the pool. They live on the node and
+/// die with it, so each node's totals are absorbed just before it is dropped; consequently
+/// these only ever reflect nodes that have already shut down, never the live ones.
+#[derive(Default)]
+struct Heur([AtomicU64; HEUR_NAMES.len()]);
+
+impl Heur {
+    fn absorb(&self, node: &Node) {
+        let h = node.heuristics();
+        let vals = [
+            h.connect_budget_rejections(),
+            h.inbound_connections_rejected(),
+            h.accept_errors(),
+            h.handshake_timeouts(),
+            h.idle_timeouts(),
+            h.write_timeouts(),
+        ];
+        for (slot, v) in self.0.iter().zip(vals) {
+            slot.fetch_add(v, Ordering::Relaxed);
+        }
+    }
+
+    fn snapshot(&self) -> [u64; HEUR_NAMES.len()] {
+        std::array::from_fn(|i| self.0[i].load(Ordering::Relaxed))
+    }
+}
+
 #[derive(Default)]
 struct Stats {
     nodes_spawned: AtomicUsize,
     nodes_shutdown: AtomicUsize,
     connects_succeeded: AtomicUsize,
+    connects_cancelled: AtomicUsize,
     disconnects: AtomicUsize,
     listener_toggles: AtomicUsize,
     fast_send: AtomicUsize,
     unicasts_attempted: AtomicUsize,
     unicasts_succeeded: AtomicUsize,
     msgs_received: AtomicUsize,
+    /// Inbound frames whose decoded length isn't one any node in the pool sends; see
+    /// `Reading::process_message`.
+    bad_frame_len: AtomicUsize,
     on_connect_fired: AtomicUsize,
     on_disconnect_fired: AtomicUsize,
     err_connect: AtomicUsize,
@@ -458,6 +538,7 @@ struct Stats {
     in_flight_disconnects: AtomicUsize,
     in_flight_spawns: AtomicUsize,
     in_flight_shutdowns: AtomicUsize,
+    heur: Heur,
 }
 
 #[derive(Default)]
@@ -465,12 +546,14 @@ struct Snapshot {
     nodes_spawned: usize,
     nodes_shutdown: usize,
     connects_succeeded: usize,
+    connects_cancelled: usize,
     disconnects: usize,
     listener_toggles: usize,
     fast_send: usize,
     unicasts_attempted: usize,
     unicasts_succeeded: usize,
     msgs_received: usize,
+    bad_frame_len: usize,
     on_connect_fired: usize,
     on_disconnect_fired: usize,
     err_connect: usize,
@@ -479,6 +562,7 @@ struct Snapshot {
     in_flight_disconnects: usize,
     in_flight_spawns: usize,
     in_flight_shutdowns: usize,
+    heur: [u64; HEUR_NAMES.len()],
 }
 
 impl Snapshot {
@@ -487,12 +571,14 @@ impl Snapshot {
             nodes_spawned: s.nodes_spawned.load(Ordering::Relaxed),
             nodes_shutdown: s.nodes_shutdown.load(Ordering::Relaxed),
             connects_succeeded: s.connects_succeeded.load(Ordering::Relaxed),
+            connects_cancelled: s.connects_cancelled.load(Ordering::Relaxed),
             disconnects: s.disconnects.load(Ordering::Relaxed),
             listener_toggles: s.listener_toggles.load(Ordering::Relaxed),
             fast_send: s.fast_send.load(Ordering::Relaxed),
             unicasts_attempted: s.unicasts_attempted.load(Ordering::Relaxed),
             unicasts_succeeded: s.unicasts_succeeded.load(Ordering::Relaxed),
             msgs_received: s.msgs_received.load(Ordering::Relaxed),
+            bad_frame_len: s.bad_frame_len.load(Ordering::Relaxed),
             on_connect_fired: s.on_connect_fired.load(Ordering::Relaxed),
             on_disconnect_fired: s.on_disconnect_fired.load(Ordering::Relaxed),
             err_connect: s.err_connect.load(Ordering::Relaxed),
@@ -501,6 +587,7 @@ impl Snapshot {
             in_flight_disconnects: s.in_flight_disconnects.load(Ordering::Acquire),
             in_flight_spawns: s.in_flight_spawns.load(Ordering::Acquire),
             in_flight_shutdowns: s.in_flight_shutdowns.load(Ordering::Acquire),
+            heur: s.heur.snapshot(),
         }
     }
 }
@@ -513,6 +600,8 @@ impl Snapshot {
 struct StressNode {
     node: Node,
     stats: Arc<Stats>,
+    /// The payload size this node sends, fixed at spawn; see [`MSG_SIZES`].
+    msg_size: usize,
 }
 
 impl Pea2Pea for StressNode {
@@ -522,7 +611,7 @@ impl Pea2Pea for StressNode {
 }
 
 impl StressNode {
-    fn new(stats: Arc<Stats>) -> Self {
+    fn new(stats: Arc<Stats>, msg_size: usize) -> Self {
         let config = Config {
             listener_addr: Some("127.0.0.1:0".parse().unwrap()),
             max_connections: MAX_NODES as u16,
@@ -534,7 +623,13 @@ impl StressNode {
         Self {
             node: Node::new(config),
             stats,
+            msg_size,
         }
+    }
+
+    /// The node's fixed-size message; `Bytes::from_static` keeps this allocation-free.
+    fn message(&self) -> Bytes {
+        Bytes::from_static(&MSG_BYTES[..self.msg_size])
     }
 
     async fn install(&self) -> io::Result<()> {
@@ -590,13 +685,22 @@ impl Reading for StressNode {
     type Codec = LengthDelimitedCodec;
 
     const INITIAL_BUFFER_SIZE: usize = 4 * 1024;
+    const IDLE_TIMEOUT_MS: u64 = 500;
 
     fn codec(&self, _addr: SocketAddr, _side: ConnectionSide) -> Self::Codec {
         msg_codec()
     }
 
-    async fn process_message(&self, _src: SocketAddr, _msg: Self::Message) {
+    async fn process_message(&self, _src: SocketAddr, msg: Self::Message) {
         self.stats.msgs_received.fetch_add(1, Ordering::Relaxed);
+        // Every node sends one fixed size out of `MSG_SIZES`, so a decoded frame of any
+        // other length means the byte stream desynced somewhere. This is the harness's
+        // only end-to-end check on the write path: `sent_stats_violation` verifies what a
+        // node *believes* it wrote, whereas this verifies what the peer actually parsed -
+        // which matters because `Writing` funnels a whole batch through one `FramedWrite`.
+        if !MSG_SIZES.contains(&msg.len()) {
+            self.stats.bad_frame_len.fetch_add(1, Ordering::Relaxed);
+        }
     }
 }
 
@@ -655,10 +759,22 @@ fn pop_random(pool: &Pool, rng: &mut SmallRng) -> Option<StressNode> {
     Some(p.swap_remove(idx))
 }
 
-fn random_message(rng: &mut SmallRng) -> Bytes {
-    // inclusive, so that the codec's max_frame_length boundary gets exercised too
-    let size = rng.random_range(MIN_MSG_SIZE..=MAX_MSG_SIZE);
-    Bytes::from_static(&MSG_BYTES[..size])
+/// Every message a node sends is `msg_size + FRAME_OVERHEAD` bytes on the wire, so its
+/// write counters must agree exactly. Returns the mismatch, if any.
+///
+/// This is the harness's only oracle for byte accounting: `msgs_received` is tallied by
+/// hand in `process_message`, but nothing else ever reads `Node::stats()`. It catches
+/// under- *and* over-counting for any traffic pattern, which makes it a general guard
+/// rather than a regression test for one known bug.
+fn sent_stats_violation(node: &StressNode) -> Option<String> {
+    let (msgs, bytes) = node.node().stats().sent();
+    let expected = msgs * (node.msg_size + FRAME_OVERHEAD) as u64;
+    (bytes != expected).then(|| {
+        format!(
+            "write byte accounting is off: {msgs} msg(s) of {}B => {bytes}B, expected {expected}B",
+            node.msg_size,
+        )
+    })
 }
 
 // =========================================================================
@@ -672,7 +788,7 @@ async fn act_spawn(pool: &Pool, stats: &Arc<Stats>, token: &CancellationToken) {
     }
 
     let _guard = InFlightGuard::new(&stats.in_flight_spawns);
-    let node = StressNode::new(stats.clone());
+    let node = StressNode::new(stats.clone(), next_msg_size());
     let pushed = if node.install().await.is_ok() {
         let mut pool = pool.lock();
         if !token.is_cancelled() && pool.len() < MAX_NODES {
@@ -705,6 +821,19 @@ async fn act_shutdown(pool: &Pool, stats: &Arc<Stats>, watch: &Watch, rng: &mut 
                 "a node still had {leftover} active connection(s) after shut_down"
             ));
         }
+        // the node is quiesced now, so its write counters are final - bar two narrow
+        // races: `Stats::sent` reads the message and byte counters separately, and a
+        // writer task already mid-poll when `shut_down` aborted it can still land its
+        // registration. Re-check after a beat before declaring a violation, as the
+        // connection-limit watchdog does.
+        if sent_stats_violation(&node).is_some() {
+            sleep(Duration::from_millis(250)).await;
+            if let Some(msg) = sent_stats_violation(&node) {
+                watch.report(msg);
+            }
+        }
+        // the node's health counters die with it, so collect them while it's still here
+        stats.heur.absorb(node.node());
         // dropping `node` here releases the local Arc clone; if no worker is
         // mid-action on it, the InnerNode Arc count goes to zero shortly
     }
@@ -719,6 +848,25 @@ async fn act_toggle_listener(pool: &Pool, stats: &Arc<Stats>, rng: &mut SmallRng
         let _ = a.node().toggle_listener().await;
         stats.listener_toggles.fetch_add(1, Ordering::Relaxed);
     }
+}
+
+/// Drives `fut` for at most `budget` polls, then drops it; `None` means it hadn't
+/// finished by then. Budgeting polls rather than wall-clock time is what makes the
+/// cancellation injection actually bite: a connection setup concludes well inside
+/// tokio's ~1ms timer granularity on loopback, so a `timeout` almost always loses the
+/// race, whereas a budget lands squarely on the Nth suspension point of the setup.
+async fn cancel_after_polls<F: Future>(fut: F, budget: u32) -> Option<F::Output> {
+    let mut fut = pin!(fut);
+    let mut polls = 0;
+    poll_fn(move |cx| {
+        if polls == budget {
+            // `fut` is dropped once this function returns, cancelling the attempt
+            return Poll::Ready(None);
+        }
+        polls += 1;
+        fut.as_mut().poll(cx).map(Some)
+    })
+    .await
 }
 
 async fn act_connect(
@@ -759,22 +907,37 @@ async fn act_connect(
         return;
     }
 
+    // Occasionally drop the connect future mid-setup. `Node::connect` documents that an
+    // attempt cancelled before finalization is rolled back cleanly, and one cancelled
+    // after it stays established with `OnConnect` still firing - so either way the hook
+    // pairing holds, and the end-of-run `num_connecting() == 0` assertion is the oracle
+    // for a reservation the rollback failed to release. Deliberately *not* done for
+    // `Node::disconnect`: a cancelled disconnect may skip its `OnDisconnect` hook, which
+    // would legitimately break the `on_connect_fired == on_disconnect_fired` invariant.
+    let cancel_budget = (rng.random_range(0..100u8) < CANCEL_CONNECT_PCT)
+        .then(|| rng.random_range(1..=CANCEL_CONNECT_MAX_POLLS));
+
     let _guard = InFlightGuard::new(&stats.in_flight_connects);
     tokio::select! {
         biased;
         _ = token.cancelled() => {},
-        success = async move {
-            if fast_timeouts {
-                timeout(Duration::from_secs(1), a.node().connect_using_socket(target, socket)).await.is_ok_and(|r| r.is_ok())
+        // `None` means the attempt was cancelled and its outcome is unknowable from here
+        outcome = async move {
+            let connect = a.node().connect_using_socket(target, socket);
+            if let Some(budget) = cancel_budget {
+                // a budget that outlasts the setup lets it conclude and score normally
+                cancel_after_polls(connect, budget).await.map(|res| res.is_ok())
+            } else if fast_timeouts {
+                Some(timeout(Duration::from_secs(1), connect).await.is_ok_and(|r| r.is_ok()))
             } else {
-                a.node().connect_using_socket(target, socket).await.is_ok()
+                Some(connect.await.is_ok())
             }
         } => {
-            if success {
-                stats.connects_succeeded.fetch_add(1, Ordering::Relaxed);
-            } else {
-                stats.err_connect.fetch_add(1, Ordering::Relaxed);
-            }
+            match outcome {
+                Some(true) => stats.connects_succeeded.fetch_add(1, Ordering::Relaxed),
+                Some(false) => stats.err_connect.fetch_add(1, Ordering::Relaxed),
+                None => stats.connects_cancelled.fetch_add(1, Ordering::Relaxed),
+            };
         }
     }
 }
@@ -798,7 +961,7 @@ async fn act_broadcast(pool: &Pool, stats: &Arc<Stats>, rng: &mut SmallRng) {
     if peers.is_empty() {
         return;
     }
-    let msg = random_message(rng);
+    let msg = a.message();
     for addr in peers {
         match a.unicast_fast(addr, msg.clone()) {
             Ok(_) => {
@@ -818,7 +981,7 @@ async fn act_unicast(pool: &Pool, stats: &Arc<Stats>, rng: &mut SmallRng) {
         return;
     }
     let target = *peers.choose(rng).unwrap();
-    let msg = random_message(rng);
+    let msg = a.message();
     stats.unicasts_attempted.fetch_add(1, Ordering::Relaxed);
     match a.unicast(target, msg) {
         Ok(rx) => {
@@ -1030,24 +1193,26 @@ fn print_metrics(start: Instant, alive: usize, dials: &Dials, cur: &Snapshot, pr
         "{stamp} alive={alive:>2}/{max} | \
          nodes spawned/shut={ns}/{nd} | \
          listener toggles={lt} | \
-         conn att/ok/err={ca}/{cs}/{ce} | disc={dc} | \
+         conn att/ok/err/cx={ca}/{cs}/{ce}/{cx} | disc={dc} | \
          ufast={fs} ucast att/ok={ua}/{us} send-err={se} | \
-         recv={rv} | on_c/on_d={oc}/{od} | \
+         recv={rv} badlen={bl} | on_c/on_d={oc}/{od} | \
          ifc={ifc} | ifdc={ifdc} | ifsp={ifsp} | ifsd={ifsd}",
         stamp = stamp(start),
         max = MAX_NODES,
         ns = cur.nodes_spawned,
         nd = cur.nodes_shutdown,
         lt = cur.listener_toggles,
-        ca = cur.connects_succeeded + cur.err_connect,
+        ca = cur.connects_succeeded + cur.err_connect + cur.connects_cancelled,
         cs = cur.connects_succeeded,
         ce = cur.err_connect,
+        cx = cur.connects_cancelled,
         dc = cur.disconnects,
         fs = cur.fast_send,
         ua = cur.unicasts_attempted,
         us = cur.unicasts_succeeded,
         se = cur.err_send,
         rv = cur.msgs_received,
+        bl = cur.bad_frame_len,
         oc = cur.on_connect_fired,
         od = cur.on_disconnect_fired,
         ifc = cur.in_flight_connects,
@@ -1066,6 +1231,22 @@ fn print_metrics(start: Instant, alive: usize, dials: &Dials, cur: &Snapshot, pr
         rate(cur.listener_toggles, prev.listener_toggles),
         dials.sched_lag_us.load(Ordering::Relaxed) as f64 / 1_000.0,
         dials.max_delay_us.load(Ordering::Relaxed),
+    );
+    // only the nonzero counters, so the common case stays a single short line; "none"
+    // is itself a signal (e.g. that `Reading::IDLE_TIMEOUT_MS` never fires)
+    let heur: Vec<_> = HEUR_NAMES
+        .iter()
+        .zip(cur.heur)
+        .filter(|(_, v)| *v != 0)
+        .map(|(name, v)| format!("{name}={v}"))
+        .collect();
+    println!(
+        "           heuristics (shut-down nodes): {}",
+        if heur.is_empty() {
+            "none".to_string()
+        } else {
+            heur.join(" ")
+        }
     );
 }
 
@@ -1169,7 +1350,7 @@ async fn infinite_chaos_inner() {
 
     // Seed the pool with two nodes so workers have something to do immediately.
     for _ in 0..2 {
-        let n = StressNode::new(stats.clone());
+        let n = StressNode::new(stats.clone(), next_msg_size());
         n.install().await.unwrap();
         stats.nodes_spawned.fetch_add(1, Ordering::Relaxed);
         pool.lock().push(n);
@@ -1285,6 +1466,12 @@ async fn infinite_chaos_inner() {
                 0,
                 "pending connections left after the final shut_down"
             );
+            // the workers are quiesced by now, so unlike in `act_shutdown` this needs no
+            // re-check: nothing can still be writing
+            if let Some(msg) = sent_stats_violation(&node) {
+                panic!("{msg}");
+            }
+            s_stats.heur.absorb(node.node());
         });
     }
     joins.join_all().await;
@@ -1314,6 +1501,10 @@ async fn infinite_chaos_inner() {
     // Check some invariants.
     assert_eq!(snap.nodes_spawned, snap.nodes_shutdown);
     assert_eq!(snap.on_connect_fired, snap.on_disconnect_fired);
+    assert_eq!(
+        snap.bad_frame_len, 0,
+        "inbound frames arrived with a length no node in the pool sends"
+    );
     assert_eq!(snap.in_flight_connects, 0);
     assert_eq!(snap.in_flight_disconnects, 0);
     assert_eq!(snap.in_flight_spawns, 0);
