@@ -1,3 +1,9 @@
+# 0.57.3
+
+### Fixed
+
+- write stats accounting for messages >8KiB
+
 # 0.57.2
 
 ### Changed

@@ -1,7 +1,7 @@
 use std::{
     any::Any,
     collections::{HashMap, hash_map::Entry},
-    future::Future,
+    future::{Future, poll_fn},
     io,
     net::SocketAddr,
     panic::{AssertUnwindSafe, resume_unwind},
@@ -300,13 +300,19 @@ impl<W: Writing> WritingInternal for W {
             let msgs = messages.len();
             let mut bytes = 0;
 
-            let mut prev = writer.write_buffer().len();
             for wrapped in messages {
                 let msg = wrapped.msg.take().unwrap(); // guaranteed to be present here
-                writer.feed(msg).await?;
-                let now = writer.write_buffer().len();
-                bytes += now.checked_sub(prev).unwrap_or(now);
-                prev = now;
+                // `feed` is `poll_ready` followed by `start_send`, and `poll_ready` flushes the
+                // *entire* write buffer once it reaches the backpressure boundary; the two steps
+                // are therefore driven separately, so that the buffer is measured after any such
+                // flush and the encoded size is exact. Diffing the buffer across the whole `feed`
+                // can't tell a flush apart from a no-op, and undercounts by the flushed amount
+                // whenever the message is at least as large as it - which, for messages at or
+                // above the boundary, means every one of them but the first is counted as 0B.
+                poll_fn(|cx| writer.poll_ready_unpin(cx)).await?;
+                let prev = writer.write_buffer().len();
+                writer.start_send_unpin(msg)?;
+                bytes += writer.write_buffer().len().saturating_sub(prev);
             }
             writer.flush().await?;
             Ok::<_, io::Error>((msgs, bytes))
