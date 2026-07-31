@@ -1468,8 +1468,8 @@ async fn infinite_chaos_inner() {
         let _ = handle.await;
     }
 
-    // Shut down any remaining nodes; with the workers quiesced, the drain
-    // must be total.
+    // Shut down any remaining nodes. The workers are quiesced by now, so nothing can still be
+    // dialing out or writing - but see the `connecting` wait below for what that does *not* cover.
     let remaining: Vec<_> = pool.lock().drain(..).collect();
     let mut joins = tokio::task::JoinSet::new();
     for node in remaining {
@@ -1477,18 +1477,39 @@ async fn infinite_chaos_inner() {
         joins.spawn(async move {
             node.node().shut_down().await;
             s_stats.nodes_shutdown.fetch_add(1, Ordering::Relaxed);
+            // `shut_down` drains the active set before returning, so this is immediate.
             assert_eq!(
                 node.node().num_connected(),
                 0,
                 "active connections left after the final shut_down"
             );
-            assert_eq!(
-                node.node().num_connecting(),
-                0,
-                "pending connections left after the final shut_down"
-            );
-            // the workers are quiesced by now, so unlike in `act_shutdown` this needs no
-            // re-check: nothing can still be writing
+            // It makes no such promise about `connecting`, though, and joining the workers
+            // doesn't cover it either: inbound setups run in tasks the listener spawned and
+            // detached, which `shut_down` never waits on (it only aborts the listener itself).
+            // They unwind promptly once the protocol handlers are gone, so wait rather than
+            // assert outright - which also keeps the check meaningful, since a genuine leak
+            // never drains and still fails the run. Reachable in practice when the runtime
+            // deadline lands mid-burst, i.e. at peak inbound setup pressure.
+            let started = Instant::now();
+            let deadline = started + Duration::from_secs(5);
+            while node.node().num_connecting() != 0 {
+                assert!(
+                    Instant::now() < deadline,
+                    "pending connections left after the final shut_down: {}",
+                    node.node().num_connecting(),
+                );
+                sleep(Duration::from_millis(20)).await;
+            }
+            // Report when the wait actually did something: draining quickly confirms these were
+            // in-flight inbound setups, whereas a timeout above would mean a real leak. Without
+            // this the two are indistinguishable in a run that passes.
+            if started.elapsed() > Duration::from_millis(1) {
+                println!(
+                    "           note: waited {:?} for a node's pending setups to drain",
+                    started.elapsed()
+                );
+            }
+            // no re-check needed here, unlike in `act_shutdown`: nothing can still be writing
             if let Some(msg) = sent_stats_violation(&node) {
                 panic!("{msg}");
             }
