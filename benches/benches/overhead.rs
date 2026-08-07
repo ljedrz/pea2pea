@@ -29,8 +29,10 @@
 //! BASELINE BEHAVIOUR (documented so the comparison is auditable, not trust-me):
 //! the raw server is a single task looping `framed.next()` and counting; the
 //! raw client `feed`s every frame and does one final `flush`, relying on
-//! `FramedWrite`'s backpressure boundary to coalesce writes to the socket. That
-//! coalescing is the fair analog of pea2pea draining its writer channel. The one
+//! `FramedWrite`'s backpressure boundary - sized to match pea2pea's, which it
+//! takes from `Writing::INITIAL_BUFFER_SIZE` - to coalesce writes to the socket.
+//! That coalescing is the fair analog of pea2pea draining its writer channel,
+//! and matching the boundary is what keeps it fair. The one
 //! asymmetry to keep in mind: the baseline is a single read task plus a buffered
 //! write sink, whereas pea2pea splits read and write across tasks with a channel
 //! between - that architectural cost is part of the overhead, by design.
@@ -189,7 +191,14 @@ fn raw(bencher: Bencher, size: usize) {
 
         let stream = TcpStream::connect(addr).await.unwrap();
         stream.set_nodelay(true).unwrap();
-        let sink = FramedWrite::new(stream, BytesCodec::default());
+        // `with_capacity` also sets the backpressure boundary, which is how pea2pea sizes its
+        // own (from `Writing::INITIAL_BUFFER_SIZE`); matching it keeps the write coalescing
+        // like-for-like, so the comparison isn't measuring a buffer-size difference
+        let sink = FramedWrite::with_capacity(
+            stream,
+            BytesCodec::default(),
+            <Sender as Writing>::INITIAL_BUFFER_SIZE,
+        );
         // wait until the server end is accepted and about to read
         ready_rx.await.unwrap();
         (sink, server)
