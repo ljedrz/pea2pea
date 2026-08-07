@@ -286,7 +286,9 @@ connection reader/writer/inbound-processing tasks, detached
 through its captured `self_clone`. The inner state is reclaimed only
 after `shut_down` aborts those tasks and they drop their clones.
 
-**Enforcement.** Documented on the `Node` type in `src/node.rs`.
+**Enforcement.** Documented on the `Node` type in `src/node.rs`. Any task the
+node does not currently own is held by an `UnregisteredTask` guard
+(`src/node.rs`), which aborts it unless something claims it first.
 `shut_down` aborts the listener first, then concurrently disconnects
 all `active` peers (which cascades through `Connection::Drop` to abort
 all per-connection tasks), then signals the protocol handler tasks to

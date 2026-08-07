@@ -322,6 +322,11 @@ impl Node {
     /// connections shortly after the listener is reported disabled (an accepted connection still
     /// awaiting a connection-setup slot is dropped instead). To reject them, gate acceptance
     /// in [`Handshake`], or follow up with [`Node::disconnect`] once they register.
+    ///
+    /// # Cancel safety
+    ///
+    /// If this future is dropped before completion, the node's listening state is left as it was:
+    /// a listener that was in the middle of being enabled is aborted and its socket closed.
     pub async fn toggle_listener(&self) -> io::Result<Option<SocketAddr>> {
         // we deliberately maintain the write guard for the entirety of this method
         let mut listening_addr = self.listening_addr.write().await;
@@ -385,7 +390,9 @@ impl Node {
         let (tx, rx) = oneshot::channel();
 
         let node = self.clone();
-        let listening_task = tokio::spawn(async move {
+        // the task belongs to the guard until the node adopts it below, so that a `toggle_listener`
+        // future dropped at the readiness await doesn't leave a listener nothing can abort
+        let listening_task = UnregisteredTask::new(tokio::spawn(async move {
             trace!(parent: node.span(), "spawned the listening task");
             if tx.send(()).is_err() {
                 error!(parent: node.span(), "listener setup interrupted; shutting down the listening task");
@@ -459,9 +466,9 @@ impl Node {
                     }
                 }
             }
-        });
+        }));
         let _ = rx.await;
-        self.register_task(NodeTask::Listener, listening_task)?;
+        listening_task.register(self, NodeTask::Listener)?;
 
         Ok(())
     }
@@ -1044,16 +1051,16 @@ impl Node {
 
         debug!(parent: self.span(), "shutting down");
 
-        // move the task handles into a guard that aborts them on drop; they are detached from the
-        // node from this point on, so if this future is dropped at one of the awaits below, they
-        // would otherwise keep running - unreachable even to a repeated `shut_down` call - and,
-        // as each holds a `Node` clone, keep the node alive for the lifetime of the runtime
-        let mut tasks = NodeTaskAborter(std::mem::take(&mut *self.tasks.lock()));
+        // move the task handles into guards that abort them on drop; they are unregistered from
+        // the node from this point on, so if this future is dropped at one of the awaits below,
+        // they would otherwise keep running - unreachable even to a repeated `shut_down` call
+        let mut tasks: HashMap<_, _> = std::mem::take(&mut *self.tasks.lock())
+            .into_iter()
+            .map(|(kind, handle)| (kind, UnregisteredTask::new(handle)))
+            .collect();
 
-        // abort the listening task first (if it exists)
-        if let Some(listening_task) = tasks.0.remove(&NodeTask::Listener) {
-            listening_task.abort();
-        }
+        // abort the listening task first (if it exists); dropping its guard is what aborts it
+        drop(tasks.remove(&NodeTask::Listener));
 
         // disconnect from all the peers
         let mut disconnects: FuturesUnordered<_> = self
@@ -1103,12 +1110,12 @@ impl Node {
             NodeTask::OnConnect,
             NodeTask::OnDisconnect,
         ] {
-            if let Some(handle) = tasks.0.get_mut(&kind) {
-                // the handles stay inside the aborter, so if this future is
+            if let Some(task) = tasks.get_mut(&kind) {
+                // the handles stay inside their guards, so if this future is
                 // dropped mid-await, they still get aborted; aborting an
                 // already-completed handle is a no-op
                 let remaining = deadline.saturating_duration_since(Instant::now());
-                let _ = timeout(remaining, handle).await;
+                let _ = timeout(remaining, task.handle_mut()).await;
             }
         }
 
@@ -1138,12 +1145,35 @@ impl Node {
     }
 }
 
-/// Aborts the node's long-running tasks on drop. [`Node::shut_down`] moves the task handles out
-/// of the node before its first await, so if its future is dropped mid-execution (e.g. due to an
-/// enclosing timeout), this guard is what prevents them from being silently detached; the tasks
-/// must nonetheless outlive the disconnect fan-out in `shut_down`, which relies on the
-/// `OnDisconnect` handler, hence a guard rather than an upfront abort.
-struct NodeTaskAborter(HashMap<NodeTask, JoinHandle<()>>);
+/// A node task the node does not own, aborted on drop unless something claims it first. Both
+/// ends of a task's life need this, and for the same reason - a task nothing owns keeps running
+/// unreachably, holding a `Node` clone that keeps the node alive for the lifetime of the runtime.
+pub(crate) struct UnregisteredTask(Option<JoinHandle<()>>);
+
+impl UnregisteredTask {
+    pub(crate) fn new(handle: JoinHandle<()>) -> Self {
+        Self(Some(handle))
+    }
+
+    /// Hands the task over to the node; see [`Node::register_task`].
+    pub(crate) fn register(mut self, node: &Node, kind: NodeTask) -> io::Result<()> {
+        node.register_task(kind, self.0.take().unwrap()) // guaranteed to be present here
+    }
+
+    /// The underlying handle, for awaiting the task's completion; the guard keeps its claim on
+    /// the task, so a wait cut short still ends in an abort.
+    fn handle_mut(&mut self) -> &mut JoinHandle<()> {
+        self.0.as_mut().unwrap() // only ever taken by `register`, which consumes `self`
+    }
+}
+
+impl Drop for UnregisteredTask {
+    fn drop(&mut self) {
+        if let Some(handle) = &self.0 {
+            handle.abort();
+        }
+    }
+}
 
 /// Tracks one in-flight `OnConnect` scheduling task (or the decision not to
 /// spawn one); the count is incremented at creation - crucially *before* the
@@ -1161,14 +1191,6 @@ impl SchedulingGuard {
 impl Drop for SchedulingGuard {
     fn drop(&mut self) {
         self.0.shutdown.sched_finished();
-    }
-}
-
-impl Drop for NodeTaskAborter {
-    fn drop(&mut self) {
-        for handle in self.0.values() {
-            handle.abort();
-        }
     }
 }
 

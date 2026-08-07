@@ -5,6 +5,11 @@
 - connections no longer route their reads and writes through the mutex of a generic stream split; the lock-free, `TcpStream`-specific one is used instead
 - a connection's writer task concluding now shuts down the socket's write direction (i.e. sends the peer a FIN) instead of leaving it to the connection's full teardown
 - a batch of outbound messages now coalesces into as few writes as `Writing::INITIAL_BUFFER_SIZE` allows, instead of always being flushed to the socket every 8KiB
+- an `enable_*` call interrupted before its handler task could be registered no longer shuts the node down; the task is aborted and the protocol is left unenabled (edge case)
+
+### Fixed
+
+- a `Node::toggle_listener` future dropped while the listener was being enabled no longer leaks the accept loop, which would keep listening (and keep the node alive) beyond `Node::shut_down`'s reach (edge case)
 
 # 0.57.3
 

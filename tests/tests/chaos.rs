@@ -1268,6 +1268,16 @@ fn print_metrics(start: Instant, alive: usize, dials: &Dials, cur: &Snapshot, pr
         dials.sched_lag_us.load(Ordering::Relaxed) as f64 / 1_000.0,
         dials.max_delay_us.load(Ordering::Relaxed),
     );
+    // the ceilings above only fire once a leak is enormous; printing the counts makes a slow
+    // one visible as a trend long before that - and the final line, drawn once every node is
+    // shut down and every worker joined, is where anything still alive has nowhere to hide
+    println!(
+        "           resources: fds={:?} tasks={}",
+        fd_count(),
+        tokio::runtime::Handle::current()
+            .metrics()
+            .num_alive_tasks(),
+    );
     // only the nonzero counters, so the common case stays a single short line; "none"
     // is itself a signal (e.g. that `Reading::IDLE_TIMEOUT_MS` never fires)
     let heur: Vec<_> = HEUR_NAMES

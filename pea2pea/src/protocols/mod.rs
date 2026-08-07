@@ -21,7 +21,7 @@ use tokio::{
 
 use crate::{
     connections::{Connection, DisconnectOrigin},
-    node::{Node, NodeTask},
+    node::{Node, NodeTask, UnregisteredTask},
     protocols::{on_connect::OnConnectBundle, on_disconnect::OnDisconnectBundle},
 };
 
@@ -203,18 +203,21 @@ pub(crate) async fn install_protocol_handler<H, F>(
     let (tx, rx) = oneshot::channel();
 
     let node_clone = node.clone();
-    let task = tokio::spawn(async move {
+    // the task belongs to the guard until the node adopts it below, so that an `enable_*` future
+    // dropped at the readiness await aborts the handler instead of detaching it
+    let task = UnregisteredTask::new(tokio::spawn(async move {
         tracing::trace!(parent: node_clone.span(), "spawned the {protocol} handler task");
         if tx.send(()).is_err() {
-            tracing::error!(parent: node_clone.span(), "{protocol} handler creation interrupted! shutting down the node");
-            node_clone.shut_down().await;
+            // the enable was interrupted before it could adopt this task, which its guard is
+            // about to abort; the protocol is simply left unenabled
+            tracing::trace!(parent: node_clone.span(), "{protocol} handler creation interrupted; shutting down its task");
             return;
         }
 
         handler_loop.await;
-    });
+    }));
     let _ = rx.await;
-    if node.register_task(kind, task).is_err() {
+    if task.register(node, kind).is_err() {
         tracing::trace!("the node shut down before the {protocol} protocol could be enabled");
         return;
     }
