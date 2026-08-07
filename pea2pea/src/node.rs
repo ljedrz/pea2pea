@@ -314,7 +314,8 @@ impl Node {
     /// when it was just disabled.
     ///
     /// note: Once the node is shutting down this fails with a [`ShuttingDown`] payload; see that
-    /// type for recognizing it.
+    /// type for recognizing it. Enabling the listener when [`Config::listener_addr`] is `None`
+    /// fails with [`ErrorKind::AddrNotAvailable`].
     ///
     /// note: Disabling the listener aborts the accept loop, so no *new* inbound connections are
     /// admitted after this returns. It does **not** abort inbound connections already accepted and
@@ -717,7 +718,11 @@ impl Node {
     ///   enumerate local interfaces, so dialing one of the host's own non-loopback addresses (its
     ///   LAN or public IP) will connect the node to itself over a real TCP loop. Rejecting that is
     ///   the same job as the tie-breaking above: exchange a node identifier in [`Handshake`] and
-    ///   refuse matches.
+    ///   refuse matches. A self-connect the check *does* catch is refused with
+    ///   [`ErrorKind::AddrInUse`].
+    /// - A dial that hasn't produced a TCP connection within [`Config::connection_timeout_ms`]
+    ///   fails with [`ErrorKind::TimedOut`]; the timeout covers only that stage, with
+    ///   [`Handshake::TIMEOUT_MS`] bounding the next one.
     /// - A disconnect is not instantaneous. From the moment one is initiated (by
     ///   [`Node::disconnect`], a read/write error, or peer-side close) until the connection is
     ///   fully removed, the address remains registered and `connect` to it returns

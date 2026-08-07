@@ -179,6 +179,13 @@ need gating.
 In either configuration, `on_disconnect` fires exactly once per
 connection-that-reached-`active`, courtesy of the exclusivity gate.
 
+The pairing presupposes that both protocols were enabled before the
+connection was established. Each hook is looked up when it fires -
+`OnConnect` during the connection's setup, `OnDisconnect` during its
+teardown - so a connection that predates an `enable_on_connect` call is
+never scheduled one, yet still fires `on_disconnect`, and stays unpaired
+for good. Enable the protocols before the node connects to anything.
+
 **Enforcement.** The detached scheduling task spawned by
 `Node::adapt_stream` (`src/node.rs`) branches on the `ABORTABLE` flag
 returned from the OnConnect handler: it either attaches the hook's

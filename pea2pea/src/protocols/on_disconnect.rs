@@ -63,6 +63,11 @@ where
     ///
     /// note: A no-op if the node is already shutting down; the protocol is not enabled.
     ///
+    /// note: Unlike [`OnConnect`], this applies to *every* connection torn down from here on,
+    /// including ones established before the call - which never had an
+    /// [`OnConnect::on_connect`] to pair with; enable the protocols before connecting to
+    /// anything.
+    ///
     /// # Panics
     ///
     /// Panics if called more than once on the same [`Node`].

@@ -80,6 +80,11 @@ where
     ///
     /// note: A no-op if the node is already shutting down; the protocol is not enabled.
     ///
+    /// note: This only covers connections established from here on. A connection that predates
+    /// the call never gets an [`OnConnect::on_connect`], but - if [`OnDisconnect`] is enabled -
+    /// still gets an [`OnDisconnect::on_disconnect`], leaving the two permanently unpaired for
+    /// it; enable the protocols before connecting to anything.
+    ///
     /// # Panics
     ///
     /// Panics if called more than once on the same [`Node`].

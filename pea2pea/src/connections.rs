@@ -404,6 +404,11 @@ pub enum DisconnectOrigin {
     /// timeout while flushing, an underlying socket write error, or the message channel being
     /// closed. Often correlates with the peer disappearing, but can also reflect local-side
     /// pipeline problems (slow consumer, broken pipe).
+    ///
+    /// note: The connection's write direction is shut down as that task concludes, so the peer
+    /// has already been sent a FIN by the time [`OnDisconnect::on_disconnect`] runs for this
+    /// origin - which is the other reason (besides the defunct writer) that a final message
+    /// cannot be sent from the hook here.
     Writing,
 }
 

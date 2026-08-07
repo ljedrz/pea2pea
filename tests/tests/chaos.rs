@@ -41,9 +41,12 @@
 //! The governor pauses its steering while a burst is active. Set
 //! `CHAOS_BURST=0` to disable bursts.
 //!
-//! A few percent of connect attempts are cancelled part-way through setup by
-//! dropping their future after a bounded number of polls, so the rollback
-//! paths run under churn instead of only on the success path. Disconnects are
+//! A few percent of connect attempts - and a share of the listener re-enables -
+//! are cancelled part-way through by dropping their future after a bounded
+//! number of polls, so the rollback paths run under churn instead of only on the
+//! success path. Both spawn a task before adopting it, which is what makes the
+//! cancellation worth injecting: a task detached there outlives `shut_down`, and
+//! the resource ceilings below are the oracle for it. Disconnects are
 //! deliberately left alone: a cancelled disconnect may skip its `OnDisconnect`
 //! hook, which would legitimately break the on_connect/on_disconnect pairing
 //! the run asserts on.
@@ -137,10 +140,12 @@ const FRAME_OVERHEAD: usize = 4;
 /// per message would only support a `msgs * MIN ..= msgs * MAX` bound, and across this
 /// range that spans three orders of magnitude: far too loose to catch a real miscount.
 ///
-/// The set is chosen so that the *frame* (payload + overhead) straddles `FramedWrite`'s
-/// 8KiB backpressure boundary, at and above which encoding a message first flushes the
-/// whole write buffer: 8188 lands a frame exactly on it, 8179/8191 sit just below and just
-/// above, and the rest spread out on either side. Most are primes, so buffer fills land on
+/// The set is chosen so that the *frame* (payload + overhead) straddles the backpressure
+/// boundary, at and above which encoding a message first flushes the whole write buffer:
+/// 8188 lands a frame exactly on it, 8179/8191 sit just below and just above, and the rest
+/// spread out on either side. That boundary is `max(8KiB, Writing::INITIAL_BUFFER_SIZE)`, so
+/// these sizes stay meaningful only while this node's `INITIAL_BUFFER_SIZE` (below) is at or
+/// under 8KiB - raising it past that would move the boundary out from under them. Most are primes, so buffer fills land on
 /// awkward offsets instead of dividing the boundary evenly, and the codec's
 /// `max_frame_length` gets exercised by the largest.
 const MSG_SIZES: [usize; 12] = [

@@ -357,6 +357,8 @@ struct CountingCodec<D: Decoder> {
     codec: D,
     node: Node,
     stats: Arc<Stats>,
+    /// Bytes consumed by calls that haven't produced a message yet; charged to the message that
+    /// eventually completes, or dropped along with the connection if a call errors first.
     acc: usize,
     span: Span,
 }
@@ -389,8 +391,8 @@ impl<D: Decoder> Decoder for CountingCodec<D> {
     fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
         let initial = src.len();
         let ret = self.codec.decode(src);
-        // account even on a decode error, so that any bytes consumed by the failed call
-        // still get registered
+        // account even on a decode error, which logs the bytes the failed call consumed; they
+        // are not registered, as `Stats` counts complete messages only - see its docs
         self.account(initial, src.len(), matches!(ret, Ok(Some(_))));
         ret
     }

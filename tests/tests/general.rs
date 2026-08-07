@@ -800,15 +800,19 @@ async fn message_stats() {
     .await;
 }
 
-// A batch of messages at or above `FramedWrite`'s 8KiB backpressure boundary must still be
-// accounted for in full: encoding such a message makes the sink flush the entire write buffer
-// first, so a naive before/after diff of that buffer reads as zero for every message in the
-// batch but the first. `message_stats` above can't catch this - it stays under the boundary,
-// and `send_dm` awaits each delivery, which puts every message in a batch of its own.
+// A batch that outgrows `FramedWrite`'s backpressure boundary (which the library sets to
+// `Writing::INITIAL_BUFFER_SIZE`) must still be accounted for in full: once the buffer reaches
+// that mark, encoding the next message makes the sink flush the whole buffer first, so a naive
+// before/after diff of that buffer reads as zero for every message from there on. `message_stats`
+// above can't catch this - it stays under the boundary, and `send_dm` awaits each delivery, which
+// puts every message in a batch of its own.
 #[tokio::test] // deliberately single-threaded; see the enqueue loop below
 async fn write_stats_account_for_batched_oversized_messages() {
+    // it's the batch as a whole - not any single message - that has to cross the boundary; these
+    // two multiply out to twice the default 64KiB, so lowering either far enough would end the
+    // coverage without failing the test
     const MSG_COUNT: u64 = 8; // must not exceed Writing::MESSAGE_QUEUE_DEPTH
-    const PAYLOAD_SIZE: u64 = 16 * 1024; // comfortably past the backpressure boundary
+    const PAYLOAD_SIZE: u64 = 16 * 1024;
 
     let reader = TestNode::default();
     let reader_addr = start_listening(&reader).await;

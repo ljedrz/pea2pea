@@ -6,6 +6,8 @@
 - a connection's writer task concluding now shuts down the socket's write direction (i.e. sends the peer a FIN) instead of leaving it to the connection's full teardown
 - a batch of outbound messages now coalesces into as few writes as `Writing::INITIAL_BUFFER_SIZE` allows, instead of always being flushed to the socket every 8KiB
 - an `enable_*` call interrupted before its handler task could be registered no longer shuts the node down; the task is aborted and the protocol is left unenabled (edge case)
+- an outbound connection no longer performs a `getsockname` syscall to log the port it was assigned unless `TRACE` logs are enabled; the accompanying warning about an undeterminable port is likewise gated
+- the minimum `tokio-util` version is now 0.7.5, which introduced the backpressure boundary accessors
 
 ### Fixed
 
@@ -40,7 +42,7 @@
 
 - the anti-self-connect loopback heuristic now only fires if the listener is an unspecified address
 - an `OnConnect` double-check race (a pathological edge case)
-- the stats are now calculated correctly also for failing decode that would break a connection
+- the bytes consumed by a failed decode are now logged; they remain absent from the stats, which count complete messages only
 - a detached `OnConnect` hook task in the hard-abort shutdown path (edge case)
 
 # 0.57.1

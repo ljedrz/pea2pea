@@ -7,6 +7,12 @@ use std::{
 use crate::protocols::{Handshake, Reading, Writing};
 
 /// Contains basic statistics related to a node or a connection.
+///
+/// These counters describe **complete messages** only. The byte figures are the wire sizes,
+/// framing included, of the very messages that were counted, so `bytes / msgs` is always a
+/// meaningful average - and data that never became a message is not counted at all: the tail a
+/// [`Reading::Codec`] consumed before failing to decode it, a partial frame left in the read
+/// buffer, or a batch of outbound messages whose write failed part-way through.
 pub struct Stats {
     /// The creation time.
     created: Instant,
