@@ -11,7 +11,7 @@ futures-util = { version = "0.3", features = ["sink"] }
 rand = { version = "0.10", default-features = false, features = ["thread_rng"] }
 test-utils = { path = "test-utils" }
 tokio = { version = "1.24", features = ["io-util", "macros", "net", "parking_lot", "rt", "sync", "time"] }
-tokio-util = { version = "0.7", features = ["codec"] }
+tokio-util = { version = "0.7.5", features = ["codec"] }
 tracing = { version = "0.1", default-features = false }
 
 [profile.chaos]

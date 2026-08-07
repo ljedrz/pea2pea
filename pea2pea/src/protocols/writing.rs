@@ -53,6 +53,10 @@ where
 
     /// The initial size of a per-connection buffer for writing outbound messages. Can be set to the maximum expected size
     /// of the outbound message in order to only allocate it once.
+    ///
+    /// note: It doubles as the point at which a batch of outbound messages is flushed to the
+    /// socket mid-encoding, so a greater value means fewer, larger writes; values below the
+    /// underlying 8KiB default don't lower that threshold.
     const INITIAL_BUFFER_SIZE: usize = 64 * 1024;
 
     /// The maximum time (in milliseconds) allowed for a batch of outbound messages (up to
@@ -353,6 +357,13 @@ impl<W: Writing> WritingInternal for W {
 
         if Self::INITIAL_BUFFER_SIZE != 0 {
             framed.write_buffer_mut().reserve(Self::INITIAL_BUFFER_SIZE);
+            // the write buffer is flushed as soon as it reaches the backpressure boundary,
+            // which defaults to 8KiB regardless of the buffer reserved above; raise it - but
+            // never lower it - so that a batch can coalesce up to the requested size
+            let boundary = framed
+                .backpressure_boundary()
+                .max(Self::INITIAL_BUFFER_SIZE);
+            framed.set_backpressure_boundary(boundary);
         }
 
         let (outbound_message_sender, mut outbound_message_receiver) =

@@ -160,6 +160,14 @@ const MAX_MSG_SIZE: usize = MSG_SIZES[MSG_SIZES.len() - 1];
 const CANCEL_CONNECT_PCT: u8 = 5;
 const CANCEL_CONNECT_MAX_POLLS: u32 = 12;
 
+/// The same treatment for the listener being switched back on. The enable path has one
+/// interesting suspension point - the readiness signal that separates the spawn of the accept
+/// loop from its registration with the node - so the budget only needs to straddle that: a
+/// listener detached there would keep accepting beyond `shut_down`'s reach, which the fd and
+/// task ceilings are the oracle for.
+const CANCEL_TOGGLE_PCT: u8 = 20;
+const CANCEL_TOGGLE_MAX_POLLS: u32 = 3;
+
 /// How often the swarm sampler re-rolls the action mix.
 const DEFAULT_EPOCH_SECS: u64 = 30;
 
@@ -866,7 +874,14 @@ async fn act_toggle_listener(pool: &Pool, stats: &Arc<Stats>, rng: &mut SmallRng
     // if a shutdown races in - that race is precisely the coverage we want
     if matches!(a.node().toggle_listener().await, Ok(None)) {
         sleep(Duration::from_micros(rng.random_range(0..2_000))).await;
-        let _ = a.node().toggle_listener().await;
+        // a share of the re-enables is cancelled part-way, leaving the node dark - the same
+        // outcome as the legitimate failure above, so the rest of the mix tolerates it
+        if rng.random_range(0..100u8) < CANCEL_TOGGLE_PCT {
+            let budget = rng.random_range(1..=CANCEL_TOGGLE_MAX_POLLS);
+            cancel_after_polls(a.node().toggle_listener(), budget).await;
+        } else {
+            let _ = a.node().toggle_listener().await;
+        }
         stats.listener_toggles.fetch_add(1, Ordering::Relaxed);
     }
 }

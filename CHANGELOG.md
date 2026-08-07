@@ -4,6 +4,7 @@
 
 - connections no longer route their reads and writes through the mutex of a generic stream split; the lock-free, `TcpStream`-specific one is used instead
 - a connection's writer task concluding now shuts down the socket's write direction (i.e. sends the peer a FIN) instead of leaving it to the connection's full teardown
+- a batch of outbound messages now coalesces into as few writes as `Writing::INITIAL_BUFFER_SIZE` allows, instead of always being flushed to the socket every 8KiB
 
 # 0.57.3
 
