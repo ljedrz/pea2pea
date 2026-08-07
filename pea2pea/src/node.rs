@@ -568,8 +568,9 @@ impl Node {
         let conn_span = create_connection_span(peer_addr, self.span());
         debug!(parent: &conn_span, "establishing connection as the {own_side:?}");
 
-        // register the port seen by the peer
-        if own_side == ConnectionSide::Initiator {
+        // register the port seen by the peer; `local_addr` is a syscall, so it is only
+        // worth making when the log it feeds is enabled
+        if own_side == ConnectionSide::Initiator && enabled!(Level::TRACE) {
             if let Ok(addr) = stream.local_addr() {
                 trace!(parent: &conn_span, "the peer is connected on port {}", addr.port());
             } else {
