@@ -808,11 +808,15 @@ async fn message_stats() {
 // puts every message in a batch of its own.
 #[tokio::test] // deliberately single-threaded; see the enqueue loop below
 async fn write_stats_account_for_batched_oversized_messages() {
-    // it's the batch as a whole - not any single message - that has to cross the boundary; these
-    // two multiply out to twice the default 64KiB, so lowering either far enough would end the
-    // coverage without failing the test
     const MSG_COUNT: u64 = 8; // must not exceed Writing::MESSAGE_QUEUE_DEPTH
     const PAYLOAD_SIZE: u64 = 16 * 1024;
+
+    // it's the batch as a whole - not any single message - that has to cross the boundary, so
+    // shrinking either const far enough would silently cost the coverage rather than fail here
+    assert!(
+        MSG_COUNT * (2 + PAYLOAD_SIZE) > <TestNode as Writing>::INITIAL_BUFFER_SIZE as u64,
+        "the batch must outgrow the backpressure boundary to exercise the mid-batch flush",
+    );
 
     let reader = TestNode::default();
     let reader_addr = start_listening(&reader).await;
