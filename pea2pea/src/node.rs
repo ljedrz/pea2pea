@@ -14,7 +14,6 @@ use std::{
 use futures_util::stream::{FuturesUnordered, StreamExt};
 use parking_lot::Mutex;
 use tokio::{
-    io::split,
     net::{TcpListener, TcpSocket, TcpStream},
     sync::{Notify, RwLock, Semaphore, oneshot, watch},
     task::JoinHandle,
@@ -547,7 +546,7 @@ impl Node {
 
         // split the stream after the handshake (if not done before)
         if let Some(stream) = conn.stream.take() {
-            let (reader, writer) = split(stream);
+            let (reader, writer) = stream.into_split();
             conn.reader = Some(Box::new(reader));
             conn.writer = Some(Box::new(writer));
         }
