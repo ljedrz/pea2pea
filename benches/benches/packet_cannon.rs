@@ -73,7 +73,7 @@ impl Encoder<u8> for RawByteCodec {
     }
 }
 
-/// Expands a single `(byte, count)` tuple into `count` raw bytes in one write.
+/// Expands a single `(byte, count)` tuple into one frame of `count` raw bytes.
 struct BatchRawCodec;
 
 impl Encoder<(u8, usize)> for BatchRawCodec {

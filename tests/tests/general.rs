@@ -1066,7 +1066,7 @@ async fn idle_timeout_zero_disables_timeout() {
     assert_eq!(reader.0.num_connected(), 1);
 }
 
-/// `Writing::TIMEOUT_MS` bounds the per-message `flush()` call. With a
+/// `Writing::TIMEOUT_MS` bounds the `flush()` of a write batch. With a
 /// peer that never reads, the sender's flush eventually stalls on TCP
 /// backpressure and the timeout must propagate via the delivery `oneshot`,
 /// tearing the connection down.
