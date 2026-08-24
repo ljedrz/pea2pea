@@ -61,3 +61,19 @@ jobs:
 
       - name: check on MSRV
         run: cargo check -p pea2pea
+
+  semver-checks:
+    name: Semver Checks
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: checkout source code
+        uses: actions/checkout@v6
+
+      - name: enable Rust caching
+        uses: Swatinem/rust-cache@v2
+
+      - name: compare against the latest release
+        uses: obi1kenobi/cargo-semver-checks-action@v2
+        with:
+          package: pea2pea
